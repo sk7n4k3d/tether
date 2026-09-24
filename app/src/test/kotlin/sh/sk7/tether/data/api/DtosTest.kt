@@ -122,7 +122,7 @@ class DtosTest {
 
     @Test
     fun `l enveloppe location et data decode le listing modeles reel`() {
-        val env = json.decodeFromString<DataEnvelope<Model>>(fixture("model-list-real.json"))
+        val env = json.decodeFromString<DataEnvelope<Model>>(fixture("model-list.json"))
         assertEquals(37, env.data.size)
         assertEquals("/home/utilisateur", env.location?.directory)
         val m = env.data.first { it.id == "deepseek-v4.1-flash" }
