@@ -25,7 +25,11 @@ class SseParser {
 
     /** Ajoute un morceau recu et rend les frames completees par ce morceau. */
     fun feed(chunk: String): List<SseFrame> {
-        buffer.append(chunk)
+        // ⚠️ Normalisation CRLF : `EventStream` lit via `readUTF8Line()` qui retire deja
+        // les CR, donc en pratique on recoit des `\n`. Mais un appelant direct (test sur
+        // fixture brute, futur consommateur) pourrait livrer du `\r\n` — et `\r\n\r\n`
+        // ne contient PAS `"\n\n"` -> zero frame, echec SILENCIEUX. On normalise ici.
+        buffer.append(chunk.replace("\r\n", "\n").replace('\r', '\n'))
         val frames = mutableListOf<SseFrame>()
         while (true) {
             val idx = buffer.indexOf("\n\n")

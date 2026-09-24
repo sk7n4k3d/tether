@@ -52,6 +52,15 @@ class SseParserTest {
     }
 
     @Test
+    fun `feed tolere un separateur crlf`() {
+        // ⚠️ Sans normalisation, "\r\n\r\n" ne contient pas "\n\n" -> 0 frame,
+        // echec SILENCIEUX. Un proxy (SWAG) pourrait normaliser en CRLF.
+        val out = SseParser().feed("data: {\"a\":1}\r\n\r\n")
+        assertEquals(1, out.size)
+        assertEquals("{\"a\":1}", out[0].data)
+    }
+
+    @Test
     fun `les commentaires heartbeat sont ignores`() {
         // le flux reel contient des lignes ": heartbeat" (commentaires SSE)
         val p = SseParser()
