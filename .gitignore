@@ -2,5 +2,6 @@
 *.apk
 local.properties
 .gradle/
+.kotlin/
 build/
 backup-owui/
