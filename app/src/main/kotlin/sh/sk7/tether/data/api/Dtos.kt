@@ -97,6 +97,20 @@ data class Model(
 data class ModelVariant(val id: String, val settings: JsonObject? = null)
 
 /**
+ * Agent de `GET /api/agent`. Seuls les champs d'affichage sont retenus : la reponse reelle
+ * porte aussi `system` (prompt complet, plusieurs kilo-octets) et `permissions`, inutiles ici.
+ * `mode` vaut `primary`, `subagent` ou `all`.
+ */
+@Serializable
+data class Agent(
+    val id: String,
+    val name: String? = null,
+    val description: String? = null,
+    val mode: String? = null,
+    val hidden: Boolean = false,
+)
+
+/**
  * Message du listing. Le discriminant est [type] — PAS un enum `role`.
  * Types reels observes : `assistant`, `user`, `idle`, `synthetic`.
  */
@@ -164,7 +178,13 @@ data class PromptAcceptance(
 )
 
 @Serializable
-data class CreateSessionBody(val title: String, val model: ModelRef, val location: LocationBody)
+data class CreateSessionBody(
+    val title: String,
+    val model: ModelRef,
+    val location: LocationBody,
+    /** Optionnel : le serveur applique son agent par defaut si absent. */
+    val agent: String? = null,
+)
 
 @Serializable
 data class LocationBody(val directory: String)

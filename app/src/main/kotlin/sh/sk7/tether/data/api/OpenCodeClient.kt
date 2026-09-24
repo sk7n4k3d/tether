@@ -19,30 +19,45 @@ import kotlinx.serialization.json.Json
  * Client REST du serveur opencode V2.
  *
  * Le serveur se protege par HTTP basic (`opencode:<motdepasse>`), pas par Bearer.
+ * Les identifiants sont resolus **a chaque requete** via [CredentialsProvider] : c'est ce
+ * qui permet a `ConnectionStore` de changer le mot de passe sans reconstruire le client.
+ *
  * ⚠️ Noms de parametres query **reels** (verifies sur `/openapi.json`) :
  * - `GET /api/session` : `directory` (PAS `location[directory]`, silencieusement ignore)
  * - `GET /api/session/{id}/message` : `limit`, `order`, `cursor`, `type` (aucun `location`)
- * - `GET /api/model` · `/agent` · `/provider` · `/permission/request` : `location`
+ * - `GET /api/model` · `/api/agent` : `location[directory]` (`style: deepObject`)
+ *   ⚠️ `?location=/chemin` (valeur simple) est **rejete** par le serveur (`InvalidRequestError`)
  * - `POST /api/session` : le `location` va dans le **corps**
  * - `POST /api/session/{id}/prompt` : **aucun** parametre query
  */
 class OpenCodeClient(
     baseUrl: String,
-    private val credentials: BasicAuthCredentials,
+    private val credentialsProvider: CredentialsProvider,
     private val http: HttpClient,
 ) {
+    /**
+     * Variante a identifiants fixes (tests, appel ponctuel de diagnostic). Le client de
+     * production doit preferer [CredentialsProvider] pour rester reactif aux reglages.
+     */
+    constructor(baseUrl: String, credentials: BasicAuthCredentials, http: HttpClient) :
+        this(baseUrl, FixedCredentialsProvider(credentials), http)
+
     private val baseUrl: String = baseUrl.trimEnd('/')
 
-    suspend fun info(): ServerInfo =
-        http.get("$baseUrl/api/info") { auth() }.body()
+    suspend fun info(): ServerInfo {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/info") { auth(credentials) }.body()
+    }
 
-    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> =
-        http.get("$baseUrl/api/session") {
-            auth()
+    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session") {
+            auth(credentials)
             parameter("directory", directory)
             limit?.let { parameter("limit", it) }
             cursor?.let { parameter("cursor", it) }
         }.body<DataEnvelope<Session>>().data
+    }
 
     suspend fun messages(
         sessionID: String,
@@ -50,39 +65,79 @@ class OpenCodeClient(
         cursor: String? = null,
         order: String? = null,
         type: String? = null,
-    ): List<MessageDto> =
-        http.get("$baseUrl/api/session/$sessionID/message") {
-            auth()
+    ): List<MessageDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/message") {
+            auth(credentials)
             limit?.let { parameter("limit", it) }
             cursor?.let { parameter("cursor", it) }
             order?.let { parameter("order", it) }
             type?.let { parameter("type", it) }
         }.body<DataEnvelope<MessageDto>>().data
+    }
 
-    suspend fun models(location: String): List<Model> =
-        http.get("$baseUrl/api/model") {
-            auth()
-            parameter("location", location)
+    suspend fun models(location: String): List<Model> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/model") {
+            auth(credentials)
+            parameter("location[directory]", location)
         }.body<DataEnvelope<Model>>().data
+    }
+
+    /**
+     * `GET /api/agent` : meme parametre deepObject que `/api/model`
+     * (`location[directory]`, style `deepObject` dans l'OpenAPI). Sans lui, `data: []`
+     * sans erreur.
+     */
+    suspend fun agents(location: String): List<Agent> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/agent") {
+            auth(credentials)
+            parameter("location[directory]", location)
+        }.body<DataEnvelope<Agent>>().data
+    }
 
     /** `POST /api/session` renvoie `{data: <Session>}` = un OBJET, pas un tableau. */
-    suspend fun createSession(title: String, model: ModelRef, location: String): Session =
-        http.post("$baseUrl/api/session") {
-            auth()
+    suspend fun createSession(
+        title: String,
+        model: ModelRef,
+        location: String,
+        agent: String? = null,
+    ): Session {
+        val credentials = credentialsProvider.credentials()
+        return http.post("$baseUrl/api/session") {
+            auth(credentials)
             contentType(ContentType.Application.Json)
-            setBody(CreateSessionBody(title = title, model = model, location = LocationBody(location)))
+            setBody(
+                CreateSessionBody(
+                    title = title,
+                    model = model,
+                    location = LocationBody(location),
+                    agent = agent?.takeIf { it.isNotBlank() },
+                ),
+            )
         }.body<SessionEnvelope>().data
+    }
 
     /** `POST /prompt` : le texte est dans `payload.text`, la reponse est `{data: <msg_*>}`. */
-    suspend fun prompt(sessionID: String, text: String): PromptAcceptance =
-        http.post("$baseUrl/api/session/$sessionID/prompt") {
-            auth()
+    suspend fun prompt(sessionID: String, text: String): PromptAcceptance {
+        val credentials = credentialsProvider.credentials()
+        return http.post("$baseUrl/api/session/$sessionID/prompt") {
+            auth(credentials)
             contentType(ContentType.Application.Json)
             setBody(PromptBody(text = text))
         }.body<PromptEnvelope>().data
+    }
 
-    private fun HttpRequestBuilder.auth() {
+    private fun HttpRequestBuilder.auth(credentials: BasicAuthCredentials?) {
+        if (credentials == null) return
         basicAuth(credentials.username, credentials.password)
+    }
+
+    private class FixedCredentialsProvider(
+        private val fixed: BasicAuthCredentials,
+    ) : CredentialsProvider {
+        override suspend fun credentials(): BasicAuthCredentials = fixed
     }
 
     companion object {

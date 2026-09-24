@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class OpenCodeClientTest {
@@ -82,6 +83,41 @@ class OpenCodeClientTest {
         val models = client.models("/tmp")
         assertEquals(1, models.size)
         assertEquals("ollama-cloud", models.first().providerID)
+    }
+
+    @Test
+    fun `models envoie location directory en deepObject`() = runBlocking {
+        val body = """{"location":{"directory":"/tmp/opencode"},"data":[{"id":"m","providerID":"p"}]}"""
+        val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
+        assertEquals(1, client.models("/tmp/opencode").size)
+        val req = lastRequest!!
+        assertEquals("/tmp/opencode", req.url.parameters["location[directory]"])
+        assertEquals(null, req.url.parameters["location"])
+        assertTrue(req.url.encodedQuery.contains("location%5Bdirectory%5D"), req.url.encodedQuery)
+    }
+
+    @Test
+    fun `agents interroge api agent avec location directory`() = runBlocking {
+        val body = """{"location":{"directory":"/tmp"},"data":[{"id":"general","name":"General","mode":"all"}]}"""
+        val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
+        val agents = client.agents("/tmp")
+        assertEquals(1, agents.size)
+        assertEquals("general", agents.first().id)
+        val req = lastRequest!!
+        assertEquals("http://host:4096/api/agent", req.url.toString().substringBefore("?"))
+        assertEquals("/tmp", req.url.parameters["location[directory]"])
+    }
+
+    @Test
+    fun `createSession signe l agent optionnel et l omet si absent`() = runBlocking {
+        val body = """{"data":{"id":"ses_new","title":"t"}}"""
+        val withAgent = OpenCodeClient("http://host:4096", creds, mockClient(body))
+        withAgent.createSession("t", ModelRef("m", "p"), "/tmp", agent = "general")
+        assertTrue(String(lastRequest!!.body.toByteArray()).contains("\"agent\":\"general\""))
+
+        val withoutAgent = OpenCodeClient("http://host:4096", creds, mockClient(body))
+        withoutAgent.createSession("t", ModelRef("m", "p"), "/tmp")
+        assertFalse(String(lastRequest!!.body.toByteArray()).contains("\"agent\""))
     }
 
     @Test

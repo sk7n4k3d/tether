@@ -45,6 +45,7 @@ dependencies {
     implementation(libs.ktor.client.logging)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.datastore.preferences)
     implementation(libs.markdown.renderer)
     implementation(libs.markdown.renderer.code)
     implementation(libs.coil.compose)

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
+import sh.sk7.tether.ui.TetherNavHost
+import sh.sk7.tether.ui.permission.LocalNetworkGate
 import sh.sk7.tether.ui.theme.TetherBackground
 import sh.sk7.tether.ui.theme.TetherTheme
 
@@ -16,7 +18,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             TetherTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = TetherBackground) { /* Task 1.5 */ }
+                Surface(modifier = Modifier.fillMaxSize(), color = TetherBackground) {
+                    LocalNetworkGate { TetherNavHost() }
+                }
             }
         }
     }

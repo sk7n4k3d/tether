@@ -12,6 +12,7 @@ coroutines = "1.9.0"
 markdownRenderer = "0.28.0"
 coil = "2.7.0"
 lucide = "1.1.0"
+datastore = "1.1.7"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -34,6 +35,7 @@ markdown-renderer = { group = "com.mikepenz", name = "multiplatform-markdown-ren
 markdown-renderer-code = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-code", version.ref = "markdownRenderer" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 lucide = { group = "com.composables", name = "icons-lucide", version.ref = "lucide" }
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
 
