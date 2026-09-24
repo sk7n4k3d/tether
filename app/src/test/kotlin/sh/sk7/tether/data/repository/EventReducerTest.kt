@@ -1,0 +1,439 @@
+package sh.sk7.tether.data.repository
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import sh.sk7.tether.data.api.OpenCodeClient
+import sh.sk7.tether.data.event.OcEvent
+import sh.sk7.tether.data.event.SseParser
+import sh.sk7.tether.domain.model.Role
+import sh.sk7.tether.domain.model.SessionStatus
+import sh.sk7.tether.domain.model.SessionUiState
+import sh.sk7.tether.domain.model.ToolCall
+import sh.sk7.tether.domain.model.ToolStatus
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class EventReducerTest {
+
+    // ---------------------------------------------------------------------
+    // Contrat de base (Review Focus n°4)
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `un delta de texte s'ajoute au message en cours`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.text.started"))
+        // ⚠️ Le champ est `delta`, PAS `text` (vérifié sur trafic réel, spike §10bis)
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"delta":"Bon"}"""))
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"delta":"jour"}"""))
+        assertEquals("Bonjour", s.streamingText)
+    }
+
+    @Test
+    fun `execution succeeded cloture le message`() {
+        var s = SessionUiState(sessionID = "ses_1").copy(streamingText = "fini")
+        s = EventReducer.reduce(s, ev("session.execution.succeeded"))
+        assertNull(s.streamingText)
+        assertEquals(1, s.messages.size)
+    }
+
+    @Test
+    fun `un type de contenu inconnu est conserve en repli brut`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.message.content.updated", """{"type":"type_jamais_vu","valeur":1}"""),
+        )
+        assertTrue(s.messages.any { it.rawFallback != null })
+    }
+
+    @Test
+    fun `un type d'evenement inconnu ne casse pas le reducer`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        val after = EventReducer.reduce(before, ev("session.totalement.inconnu"))
+        assertEquals(before, after)   // ignoré proprement, état inchangé
+    }
+
+    @Test
+    fun `usage updated met a jour le cout et les tokens`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.usage.updated", """{"cost":0.0026,"tokens":{"input":10,"output":2,"reasoning":0,"cache":{"read":0,"write":0}}}"""),
+        )
+        assertEquals(0.0026, s.cost!!, 0.00001)
+        assertEquals(10L, s.tokens!!.input)
+    }
+
+    // ---------------------------------------------------------------------
+    // Texte
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `text ended fixe le texte final quand aucun delta n'est arrive`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.text.ended", """{"text":"reponse complete","assistantMessageID":"msg_a"}"""),
+        )
+        assertEquals("reponse complete", s.streamingText)
+        assertEquals("msg_a", s.assistantMessageID)
+    }
+
+    @Test
+    fun `text ended ne casse pas un texte deja accumule par les deltas`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"delta":"Bon"}"""))
+        s = EventReducer.reduce(s, ev("session.text.ended", """{"text":"Bon"}"""))
+        assertEquals("Bon", s.streamingText)
+    }
+
+    @Test
+    fun `un delta de texte sans champ delta laisse l'etat inchange`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        assertEquals(before, EventReducer.reduce(before, ev("session.text.delta")))
+    }
+
+    // ---------------------------------------------------------------------
+    // Raisonnement
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `un delta de raisonnement s'ajoute et se fond dans le message cloture`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.execution.started"))
+        s = EventReducer.reduce(s, ev("session.reasoning.started", """{"assistantMessageID":"msg_a"}"""))
+        s = EventReducer.reduce(s, ev("session.reasoning.delta", """{"delta":"je "}"""))
+        s = EventReducer.reduce(s, ev("session.reasoning.delta", """{"delta":"reflechis"}"""))
+        assertEquals("je reflechis", s.streamingReasoning)
+
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"delta":"ok"}"""))
+        s = EventReducer.reduce(s, ev("session.reasoning.ended", """{"text":"je reflechis"}"""))
+        s = EventReducer.reduce(s, ev("session.execution.succeeded"))
+
+        val message = s.messages.single()
+        assertEquals("ok", message.text)
+        assertEquals("je reflechis", message.reasoning)
+        assertEquals("msg_a", message.id)
+        assertNull(s.streamingReasoning)
+    }
+
+    @Test
+    fun `reasoning ended fixe le texte final quand aucun delta n'est arrive`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.reasoning.ended", """{"text":"pensee finale"}"""),
+        )
+        assertEquals("pensee finale", s.streamingReasoning)
+    }
+
+    // ---------------------------------------------------------------------
+    // Etapes
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `step started passe le statut en cours et retient l'id du message assistant`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.step.started", """{"assistantMessageID":"msg_a","agent":"general"}"""),
+        )
+        assertEquals(SessionStatus.Running, s.status)
+        assertEquals("msg_a", s.assistantMessageID)
+    }
+
+    @Test
+    fun `step ended met a jour le cout et les tokens`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.step.ended", """{"assistantMessageID":"msg_a","finish":"stop","cost":0.5,"tokens":{"input":7,"output":3}}"""),
+        )
+        assertEquals(0.5, s.cost!!, 1e-9)
+        assertEquals(7L, s.tokens!!.input)
+        assertEquals(3L, s.tokens!!.output)
+    }
+
+    @Test
+    fun `step streamed retient l'id du message assistant sans autre effet`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1", streamingText = "en cours"),
+            ev("session.step.streamed", """{"assistantMessageID":"msg_a"}"""),
+        )
+        assertEquals("msg_a", s.assistantMessageID)
+        assertEquals("en cours", s.streamingText)
+    }
+
+    // ---------------------------------------------------------------------
+    // Execution
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `execution started repart d'un tour propre`() {
+        val dirty = SessionUiState(
+            sessionID = "ses_1",
+            streamingText = "vieux",
+            streamingReasoning = "vieux r",
+            streamingTools = listOf(ToolCall(id = "t1")),
+            assistantMessageID = "msg_old",
+            status = SessionStatus.Succeeded,
+        )
+        val s = EventReducer.reduce(dirty, ev("session.execution.started"))
+        assertNull(s.streamingText)
+        assertNull(s.streamingReasoning)
+        assertTrue(s.streamingTools.isEmpty())
+        assertNull(s.assistantMessageID)
+        assertEquals(SessionStatus.Running, s.status)
+    }
+
+    @Test
+    fun `execution failed cloture le message partiel et marque l'echec`() {
+        var s = SessionUiState(sessionID = "ses_1", streamingText = "partiel")
+        s = EventReducer.reduce(s, ev("session.execution.failed"))
+        assertEquals(SessionStatus.Failed, s.status)
+        assertEquals("partiel", s.messages.single().text)
+        assertNull(s.streamingText)
+    }
+
+    @Test
+    fun `execution interrupted cloture le message partiel`() {
+        var s = SessionUiState(sessionID = "ses_1", streamingText = "partiel")
+        s = EventReducer.reduce(s, ev("session.execution.interrupted"))
+        assertEquals(SessionStatus.Interrupted, s.status)
+        assertEquals(1, s.messages.size)
+    }
+
+    @Test
+    fun `execution succeeded sans streaming ne fabrique pas de message vide`() {
+        val s = EventReducer.reduce(SessionUiState(sessionID = "ses_1"), ev("session.execution.succeeded"))
+        assertTrue(s.messages.isEmpty())
+        assertEquals(SessionStatus.Succeeded, s.status)
+    }
+
+    @Test
+    fun `execution succeeded ne duplique pas un message deja present`() {
+        val before = SessionUiState(sessionID = "ses_1", streamingText = "fini", assistantMessageID = "assistant-0")
+        val after = EventReducer.reduce(before, ev("session.execution.succeeded"))
+        assertEquals(1, after.messages.size)
+    }
+
+    // ---------------------------------------------------------------------
+    // Inbox
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `inbox enqueued ajoute le message utilisateur une seule fois`() {
+        val data = """{"inboxID":"msg_u","item":{"type":"user","payload":{"text":"salut"},"delivery":"steer"}}"""
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.inbox.enqueued", data))
+        s = EventReducer.reduce(s, ev("session.inbox.enqueued", data))
+        assertEquals(1, s.messages.size)
+        assertEquals("salut", s.messages.single().text)
+        assertEquals(Role.User, s.messages.single().role)
+    }
+
+    @Test
+    fun `inbox delivered ne duplique pas le message`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(
+            s,
+            ev("session.inbox.enqueued", """{"inboxID":"msg_u","item":{"type":"user","payload":{"text":"salut"}}}"""),
+        )
+        s = EventReducer.reduce(s, ev("session.inbox.delivered", """{"inboxID":"msg_u"}"""))
+        assertEquals(1, s.messages.size)
+    }
+
+    // ---------------------------------------------------------------------
+    // Instructions
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `instructions updated conserve les hashes du delta`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.instructions.updated", """{"delta":{"core/environment":"abc","core/date":"def"}}"""),
+        )
+        assertEquals("abc", s.instructions["core/environment"])
+        assertEquals("def", s.instructions["core/date"])
+    }
+
+    // ---------------------------------------------------------------------
+    // Contenu de forme inconnue
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `le repli brut conserve la charge exacte de l'evenement`() {
+        val payload = """{"type":"type_jamais_vu","valeur":1}"""
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.message.content.updated", payload),
+        )
+        assertEquals(payload, s.messages.single().rawFallback)
+    }
+
+    // ---------------------------------------------------------------------
+    // Outils (forme jamais capturee -> chemin generique)
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `un evenement d'outil sans identifiant ne casse pas le reducer`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.tool.called", """{"truc":"jamais vu","num":3}"""),
+        )
+        assertTrue(s.messages.isEmpty())
+        assertTrue(s.streamingTools.isEmpty())
+    }
+
+    @Test
+    fun `un outil suit ses etats puis se fond dans le message cloture`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.tool.input.started", """{"toolCallID":"call_1","name":"bash"}"""))
+        assertEquals(ToolStatus.Running, s.streamingTools.single().status)
+
+        s = EventReducer.reduce(s, ev("session.tool.success", """{"toolCallID":"call_1"}"""))
+        assertEquals(ToolStatus.Succeeded, s.streamingTools.single().status)
+
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"delta":"done"}"""))
+        s = EventReducer.reduce(s, ev("session.execution.succeeded"))
+
+        val tool = s.messages.single().tools.single()
+        assertEquals("bash", tool.name)
+        assertEquals(ToolStatus.Succeeded, tool.status)
+        assertTrue(tool.raw.isNotBlank())
+        assertTrue(s.streamingTools.isEmpty())
+    }
+
+    @Test
+    fun `un statut terminal ne se degrade pas par un evenement tardif`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.tool.input.started", """{"toolCallID":"call_1","name":"bash"}"""))
+        s = EventReducer.reduce(s, ev("session.tool.failed", """{"toolCallID":"call_1"}"""))
+        s = EventReducer.reduce(s, ev("session.tool.progress", """{"toolCallID":"call_1","delta":"tard"}"""))
+        assertEquals(ToolStatus.Failed, s.streamingTools.single().status)
+    }
+
+    // ---------------------------------------------------------------------
+    // Attention (permisssions / formulaires) — formes jamais capturees
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `permission asked retient la demande puis replied la retire`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(
+            s,
+            ev("permission.asked", """{"id":"per_1","sessionID":"ses_1","action":"shell","resources":["cmd"]}"""),
+        )
+        assertEquals("per_1", s.pendingPermission!!.id)
+
+        s = EventReducer.reduce(s, ev("permission.replied", """{"requestID":"per_1"}"""))
+        assertNull(s.pendingPermission)
+    }
+
+    @Test
+    fun `permission asked de forme inconnue laisse l'etat inchange`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        val after = EventReducer.reduce(before, ev("permission.asked", """{"forme":"jamais_vue"}"""))
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun `form created conserve la charge brute puis replied la retire`() {
+        val payload = """{"id":"form_1","questions":[{"x":1}]}"""
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("form.created", payload))
+        assertEquals(payload, s.pendingForm!!.raw.toString())
+
+        s = EventReducer.reduce(s, ev("form.replied", "{}"))
+        assertNull(s.pendingForm)
+    }
+
+    @Test
+    fun `form cancelled retire la demande`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("form.created", """{"id":"form_1"}"""))
+        s = EventReducer.reduce(s, ev("form.cancelled", "{}"))
+        assertNull(s.pendingForm)
+    }
+
+    // ---------------------------------------------------------------------
+    // Robustesse et cloisonnement
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `des champs absents ne font jamais lever`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.text.delta"))
+        s = EventReducer.reduce(s, ev("session.reasoning.delta"))
+        s = EventReducer.reduce(s, ev("session.usage.updated"))
+        s = EventReducer.reduce(s, ev("session.instructions.updated"))
+        s = EventReducer.reduce(s, ev("session.step.ended"))
+        s = EventReducer.reduce(s, ev("session.inbox.enqueued"))
+        s = EventReducer.reduce(s, ev("session.tool.success"))
+        assertEquals(SessionUiState(sessionID = "ses_1"), s)
+    }
+
+    @Test
+    fun `un evenement d'une autre session est ignore`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        val after = EventReducer.reduce(before, ev("session.text.delta", """{"sessionID":"ses_2","delta":"x"}"""))
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun `server connected et session created laissent l'etat inchange`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        assertEquals(before, EventReducer.reduce(before, ev("server.connected")))
+        assertEquals(before, EventReducer.reduce(before, ev("session.created", """{"sessionID":"ses_1","title":"t"}""")))
+    }
+
+    @Test
+    fun `usage recorded met a jour comme updated`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("session.usage.recorded", """{"cost":1.5,"tokens":{"input":4}}"""),
+        )
+        assertEquals(1.5, s.cost!!, 1e-9)
+        assertEquals(4L, s.tokens!!.input)
+    }
+
+    // ---------------------------------------------------------------------
+    // Integration : les 18 types mesures, joues dans l'ordre du tour reel
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `le tour reel produit l'etat final attendu`() {
+        val raw = javaClass.getResourceAsStream("/event-stream-real.txt")!!.readBytes().decodeToString()
+        val json = OpenCodeClient.json
+
+        var s = SessionUiState(sessionID = "ses_f2b1f8344ffe7N0fGcpz3sNX0q")
+        for (frame in SseParser().feed(raw)) {
+            s = EventReducer.reduce(s, json.decodeFromString<OcEvent>(frame.data))
+        }
+
+        assertEquals(SessionStatus.Succeeded, s.status)
+        assertEquals(0.0026658, s.cost!!, 1e-12)
+        assertEquals(17644L, s.tokens!!.input)
+        assertEquals(32L, s.tokens!!.output)
+        assertNull(s.streamingText)
+        assertNull(s.streamingReasoning)
+        assertTrue(s.streamingTools.isEmpty())
+
+        assertEquals(2, s.messages.size)
+        assertEquals(Role.User, s.messages[0].role)
+        assertEquals("dis exactement PONG et rien dautre", s.messages[0].text)
+        assertEquals(Role.Assistant, s.messages[1].role)
+        assertEquals("msg_0d4e07d15001w52zKPV2YqIp3m", s.messages[1].id)
+        assertEquals("PONG", s.messages[1].text)
+        assertEquals(
+            "The user wants me to say exactly \"PONG\" and nothing else. " +
+                "This is a trivial request. No skill needed. Just answer.",
+            s.messages[1].reasoning,
+        )
+        assertEquals(6, s.instructions.size)
+        assertEquals(
+            "f6093d8742b0acdfde24824ea36e726dbf4dcc8748bfdea3b490cea56c0d8e55",
+            s.instructions["core/environment"],
+        )
+    }
+
+    private fun ev(type: String, data: String = "{}") =
+        OcEvent(type = type, data = Json.parseToJsonElement(data).jsonObject)
+}
