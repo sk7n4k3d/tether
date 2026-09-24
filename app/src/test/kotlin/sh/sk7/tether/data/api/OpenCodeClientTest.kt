@@ -35,29 +35,44 @@ class OpenCodeClientTest {
     }
 
     @Test
-    fun `sessions interroge le bon chemin avec location et auth`() = runBlocking {
-        val body = """{"data":[{"id":"ses_1","title":"t"}],"cursor":{"next":"abc"}}"""
+    fun `sessions filtre par directory avec le bon nom de parametre`() = runBlocking {
+        val body = """{"data":[{"id":"ses_1","title":"t","location":{"directory":"/tmp/opencode"}}],"cursor":{"next":"abc"}}"""
         val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
-        val sessions = client.sessions("/home/utilisateur")
+        val sessions = client.sessions("/tmp/opencode")
         assertEquals(1, sessions.size)
         assertEquals("ses_1", sessions.first().id)
 
         val req = lastRequest!!
         assertEquals("http://host:4096/api/session", req.url.toString().substringBefore("?"))
-        assertEquals("/home/utilisateur", req.url.parameters["location[directory]"])
+        assertEquals("/tmp/opencode", req.url.parameters["directory"])
+        assertEquals(null, req.url.parameters["location[directory]"])
         val auth = req.headers[HttpHeaders.Authorization]
         assertEquals("Basic b3BlbmNvZGU6czNjcmV0", auth)
     }
 
     @Test
-    fun `messages interroge le chemin de la session`() = runBlocking {
+    fun `messages interroge le chemin de la session sans parametre location`() = runBlocking {
         val body = """{"data":[{"id":"msg_1","type":"idle","outcome":"succeeded"}],"cursor":null}"""
         val client = OpenCodeClient("http://host:4096/", creds, mockClient(body))
-        val msgs = client.messages("ses_1", "/tmp")
+        val msgs = client.messages("ses_1", limit = 50)
         assertEquals(1, msgs.size)
         assertEquals("idle", msgs.first().type)
         val req = lastRequest!!
         assertEquals("http://host:4096/api/session/ses_1/message", req.url.toString().substringBefore("?"))
+        assertEquals("50", req.url.parameters["limit"])
+        assertEquals(null, req.url.parameters["location[directory]"])
+        assertEquals(null, req.url.parameters["directory"])
+    }
+
+    @Test
+    fun `messages signe limit et cursor`() = runBlocking {
+        val body = """{"data":[],"cursor":null}"""
+        val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
+        client.messages("ses_1", limit = 20, cursor = "abc", order = "desc")
+        val req = lastRequest!!
+        assertEquals("20", req.url.parameters["limit"])
+        assertEquals("abc", req.url.parameters["cursor"])
+        assertEquals("desc", req.url.parameters["order"])
     }
 
     @Test
@@ -90,14 +105,16 @@ class OpenCodeClientTest {
     }
 
     @Test
-    fun `prompt poste le texte et lit payload text`() = runBlocking {
+    fun `prompt poste le texte et lit payload text sans query parameter`() = runBlocking {
         val body = """{"data":{"id":"msg_1","sessionID":"ses_1","type":"user","payload":{"text":"PONG"},"delivery":"steer"}}"""
         val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
-        val acc = client.prompt("ses_1", "PONG", "/tmp")
+        val acc = client.prompt("ses_1", "PONG")
         assertEquals("PONG", acc.payload?.text)
         assertEquals("steer", acc.delivery)
         val req = lastRequest!!
-        assertEquals("http://host:4096/api/session/ses_1/prompt", req.url.toString().substringBefore("?"))
+        assertEquals("http://host:4096/api/session/ses_1/prompt", req.url.toString())
+        assertEquals(null, req.url.parameters["location[directory]"])
+        assertEquals(null, req.url.parameters["directory"])
         assertTrue(String(req.body.toByteArray()).contains("\"text\":\"PONG\""))
     }
 

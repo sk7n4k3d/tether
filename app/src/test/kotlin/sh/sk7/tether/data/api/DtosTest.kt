@@ -66,16 +66,30 @@ class DtosTest {
     @Test
     fun `un message assistant porte content reasoning et text`() {
         val env = json.decodeFromString<DataEnvelope<MessageDto>>(fixture("message-list.json"))
-        val a = env.data.first { it.type == "assistant" && it.finish == "stop" && it.content.any { p -> p.type == "text" } }
+        val a = env.data.first {
+            it.type == "assistant" && it.finish == "stop" &&
+                it.content.any { p -> p.type == "text" } &&
+                it.content.any { p -> p.type == "reasoning" }
+        }
         assertEquals("general", a.agent)
         assertEquals("ollama-cloud", a.model?.providerID)
         assertEquals("stop", a.finish)
         assertTrue(a.content.any { it.type == "text" && !it.text.isNullOrBlank() })
-        val reasoning = a.content.firstOrNull { it.type == "reasoning" }
-        if (reasoning != null) {
-            assertNotNull(reasoning.state)
-            assertEquals("reasoning_content", reasoning.state["reasoningField"]?.toString()?.trim('"'))
-        }
+        val reasoning = a.content.first { it.type == "reasoning" }
+        assertTrue(reasoning.text!!.isNotBlank())
+        assertNotNull(reasoning.state)
+        assertEquals("reasoning_content", reasoning.state["reasoningField"]?.toString()?.trim('"'))
+        assertNotNull(reasoning.time)
+    }
+
+    @Test
+    fun `une part tool porte son time avec ran`() {
+        val env = json.decodeFromString<DataEnvelope<MessageDto>>(fixture("message-list.json"))
+        val toolWithTime = env.data.asSequence()
+            .flatMap { it.content.asSequence() }
+            .first { it.type == "tool" && it.time != null }
+        assertNotNull(toolWithTime.time!!.created)
+        assertNotNull(toolWithTime.time.ran)
     }
 
     @Test
@@ -135,6 +149,37 @@ class DtosTest {
         val env = json.decodeFromString<DataEnvelope<PermissionRequest>>(fixture("permission-request.json"))
         assertTrue(env.data.isEmpty())
         assertEquals("/home/utilisateur", env.location?.directory)
+    }
+
+    @Test
+    fun `une permission request suit le contrat reecrit par l OpenAPI`() {
+        val raw = """{"id":"per_1","sessionID":"ses_1","action":"shell",
+            "resources":["cmd"],"save":["always"],"source":{"type":"tool","messageID":"msg_1","id":"call_1"},
+            "message":"run?"}"""
+        val p = json.decodeFromString<PermissionRequest>(raw)
+        assertEquals("per_1", p.id)
+        assertEquals("ses_1", p.sessionID)
+        assertEquals("shell", p.action)
+        assertEquals(listOf("cmd"), p.resources)
+        assertEquals(listOf("always"), p.save)
+        assertEquals("run?", p.message)
+        assertEquals("tool", p.source?.type)
+        assertEquals("msg_1", p.source?.messageID)
+    }
+
+    @Test
+    fun `info json se decode avec version pid urls`() {
+        val info = json.decodeFromString<ServerInfo>(fixture("info.json"))
+        assertEquals("2.0.x", info.version)
+        assertNotNull(info.pid)
+        assertTrue(info.urls.isNotEmpty())
+    }
+
+    @Test
+    fun `Session time supporte archived`() {
+        val raw = """{"data":[{"id":"ses_1","time":{"created":1,"updated":2,"archived":3}}]}"""
+        val env = json.decodeFromString<DataEnvelope<Session>>(raw)
+        assertEquals(3L, env.data.first().time?.archived)
     }
 
     @Test

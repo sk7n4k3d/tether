@@ -19,8 +19,12 @@ import kotlinx.serialization.json.Json
  * Client REST du serveur opencode V2.
  *
  * Le serveur se protege par HTTP basic (`opencode:<motdepasse>`), pas par Bearer.
- * Le localisation (repertoire de travail) est passee soit en query
- * `?location[directory]=<absolu>` (listings), soit dans le corps de `POST /api/session`.
+ * ⚠️ Noms de parametres query **reels** (verifies sur `/openapi.json`) :
+ * - `GET /api/session` : `directory` (PAS `location[directory]`, silencieusement ignore)
+ * - `GET /api/session/{id}/message` : `limit`, `order`, `cursor`, `type` (aucun `location`)
+ * - `GET /api/model` · `/agent` · `/provider` · `/permission/request` : `location`
+ * - `POST /api/session` : le `location` va dans le **corps**
+ * - `POST /api/session/{id}/prompt` : **aucun** parametre query
  */
 class OpenCodeClient(
     baseUrl: String,
@@ -32,22 +36,33 @@ class OpenCodeClient(
     suspend fun info(): ServerInfo =
         http.get("$baseUrl/api/info") { auth() }.body()
 
-    suspend fun sessions(location: String): List<Session> =
+    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> =
         http.get("$baseUrl/api/session") {
             auth()
-            parameter("location[directory]", location)
+            parameter("directory", directory)
+            limit?.let { parameter("limit", it) }
+            cursor?.let { parameter("cursor", it) }
         }.body<DataEnvelope<Session>>().data
 
-    suspend fun messages(sessionID: String, location: String): List<MessageDto> =
+    suspend fun messages(
+        sessionID: String,
+        limit: Int? = null,
+        cursor: String? = null,
+        order: String? = null,
+        type: String? = null,
+    ): List<MessageDto> =
         http.get("$baseUrl/api/session/$sessionID/message") {
             auth()
-            parameter("location[directory]", location)
+            limit?.let { parameter("limit", it) }
+            cursor?.let { parameter("cursor", it) }
+            order?.let { parameter("order", it) }
+            type?.let { parameter("type", it) }
         }.body<DataEnvelope<MessageDto>>().data
 
     suspend fun models(location: String): List<Model> =
         http.get("$baseUrl/api/model") {
             auth()
-            parameter("location[directory]", location)
+            parameter("location", location)
         }.body<DataEnvelope<Model>>().data
 
     /** `POST /api/session` renvoie `{data: <Session>}` = un OBJET, pas un tableau. */
@@ -59,11 +74,10 @@ class OpenCodeClient(
         }.body<SessionEnvelope>().data
 
     /** `POST /prompt` : le texte est dans `payload.text`, la reponse est `{data: <msg_*>}`. */
-    suspend fun prompt(sessionID: String, text: String, location: String): PromptAcceptance =
+    suspend fun prompt(sessionID: String, text: String): PromptAcceptance =
         http.post("$baseUrl/api/session/$sessionID/prompt") {
             auth()
             contentType(ContentType.Application.Json)
-            parameter("location[directory]", location)
             setBody(PromptBody(text = text))
         }.body<PromptEnvelope>().data
 

@@ -35,10 +35,16 @@ class OpenCodeClientLiveTest {
     }
 
     @Test
-    fun `sessions renvoie une liste non vide`() = runBlocking {
-        val location = System.getProperty("tether.location") ?: System.getProperty("user.home")
+    fun `sessions filtre reellement par directory`() = runBlocking {
+        val location = System.getProperty("tether.location") ?: "/tmp/opencode"
         val sessions = client().sessions(location)
         assertTrue(sessions.isNotEmpty(), "aucune session pour $location")
         assertTrue(sessions.first().id.isNotBlank())
+        // Preuve du filtre : toutes les sessions doivent venir du repertoire demande.
+        val foreign = sessions.filterNot { it.location?.directory == location }
+        assertTrue(
+            foreign.isEmpty(),
+            "sessions hors $location: ${foreign.map { it.id to it.location?.directory }.take(3)}",
+        )
     }
 }

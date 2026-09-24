@@ -13,7 +13,7 @@ interface CredentialsProvider {
 
 data class BasicAuthCredentials(val username: String = "opencode", val password: String)
 
-/** Implementation en memoire, alimentee par les reglages. */
+/** Implementation en memoire, alimentee par les reglages. Utilisee par ConnectionStore (Task 1.5). */
 class InMemoryCredentialsProvider(initial: BasicAuthCredentials? = null) : CredentialsProvider {
     @Volatile
     private var current: BasicAuthCredentials? = initial

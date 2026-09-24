@@ -62,6 +62,10 @@ data class TimeInfo(
     val streamed: Long? = null,
     val idle: Long? = null,
     val viewed: Long? = null,
+    /** `Session.time` : horodatage d'archivage. */
+    val archived: Long? = null,
+    /** `ContentPart.time` des parts `tool` : duree d'execution. */
+    val ran: Long? = null,
 )
 
 @Serializable
@@ -166,15 +170,29 @@ data class CreateSessionBody(val title: String, val model: ModelRef, val locatio
 data class LocationBody(val directory: String)
 
 /**
- * Demande de permission. ⚠️ Forme non observee (spike §8 : auto-approbation au repos) —
- * champs reconstruits, a completer sur capture reelle.
+ * Demande de permission. Champs et noms alignes sur `Permission.Request` de l'OpenAPI
+ * (`/openapi.json`, 2026-09-24). ⚠️ La forme n'a **jamais ete observee** en trafic reel
+ * (auto-approbation, spike §8) : les requis du contrat sont declares non-null, le reste
+ * reste tolérant.
  */
 @Serializable
 data class PermissionRequest(
+    val id: String,
+    val sessionID: String,
+    val action: String,
+    val resources: List<String> = emptyList(),
+    val save: List<String> = emptyList(),
+    val metadata: JsonObject? = null,
+    val source: PermissionSource? = null,
+    val message: String? = null,
+)
+
+/** `Permission.Source` : decrit l'origine de la demande (aujourd'hui seule variante `tool`). */
+@Serializable
+data class PermissionSource(
+    val type: String,
+    val messageID: String? = null,
     val id: String? = null,
-    val sessionID: String? = null,
-    val type: String? = null,
-    val time: TimeInfo? = null,
 )
 
 /** `GET /api/info`. */
