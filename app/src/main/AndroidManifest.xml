@@ -6,7 +6,7 @@
         android:allowBackup="true"
         android:label="Tether"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.Tether">
         <activity
             android:name=".MainActivity"
             android:exported="true">
