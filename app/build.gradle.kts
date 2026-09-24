@@ -51,4 +51,11 @@ dependencies {
     implementation(libs.lucide)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.ktor.client.mock)
+}
+
+tasks.withType<Test>().configureEach {
+    listOf("tether.baseUrl", "tether.password", "tether.location").forEach { key ->
+        System.getProperty(key)?.let { systemProperty(key, it) }
+    }
 }
