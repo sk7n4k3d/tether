@@ -1,0 +1,6 @@
+data: {"id":"evt_0d4dfa0b6001m1DHpdkfZMSPTR","type":"server.connected","data":{}}
+
+: heartbeat
+
+data: {"id":"evt_0d4dfa49d001MRlYL1YAUhsL22","created":1790277821597,"type":"session.created","location":{"directory":"/home/utilisateur"},"data":{"sessionID":"ses_f2b205b64ffeTcs2y9cBXj6opv","slug":"proud-planet","version":"2.0.x","projectID":"ac3ac0f7b02c57780a93d78e63a6c94b41daf5b5","location":{"directory":"/home/utilisateur"},"subpath":"","title":"tether spike test","model":{"id":"deepseek-v4.1-flash","providerID":"ollama-cloud"}},"durable":{"aggregateID":"ses_f2b205b64ffeTcs2y9cBXj6opv","seq":0,"version":1}}
+
