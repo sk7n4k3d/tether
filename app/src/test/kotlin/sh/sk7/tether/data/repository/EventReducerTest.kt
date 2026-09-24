@@ -5,6 +5,7 @@ import kotlinx.serialization.json.jsonObject
 import sh.sk7.tether.data.api.OpenCodeClient
 import sh.sk7.tether.data.event.OcEvent
 import sh.sk7.tether.data.event.SseParser
+import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.domain.model.SessionUiState
@@ -161,6 +162,26 @@ class EventReducerTest {
         assertEquals("en cours", s.streamingText)
     }
 
+    @Test
+    fun `step started ne fait pas repasser une session terminale en cours`() {
+        val terminal = SessionUiState(sessionID = "ses_1", status = SessionStatus.Succeeded)
+        val s = EventReducer.reduce(
+            terminal,
+            ev("session.step.started", """{"assistantMessageID":"msg_rejoue"}"""),
+        )
+        assertEquals(SessionStatus.Succeeded, s.status)   // un replay ne relance pas l'UI
+        assertEquals("msg_rejoue", s.assistantMessageID)
+    }
+
+    @Test
+    fun `un nouveau tour repasse bien en cours apres un statut terminal`() {
+        var s = SessionUiState(sessionID = "ses_1", status = SessionStatus.Succeeded)
+        s = EventReducer.reduce(s, ev("session.execution.started"))
+        assertEquals(SessionStatus.Running, s.status)
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_new"}"""))
+        assertEquals(SessionStatus.Running, s.status)
+    }
+
     // ---------------------------------------------------------------------
     // Execution
     // ---------------------------------------------------------------------
@@ -208,10 +229,16 @@ class EventReducerTest {
     }
 
     @Test
-    fun `execution succeeded ne duplique pas un message deja present`() {
-        val before = SessionUiState(sessionID = "ses_1", streamingText = "fini", assistantMessageID = "assistant-0")
+    fun `execution succeeded remplace un message deja present sans le dupliquer`() {
+        val before = SessionUiState(
+            sessionID = "ses_1",
+            streamingText = "fini",
+            assistantMessageID = "assistant-0",
+            messages = listOf(ChatMessage(id = "assistant-0", role = Role.Assistant, text = "vieux")),
+        )
         val after = EventReducer.reduce(before, ev("session.execution.succeeded"))
-        assertEquals(1, after.messages.size)
+        assertEquals(1, after.messages.size)               // pas dupliqué
+        assertEquals("fini", after.messages.single().text) // remplacé, pas ignoré
     }
 
     // ---------------------------------------------------------------------
@@ -238,6 +265,28 @@ class EventReducerTest {
         )
         s = EventReducer.reduce(s, ev("session.inbox.delivered", """{"inboxID":"msg_u"}"""))
         assertEquals(1, s.messages.size)
+    }
+
+    @Test
+    fun `inbox enqueued sans texte conserve l'item brut au lieu de le jeter`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev(
+                "session.inbox.enqueued",
+                """{"inboxID":"msg_u","item":{"type":"user","payload":{"attachment":"photo.png"}}}""",
+            ),
+        )
+        assertEquals(1, s.messages.size)
+        assertEquals(Role.User, s.messages.single().role)
+        assertEquals("""{"type":"user","payload":{"attachment":"photo.png"}}""", s.messages.single().rawFallback)
+    }
+
+    @Test
+    fun `inbox enqueued avec un item non objet ne leve pas et garde l'item brut`() {
+        val raw = """{"inboxID":"msg_u","item":"pas_un_objet"}"""
+        val s = EventReducer.reduce(SessionUiState(sessionID = "ses_1"), ev("session.inbox.enqueued", raw))
+        assertEquals(1, s.messages.size)
+        assertEquals(raw, s.messages.single().rawFallback)
     }
 
     // ---------------------------------------------------------------------
@@ -268,6 +317,28 @@ class EventReducerTest {
         assertEquals(payload, s.messages.single().rawFallback)
     }
 
+    @Test
+    fun `un contenu inconnu enrichit le message existant sans ecraser son texte`() {
+        val before = SessionUiState(
+            sessionID = "ses_1",
+            messages = listOf(
+                ChatMessage(
+                    id = "msg_a",
+                    role = Role.Assistant,
+                    text = "reponse connue",
+                    reasoning = "raisonnement connu",
+                ),
+            ),
+        )
+        val raw = """{"assistantMessageID":"msg_a","type":"type_jamais_vu","valeur":1}"""
+        val s = EventReducer.reduce(before, ev("session.message.content.updated", raw))
+
+        assertEquals(1, s.messages.size)                     // pas de message en double
+        assertEquals("reponse connue", s.messages.single().text)       // connu intact
+        assertEquals("raisonnement connu", s.messages.single().reasoning)
+        assertEquals(raw, s.messages.single().rawFallback)   // inconnu conserve
+    }
+
     // ---------------------------------------------------------------------
     // Outils (forme jamais capturee -> chemin generique)
     // ---------------------------------------------------------------------
@@ -280,6 +351,25 @@ class EventReducerTest {
         )
         assertTrue(s.messages.isEmpty())
         assertTrue(s.streamingTools.isEmpty())
+    }
+
+    @Test
+    fun `un evenement d'outil avec une charge garbage ne corrompt pas l'existant`() {
+        val existing = ToolCall(id = "call_1", name = "bash", status = ToolStatus.Running, raw = "{}")
+        val before = SessionUiState(
+            sessionID = "ses_1",
+            streamingText = "en cours",
+            streamingTools = listOf(existing),
+        )
+        // id present mais pas un id d'outil, types inattendus (tableau, objet, null)
+        val s = EventReducer.reduce(
+            before,
+            ev("session.tool.success", """{"toolCallID":["pas","un","id"],"state":{"x":1},"name":null}"""),
+        )
+        // L'entree isolee est ignoree (id non textuel) : l'outil existant est intact.
+        assertEquals(listOf(existing), s.streamingTools)
+        assertEquals("en cours", s.streamingText)
+        assertEquals(1, s.streamingTools.size)
     }
 
     @Test
@@ -358,16 +448,34 @@ class EventReducerTest {
     // ---------------------------------------------------------------------
 
     @Test
-    fun `des champs absents ne font jamais lever`() {
+    fun `des champs absents ne font jamais lever sur les types sans effet`() {
         var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.text.started"))
         s = EventReducer.reduce(s, ev("session.text.delta"))
+        s = EventReducer.reduce(s, ev("session.text.ended"))
         s = EventReducer.reduce(s, ev("session.reasoning.delta"))
+        s = EventReducer.reduce(s, ev("session.reasoning.ended"))
         s = EventReducer.reduce(s, ev("session.usage.updated"))
         s = EventReducer.reduce(s, ev("session.instructions.updated"))
         s = EventReducer.reduce(s, ev("session.step.ended"))
+        s = EventReducer.reduce(s, ev("session.step.streamed"))
         s = EventReducer.reduce(s, ev("session.inbox.enqueued"))
         s = EventReducer.reduce(s, ev("session.tool.success"))
+        s = EventReducer.reduce(s, ev("permission.asked"))
+        s = EventReducer.reduce(s, ev("permission.replied"))
+        s = EventReducer.reduce(s, ev("form.replied"))
         assertEquals(SessionUiState(sessionID = "ses_1"), s)
+    }
+
+    @Test
+    fun `des champs absents ne font jamais lever sur les types a effet`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.step.started"))
+        assertEquals(SessionStatus.Running, s.status)        // le seul effet attendu
+        s = EventReducer.reduce(s, ev("session.message.content.updated"))
+        assertEquals(1, s.messages.size)                     // repli brut, jamais d'exception
+        s = EventReducer.reduce(s, ev("form.created"))
+        assertTrue(s.pendingForm != null)                    // conserve la charge (vide) telle quelle
     }
 
     @Test

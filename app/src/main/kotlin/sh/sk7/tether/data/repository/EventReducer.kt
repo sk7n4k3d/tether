@@ -6,7 +6,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonObject
 import sh.sk7.tether.data.api.OpenCodeClient
 import sh.sk7.tether.data.api.PermissionRequest
 import sh.sk7.tether.data.api.Tokens
@@ -76,6 +75,9 @@ object EventReducer {
             "session.usage.updated", "session.usage.recorded" -> onUsageUpdated(state, event.data)
 
             // --- Outils : forme de charge jamais capturee -> chemin generique ---
+            // ⚠️ Les noms ci-dessous sont PROVISOIRES : aucun evenement `session.tool.*`
+            // n'a jamais ete capture (le tour de reference n'appelait pas d'outil). Ils
+            // sont au spec §5.3 et seront a confirmer par capture reelle en Phase 2.
             "session.tool.input.started",
             "session.tool.input.delta",
             "session.tool.input.ended",
@@ -141,11 +143,17 @@ object EventReducer {
     // Etapes
     // ------------------------------------------------------------------
 
-    private fun onStepStarted(state: SessionUiState, data: JsonObject): SessionUiState =
-        state.copy(
-            status = SessionStatus.Running,
+    private fun onStepStarted(state: SessionUiState, data: JsonObject): SessionUiState {
+        // ⚠️ Un `session.step.started` peut etre **rejoue** apres une reconnexion SSE suivie
+        // d'une resync REST. S'il est deja terminal, on ne le fait PAS repasser en cours
+        // (l'UI afficherait « en cours » sur une session finie). Un nouveau tour legitime
+        // passe par `session.execution.started`, qui lui remet toujours l'etat a Running.
+        val status = if (state.status.isTerminal()) state.status else SessionStatus.Running
+        return state.copy(
+            status = status,
             assistantMessageID = data.str("assistantMessageID") ?: state.assistantMessageID,
         )
+    }
 
     private fun onStepStreamed(state: SessionUiState, data: JsonObject): SessionUiState =
         state.withAssistantMessageID(data.str("assistantMessageID"))
@@ -211,8 +219,17 @@ object EventReducer {
     private fun onInboxEnqueued(state: SessionUiState, data: JsonObject): SessionUiState {
         val inboxID = data.str("inboxID") ?: return state
         if (state.messages.any { it.id == inboxID }) return state
-        val text = data["item"]?.jsonObject?.get("payload")?.jsonObject?.str("text") ?: return state
-        return state.copy(messages = state.messages + ChatMessage(inboxID, Role.User, text = text))
+        // ⚠️ `as?` et non `jsonObject` : un item primitif/tableau ne doit pas lever.
+        val item = data["item"] as? JsonObject
+        val text = (item?.get("payload") as? JsonObject)?.str("text")
+        // Item sans texte (piece jointe, image) : on conserve la charge brute de l'item
+        // plutot que de faire disparaitre le message utilisateur sans trace.
+        val message = if (text != null) {
+            ChatMessage(inboxID, Role.User, text = text)
+        } else {
+            ChatMessage(inboxID, Role.User, rawFallback = (item ?: data).toJsonString())
+        }
+        return state.copy(messages = state.messages + message)
     }
 
     // ------------------------------------------------------------------
@@ -245,6 +262,14 @@ object EventReducer {
     // Outils (chemin generique : aucune forme de charge supposee)
     // ------------------------------------------------------------------
 
+    /**
+     * Traitement **provisoire** des evenements d'outil.
+     *
+     * ⚠️ Aucune capture reelle n'existe : ni les noms d'evenements, ni les noms de champs
+     * ne sont mesures. On accepte donc plusieurs identifiants plausibles et, si aucun
+     * n'est un texte non vide, on renvoie l'etat **inchange** (jamais d'entree corrompue).
+     * A confirmer par capture reelle en Phase 2.
+     */
     private fun onToolEvent(state: SessionUiState, data: JsonObject, status: ToolStatus): SessionUiState {
         val id = data.str("toolCallID")
             ?: data.str("callID")
@@ -272,18 +297,32 @@ object EventReducer {
     private fun ToolStatus.isTerminal(): Boolean =
         this == ToolStatus.Succeeded || this == ToolStatus.Failed
 
+    private fun SessionStatus.isTerminal(): Boolean =
+        this == SessionStatus.Succeeded ||
+            this == SessionStatus.Failed ||
+            this == SessionStatus.Interrupted
+
     // ------------------------------------------------------------------
     // Contenu de forme inconnue
     // ------------------------------------------------------------------
 
     private fun onUnknownContent(state: SessionUiState, event: OcEvent): SessionUiState {
-        val id = event.data.str("assistantMessageID") ?: "fallback-${state.messages.size}"
-        val message = ChatMessage(id = id, role = Role.Assistant, rawFallback = event.data.toJsonString())
-        val index = state.messages.indexOfFirst { it.id == id }
+        // ⚠️ Regle : conserver l'inconnu SANS jamais ecraser le connu. Si le message
+        // existe deja, on l'enrichit de `rawFallback` (text/reasoning/tools intacts).
+        val raw = event.data.toJsonString()
+        val id = event.data.str("assistantMessageID")
+        val existing = id?.let { messageId -> state.messages.firstOrNull { it.id == messageId } }
+        val merged = existing?.copy(rawFallback = raw)
+            ?: ChatMessage(
+                id = id ?: "fallback-${state.messages.size}",
+                role = Role.Assistant,
+                rawFallback = raw,
+            )
+        val index = state.messages.indexOfFirst { it.id == merged.id }
         return if (index >= 0) {
-            state.copy(messages = state.messages.toMutableList().also { it[index] = message })
+            state.copy(messages = state.messages.toMutableList().also { it[index] = merged })
         } else {
-            state.copy(messages = state.messages + message)
+            state.copy(messages = state.messages + merged)
         }
     }
 
