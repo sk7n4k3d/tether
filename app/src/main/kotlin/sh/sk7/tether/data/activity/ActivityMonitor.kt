@@ -102,6 +102,24 @@ class ActivityMonitor @Inject constructor(
      * ⚠️ C'est le chemin **prefere** : il economise un appel lourd (450 sessions) pour lire quatre
      * champs. Mais il ne suffit pas — voir [SESSION_RESCAN_MS].
      */
+    /**
+     * **Signale qu'une session vient d'etre vue**, sans attendre le prochain cycle.
+     *
+     * ⚠️ On met a jour l'etat **localement** au lieu de re-interroger le serveur : le fait est
+     * connu, et une requete pour confirmer ce qu'on vient d'ecrire serait du gaspillage. Le
+     * prochain cycle confirmera cote serveur de toute facon.
+     *
+     * ⚠️ Sans cet appel, le badge « termine » resterait affiche jusqu'au cycle suivant (12 s) —
+     * visible, et desagreable : on vient d'ouvrir la conversation, le travail est lu, et la liste
+     * continuerait de dire le contraire.
+     */
+    fun notifyViewed(sessionID: String, idle: Long) {
+        val current = _state.value.bySession[sessionID] ?: return
+        _state.value = _state.value.copy(
+            bySession = _state.value.bySession + (sessionID to current.copy(viewedAt = idle)),
+        )
+    }
+
     fun publishSessions(sessions: List<Session>) {
         knownSessions = sessions
         lastSessionScan = System.currentTimeMillis()

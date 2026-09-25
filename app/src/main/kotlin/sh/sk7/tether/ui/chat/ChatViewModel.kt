@@ -23,6 +23,7 @@ import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
+import sh.sk7.tether.data.activity.ActivityMonitor
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
@@ -121,6 +122,7 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val store: ConnectionStore,
     private val gateway: OpenCodeGateway,
+    private val activity: ActivityMonitor,
     private val streamFactory: EventSourceFactory,
     @param:IoDispatcher
     private val dispatcher: CoroutineDispatcher,
@@ -214,6 +216,9 @@ class ChatViewModel @Inject constructor(
             }
             connect(loaded)
             resync()
+            // ⚠️ On marque APRES la resync : c'est elle qui charge l'état de la session, dont on
+            // lit ensuite l'`idle` pour le marquage.
+            markSessionViewed()
         }
     }
 
@@ -635,5 +640,50 @@ class ChatViewModel @Inject constructor(
 
         /** Prefixe des messages locaux en attente de confirmation REST. */
         const val OPTIMISTIC_PREFIX: String = "local-"
+    }
+
+    /**
+     * **Marque la session comme vue, jusqu'à son dernier `idle`.**
+     *
+     * ### Pourquoi c'est l'app qui doit le faire
+     * ⚠️ `session.time.viewed` n'est **jamais** mis à jour par le serveur : c'est une écriture que
+     * le client déclenche. Sans cet appel, toutes les sessions restent « terminé, pas vu » **à
+     * jamais**, et l'indicateur qu'on vient de construire perdrait tout son sens — il signalerait
+     * un travail vieux de trois jours comme s'il venait d'arriver.
+     *
+     * ### Ce qu'on envoie, et pourquoi
+     * ⚠️ On envoie l'`idle` **du serveur**, pas l'heure locale. C'est ce qui rend la comparaison
+     * « terminé / pas vu » juste : le serveur compare deux grandeurs de même origine. Envoyer
+     * l'horloge du téléphone ferait apparaître ou disparaître un « pas vu » selon le fuseau.
+     *
+     * ⚠️ **On ne marque pas si le tour est en cours.** `idle` serait celui du tour *précédent*, et
+     * le marquer comme vu ferait disparaître l'annonce du tour **en cours** dès qu'il se
+     * terminerait — on aurait marqué vu quelque chose qu'on n'a pas vu.
+     *
+     * ⚠️ Un échec est **silencieux** : ne pas pouvoir marquer vu ne doit pas empêcher de lire la
+     * conversation. C'est un indicateur, pas une fonction critique.
+     */
+    private fun markSessionViewed() {
+        scope.launch {
+            val current = settings ?: return@launch
+            runCatching {
+                val info = gateway.session(current, sessionID)
+                val idle = info.time?.idle
+                // Pas d'`idle` = le tour n'est pas terminé : rien à marquer, et surtout pas
+                // l'`idle` précédent.
+                if (idle != null) {
+                    gateway.markViewed(current, sessionID, idle)
+                }
+                idle
+            }.onSuccess { idle ->
+                if (idle != null) {
+                    // ⚠️ On previent le detenteur d'etat : le badge « termine » de la liste doit
+                    // disparaitre tout de suite, sans attendre le prochain cycle d'interrogation.
+                    activity.notifyViewed(sessionID, idle)
+                }
+            }.onFailure { e ->
+                android.util.Log.w("TetherChat", "marquage vu impossible", e)
+            }
+        }
     }
 }

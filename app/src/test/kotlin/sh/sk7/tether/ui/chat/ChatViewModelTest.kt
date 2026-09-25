@@ -10,6 +10,8 @@ import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import sh.sk7.tether.data.activity.ActivityMonitor
+import sh.sk7.tether.data.settings.ConnectionMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -222,6 +224,16 @@ class ChatViewModelTest {
             savedStateHandle = SavedStateHandle(mapOf("sessionID" to "ses_1")),
             store = store,
             gateway = gateway,
+            // ⚠️ Le détenteur d'état vivant : ces tests n'exercent pas l'activité, mais le
+            // ViewModel le prévient quand il marque une session vue. Portée annulée pour que sa
+            // boucle (12 s) ne tourne jamais pendant un test.
+            activity = ActivityMonitor(
+                store = store,
+                gateway = gateway,
+                connection = ConnectionMonitor(store),
+                appScope = CoroutineScope(Dispatchers.Unconfined).also { it.cancel() },
+                dispatcher = Dispatchers.Unconfined,
+            ),
             streamFactory = factory,
             dispatcher = Dispatchers.Unconfined,
             awaitingGraceMillis = graceMillis,
