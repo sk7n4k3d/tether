@@ -10,6 +10,18 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
+    <!--
+      Notifications. ⚠️ Obligatoire depuis Android 13 : sans elle, `notify()` ne leve PAS,
+      il ne se passe simplement rien (constat classique, et couteux a diagnostiquer).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      UnifiedPush. ⚠️ WAKE_LOCK, <queries> et le service foreground sont deja declares par
+      la bibliotheque `org.unifiedpush.android:connector` : ne PAS les redupliquer, un doublon
+      casse le routage des intents.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
 
     <application
         android:name=".TetherApp"
@@ -29,6 +41,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Receveur de push UnifiedPush.
+
+          ⚠️ `PushService` est le contrat a implementer ; NE PAS declarer en plus un
+          `MessagingReceiver` : la bibliotheque embarque deja `internal.MessagingReceiverImpl`
+          (exporte, priorite -500) qui route vers ce service. Un second receiver entrerait en
+          concurrence et casserait la reception.
+
+          `exported="false"` : seul le distributeur (ntfy), qui est sur l'appareil, doit
+          pouvoir atteindre ce service — via l'intent interne de la bibliotheque.
+        -->
+        <service
+            android:name=".push.TetherPushService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

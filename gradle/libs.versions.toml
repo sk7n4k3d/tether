@@ -11,6 +11,7 @@ serialization = "1.7.3"
 coroutines = "1.9.0"
 markdownRenderer = "0.28.0"
 coil = "2.7.0"
+unifiedpush = "3.3.5"
 lucide = "1.1.0"
 datastore = "1.1.7"
 # ⚠️ `highlights` arrive deja en TRANSITIF de `multiplatform-markdown-renderer-code`.
@@ -42,6 +43,10 @@ markdown-renderer-code = { group = "com.mikepenz", name = "multiplatform-markdow
 highlights = { group = "dev.snipme", name = "highlights", version.ref = "highlights" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 lucide = { group = "com.composables", name = "icons-lucide", version.ref = "lucide" }
+# UnifiedPush : reception de push sans Play Services (Pixel GrapheneOS).
+# ⚠️ La lib declare ELLE-MEME ses receveurs, RAISE_TO_FOREGROUND, WAKE_LOCK et <queries>
+# dans son manifest : ne PAS les redupliquer, un doublon casse le routage.
+unifiedpush-connector = { group = "org.unifiedpush.android", name = "connector", version.ref = "unifiedpush" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }

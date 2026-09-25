@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.highlights)
     implementation(libs.coil.compose)
     implementation(libs.lucide)
+    implementation(libs.unifiedpush.connector)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.client.mock)

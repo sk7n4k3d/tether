@@ -101,6 +101,21 @@ class ChatViewModel @Inject constructor(
      */
     private val acceptedOptimistic = mutableMapOf<String, String>()
 
+    /**
+     * Ids serveur des messages utilisateur **deja vus** au moment ou l'optimiste est cree.
+     *
+     * ⚠️ Indispensable : le repli par texte ci-dessous ne doit **jamais** pouvoir consommer un
+     * message **anterieur**. Concretement, si « ok » a deja ete envoye plus tot, un nouvel
+     * « ok » se faisait confirmer par l'ancien message des que celui-ci arrivait du REST — et
+     * le message frais **disparaisssait de l'ecran**. Mesure sur le Pixel, et reproduit par
+     * `un ancien message de meme texte ne confirme pas un optimiste frais`.
+     *
+     * En snapshotant les ids au moment de l'envoi, seuls les messages **posterieurs** peuvent
+     * confirmer l'optimiste : c'est la seule lecture honnete de « un message serveur identique
+     * confirme un envoi ».
+     */
+    private val preexistingUserIds = mutableMapOf<String, Set<String>>()
+
     init {
         start()
     }
@@ -192,8 +207,12 @@ class ChatViewModel @Inject constructor(
 
         // Compteur des messages serveur utilisateur par texte, **consomme** au fur et a mesure :
         // un message serveur confirme **un** optimiste, pas tous ceux qui partagent son texte.
+        //
+        // ⚠️ On exclut les messages **anterieurs a l'envoi** (snapshot pris dans `send`). Sans
+        // ce filtre, un ancien « ok » confirmait un nouvel envoi « ok » des son arrivee du REST,
+        // et le message frais disparaissait de l'ecran.
         val availableByText = serverMessages
-            .filter { it.role == Role.User }
+            .filter { it.role == Role.User && it.id !in preexistingFor(chat) }
             .groupingBy { it.text }
             .eachCount()
             .toMutableMap()
@@ -222,8 +241,21 @@ class ChatViewModel @Inject constructor(
         // Purge les liens des optimistes desormais retires (pas de croissance sans borne).
         val keptLocalIds = kept.filter { it.id.startsWith(OPTIMISTIC_PREFIX) }.map { it.id }.toHashSet()
         acceptedOptimistic.keys.retainAll(keptLocalIds)
+        preexistingUserIds.keys.retainAll(keptLocalIds)
         return chat.copy(messages = kept)
     }
+
+    /**
+     * Ids serveur qui precedent les optimistes presents.
+     *
+     * ⚠️ Sans cela, un message **ancien** partageant le texte d'un nouvel envoi le confirmerait :
+     * l'envoi frais serait retire a tort (verifie par test).
+     */
+    private fun preexistingFor(chat: SessionUiState): Set<String> =
+        chat.messages
+            .filter { it.id.startsWith(OPTIMISTIC_PREFIX) }
+            .mapNotNull { preexistingUserIds[it.id] }
+            .fold(emptySet<String>()) { acc, ids -> acc + ids }
 
     /**
      * Recharge l'historique depuis le REST (verite de l'etat).
@@ -290,6 +322,13 @@ class ChatViewModel @Inject constructor(
                 error = null,
             )
         }
+        // ⚠️ Snapshot des messages utilisateur **deja presents** : seuls ceux qui arriveront
+        // APRES cet envoi pourront le confirmer par texte. Sans ce garde-fou, un ancien message
+        // de meme texte validait le nouvel envoi et le faisait disparaitre de l'ecran.
+        preexistingUserIds[optimistic.id] = _state.value.chat.messages
+            .filter { it.role == Role.User && !it.id.startsWith(OPTIMISTIC_PREFIX) }
+            .map { it.id }
+            .toHashSet()
         armGrace()
 
         scope.launch {
