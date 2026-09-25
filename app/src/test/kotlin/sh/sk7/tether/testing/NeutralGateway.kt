@@ -19,6 +19,8 @@ import sh.sk7.tether.data.api.RevertResultDto
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.api.ShellInfoDto
+import sh.sk7.tether.data.api.ShellOutputDto
 import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.data.api.VcsFileStatusDto
 import sh.sk7.tether.data.api.VcsInfoDto
@@ -167,6 +169,25 @@ open class NeutralGateway : OpenCodeGateway {
     ): List<FileDiffDto> = emptyList()
 
     override suspend fun projectID(settings: ConnectionSettings): String? = null
+
+    override suspend fun activeSessions(settings: ConnectionSettings): Set<String> = emptySet()
+
+    override suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto> = emptyList()
+
+    override suspend fun shellOutput(
+        settings: ConnectionSettings,
+        shellID: String,
+        cursor: Int?,
+    ): ShellOutputDto? = null
+
+    override suspend fun markViewed(
+        settings: ConnectionSettings,
+        sessionID: String,
+        idle: Long,
+    ): Boolean = true
+
+    override suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean =
+        true
 
     override suspend fun vcsInfo(
         settings: ConnectionSettings,

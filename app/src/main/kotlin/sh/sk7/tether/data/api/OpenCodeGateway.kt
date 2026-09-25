@@ -212,6 +212,37 @@ interface OpenCodeGateway {
     suspend fun projects(settings: ConnectionSettings): List<ProjectDto>
 
     // ------------------------------------------------------------------
+    // Etat vivant : activite, file d'attente, shells
+    // ------------------------------------------------------------------
+
+    /**
+     * Les sessions **en cours d'execution**, telles que le serveur les annonce.
+     *
+     * ⚠️ C'est la seule source d'etat fiable : `SessionStatus` vient du flux SSE, donc il n'existe
+     * que dans l'ecran de chat et seulement si le flux est ouvert. Une session absente de cette
+     * carte n'est pas en cours.
+     */
+    suspend fun activeSessions(settings: ConnectionSettings): Set<String>
+
+    /** Les commandes shell du serveur, terminees comprises. */
+    suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto>
+
+    /** La sortie d'un shell, a partir d'un curseur optionnel. */
+    suspend fun shellOutput(settings: ConnectionSettings, shellID: String, cursor: Int? = null): ShellOutputDto?
+
+    /**
+     * Marque une session comme vue **jusqu'a cet `idle`** (horodatage serveur).
+     *
+     * ⚠️ Toujours passer l'`idle` du serveur : c'est ce qui rend la comparaison « termine / pas
+     * vu » juste, quel que soit le fuseau du telephone.
+     */
+    suspend fun markViewed(settings: ConnectionSettings, sessionID: String, idle: Long): Boolean
+
+    /** Deplace les outils bloquants d'une session en observation d'arriere-plan. */
+    suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean
+
+
+    // ------------------------------------------------------------------
     // Autorisations — le coeur d'un client d'agent
     // ------------------------------------------------------------------
 
@@ -531,6 +562,32 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun projects(settings: ConnectionSettings): List<ProjectDto> =
         client(settings).projects()
+
+    // ------------------------------------------------------------------
+    // Etat vivant
+    // ------------------------------------------------------------------
+
+    override suspend fun activeSessions(settings: ConnectionSettings): Set<String> =
+        client(settings).activeSessions(settings.directory).keys
+
+    override suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto> =
+        client(settings).shells(settings.directory)
+
+    override suspend fun shellOutput(
+        settings: ConnectionSettings,
+        shellID: String,
+        cursor: Int?,
+    ): ShellOutputDto? = client(settings).shellOutput(shellID, cursor)
+
+    override suspend fun markViewed(
+        settings: ConnectionSettings,
+        sessionID: String,
+        idle: Long,
+    ): Boolean = client(settings).markViewed(sessionID, idle)
+
+    override suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean =
+        client(settings).backgroundTools(sessionID)
+
 
     override suspend fun pendingPermissions(settings: ConnectionSettings): List<PermissionRequest> {
         val http = client(settings)

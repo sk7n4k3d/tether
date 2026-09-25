@@ -398,8 +398,21 @@ data class InboxItemDto(
      * `text` toujours `null` sans que rien ne le signale. Ici, l'absence est visible.
      */
     val payload: JsonObject? = null,
-    val delivery: JsonObject? = null,
+    /**
+     * ⚠️ **Une CHAINE**, pas un objet — et c'est une mesure, pas le schema.
+     * `Session.Inbox.Delivery` est un enum : `steer` (corriger le tour en cours) ou `queue`
+     * (attendre son tour). Le premier jet l'avait type en `JsonObject` d'apres
+     * `Session.Inbox.Info`, dont le champ est bien un objet polymorphe ; mais `Delivery` lui-meme
+     * est une chaine. Le decodage aurait echoue a la premiere entree en file.
+     *
+     * ⚠️ La distinction compte : `steer` corrige, `queue` attend. C'est exactement ce que les
+     * utilisateurs d'opencode reclamaient (issue #32157, 84 👍) et l'app la jetait.
+     */
+    val delivery: String? = null,
 ) {
+    /** Vrai si ce message corrige le tour en cours plutot que d'attendre son tour. */
+    val isSteering: Boolean get() = delivery == "steer"
+
     /**
      * Texte affichable, cherche dans la charge.
      *
@@ -424,3 +437,102 @@ data class InboxItemDto(
  */
 @Serializable
 data class VcsObjectEnvelope<T>(val location: LocationInfo? = null, val data: T? = null)
+
+// ------------------------------------------------------------------
+// Etat vivant : activite des sessions et shells
+// ------------------------------------------------------------------
+
+/**
+ * `SessionActive` — **le seul etat d'execution que le serveur annonce**.
+ *
+ * Mesure du 2026-09-25 : `GET /api/session/active` rend
+ * `{"data": {"ses_…": {"type": "running"}}}`. Le schema ne connait qu'**une** valeur, `running` :
+ * une session absente de cette liste n'est donc **pas** en cours, et tout le reste (« termine »,
+ * « pas vu », « en echec ») se deduit d'autres champs.
+ *
+ * ⚠️ C'est une **carte indexee par identifiant** (`patternProperties ^ses`), pas une liste. La
+ * decoder en liste donne une erreur, pas une liste vide.
+ */
+@Serializable
+data class ActiveSessionsDto(
+    val data: Map<String, ActiveStateDto> = emptyMap(),
+)
+
+@Serializable
+data class ActiveStateDto(val type: String = "")
+
+/**
+ * `Shell.Info` — une commande shell du serveur.
+ *
+ * ⚠️ **Le `sessionID` vit dans `metadata`**, pas a la racine. Mesure du 2026-09-25 :
+ * `metadata = {"sessionID": "ses_…"}`. Le schema OpenAPI annonce seulement
+ * `metadata: {type: object}` sans le detailler — s'y fier laissait croire qu'un shell n'etait
+ * rattachable a rien, ce qui aurait impose une section separee sans raison.
+ *
+ * ⚠️ `time.started` est **obligatoire** cote serveur, `time.completed` ne l'est pas : un shell
+ * vivant n'a pas d'horodatage de fin. On ne peut donc pas deduire son etat de l'absence de
+ * `completed` — c'est `status` qui fait foi.
+ */
+@Serializable
+data class ShellInfoDto(
+    val id: String,
+    val status: String = "",
+    val command: String = "",
+    val cwd: String? = null,
+    val shell: String? = null,
+    val file: String? = null,
+    val pid: Long? = null,
+    val exit: Double? = null,
+    val metadata: JsonObject? = null,
+    val time: ShellTimeDto? = null,
+) {
+    /** La session qui a lance ce shell, lue dans `metadata` (mesure). */
+    val sessionID: String?
+        get() = metadata?.let { md ->
+            (md["sessionID"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        }
+}
+
+@Serializable
+data class ShellTimeDto(
+    val started: Long? = null,
+    val completed: Long? = null,
+)
+
+/** `GET /api/shell` : `{location, data: [Shell.Info]}`. */
+@Serializable
+data class ShellEnvelope(
+    val location: LocationInfo? = null,
+    val data: List<ShellInfoDto> = emptyList(),
+)
+
+/**
+ * Sortie d'un shell, lue **incrementalement**.
+ *
+ * ⚠️ `cursor` est le point de reprise : on relit a partir de la, pas depuis le debut. Un shell qui
+ * tourne a `size = 0` — la sortie s'accumule, elle n'est pas vide « pour toujours ». Sans le
+ * curseur, chaque lecture redonnerait tout ou rien.
+ */
+@Serializable
+data class ShellOutputDto(
+    val output: String = "",
+    val cursor: Int = 0,
+    val size: Int = 0,
+    val truncated: Boolean = false,
+)
+
+@Serializable
+data class ShellOutputEnvelope(
+    val location: LocationInfo? = null,
+    val data: ShellOutputDto? = null,
+)
+
+/**
+ * Corps de `POST /api/session/{id}/view` : on marque vu **jusqu'a cet `idle`**.
+ *
+ * ⚠️ C'est ce qui rend le suivi « pas vu » juste : on declare *jusqu'ou* on a regarde, pas
+ * *que* on a regarde. Si un nouveau tour se termine apres, la session redevient « pas vu »
+ * d'elle-meme — sans course, et sans etat local a maintenir.
+ */
+@Serializable
+data class ViewBody(val idle: Long)

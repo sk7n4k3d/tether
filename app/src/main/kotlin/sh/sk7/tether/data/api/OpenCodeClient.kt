@@ -618,6 +618,88 @@ class OpenCodeClient(
         }.body()
     }
 
+
+    // ------------------------------------------------------------------
+    // Etat vivant : activite, file d'attente, shells
+    // ------------------------------------------------------------------
+
+    /**
+     * `GET /api/session/active` : **la seule source d'etat d'execution** du serveur.
+     *
+     * ⚠️ Enveloppe `{data: {ses_…: {type}}}` — une **carte**, pas une liste. Et le seul type
+     * annonce est `running` : une session absente n'est pas en cours.
+     */
+    suspend fun activeSessions(location: String): Map<String, ActiveStateDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/active") {
+            auth(credentials)
+            parameter("directory", location)
+        }.body<ActiveSessionsDto>().data
+    }
+
+    /**
+     * `GET /api/shell` : les commandes shell connues du serveur, **terminees comprises**.
+     *
+     * ⚠️ Enveloppe `{location, data}` (deepObject sur `location`). C'est la seule facon de savoir
+     * ce qui tourne encore en arriere-plan : l'API n'expose aucun « background » separe, un shell
+     * de fond est simplement un shell dont le `status` vaut `running`.
+     */
+    suspend fun shells(location: String): List<ShellInfoDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/shell") {
+            auth(credentials)
+            at(location)
+        }.body<ShellEnvelope>().data
+    }
+
+    /**
+     * `GET /api/shell/{id}/output` : la sortie d'un shell.
+     *
+     * ⚠️ `cursor` permet de ne lire que le **nouveau** depuis un point connu. Sans lui, chaque
+     * lecture redonnerait depuis le debut — ce qui, sur une commande verbeuse, ferait relire des
+     * centaines de kilo-octets a chaque rafraichissement.
+     */
+    suspend fun shellOutput(shellID: String, cursor: Int? = null): ShellOutputDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/shell/$shellID/output") {
+            auth(credentials)
+            cursor?.let { parameter("cursor", it) }
+        }.body<ShellOutputEnvelope>().data
+    }
+
+    /**
+     * `POST /api/session/{id}/view` : marque la session comme **vue jusqu'a cet `idle`**.
+     *
+     * ⚠️ On envoie l'horodatage `idle` **du serveur**, pas l'heure locale : c'est ce qui garantit
+     * que le serveur compare deux grandeurs de meme origine. Envoyer l'heure du telephone ferait
+     * apparaitre ou disparaitre un « pas vu » selon le fuseau.
+     */
+    suspend fun markViewed(sessionID: String, idle: Long): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/view") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(ViewBody(idle = idle))
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `POST /api/session/{id}/background` : **deplace les outils bloquants en arriere-plan**.
+     *
+     * ⚠️ C'est la reponse a « je ne vois pas les commandes en arriere-plan » : sans cet appel, un
+     * outil de premier plan tient la session ouverte alors qu'il pourrait continuer en observation.
+     * L'appel est un no-op si rien ne bloque (doc du serveur : « Idle requests are a no-op »), donc
+     * le declencher est sans risque.
+     */
+    suspend fun backgroundTools(sessionID: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/background") {
+            auth(credentials)
+        }
+        return response.status.isSuccess()
+    }
+
     private fun HttpRequestBuilder.auth(credentials: BasicAuthCredentials?) {
         if (credentials == null) return
         basicAuth(credentials.username, credentials.password)
