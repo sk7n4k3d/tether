@@ -81,6 +81,10 @@ interface OpenCodeGateway {
         var cursor: String? = null
         var pages = 0
         do {
+            // ⚠️ `order = "asc"` sur la PREMIERE page seulement, puis `null` : mesure sur le
+            // serveur, l'ordre est **encode dans le curseur** (`{"order":"asc","direction":…}`)
+            // et les pages suivantes le conservent. Repasser `order` avec un `cursor` fait
+            // repondre **400 InvalidCursorError** (verifie sur le serveur).
             val page = messagesPage(settings, sessionID, pageSize, cursor, order = if (pages == 0) "asc" else null)
             all += page.data
             cursor = page.next

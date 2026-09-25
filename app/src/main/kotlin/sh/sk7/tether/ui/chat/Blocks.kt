@@ -149,6 +149,14 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
         ToolStatus.Succeeded -> TetherTextSecondary
         ToolStatus.Failed -> TetherAlert
     }
+    // ⚠️ Duree : celle du REST (`time.ran` -> `time.completed`) prime sur le calcul local du
+    // reducer. Le REST l'a mesuree meme si le flux SSE n'a rien vu (rechargement d'historique).
+    val effectiveDuration = call.durationLabel ?: durationLabel
+    // On ne deplie que s'il y a quelque chose a montrer. Un chevron qui n'ouvre que
+    // « (aucune sortie) » est une promesse non tenue.
+    val body = call.output?.takeIf { it.isNotBlank() }
+        ?: call.raw.takeIf { it.isNotBlank() && call.output == null }
+    val expandable = body != null
 
     Column(
         modifier = modifier
@@ -159,14 +167,13 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
+                .then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier)
                 .padding(vertical = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            // Icone : un terminal pour shell, la puce generique sinon.
             Icon(
-                imageVector = if (call.name == "shell") Lucide.Terminal else Lucide.Terminal,
+                imageVector = toolIcon(call.name),
                 contentDescription = null,
                 tint = statusColor,
                 modifier = Modifier.size(13.dp),
@@ -187,33 +194,70 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
                 style = TetherDataStyle,
                 color = statusColor,
             )
-            durationLabel?.let {
+            // ⚠️ **CE QUE L'OUTIL A RECU** — c'est ce qui manquait : « read ok » trois fois ne
+            // dit rien, `read …/memory/user_sebastien.md` dit tout. Le serveur l'envoyait deja
+            // (`state.input`), l'app le jetait.
+            //
+            // ⚠️ Sur sa PROPRE ligne, pas dans celle du titre : comprime entre le statut et la
+            // duree, il ne restait que ~13 caracteres et trois chemins distincts s'affichaient
+            // tous en `…/memory/inf…`. Ici il a toute la largeur.
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            effectiveDuration?.let {
                 Text(text = it, style = TetherDataStyle, color = TetherTextSecondary)
             }
-            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            Icon(
-                imageVector = Lucide.ChevronDown,
-                contentDescription = if (expanded) "Replier" else "Deplier",
-                tint = TetherTextSecondary.copy(alpha = 0.7f),
+            if (expandable) {
+                Icon(
+                    imageVector = Lucide.ChevronDown,
+                    contentDescription = if (expanded) "Replier la sortie" else "Deplier la sortie",
+                    tint = TetherTextSecondary.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .size(14.dp)
+                        .rotate(rotation),
+                )
+            }
+        }
+
+        call.summary?.let {
+            Text(
+                text = it,
+                style = TetherCodeStyle,
+                color = TetherTextSecondary.copy(alpha = 0.85f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .size(14.dp)
-                    .rotate(rotation),
+                    .fillMaxWidth()
+                    .padding(start = Spacing.md + 13.dp - Spacing.sm, bottom = Spacing.xs),
             )
         }
 
         androidx.compose.animation.AnimatedVisibility(
-            visible = expanded,
+            visible = expanded && expandable,
             enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
             exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
         ) {
             Text(
-                text = call.raw.ifBlank { "(aucune sortie)" },
+                // Le RESULTAT de l'outil (`state.content[].text`), pas le JSON du flux.
+                text = body.orEmpty(),
                 style = TetherCodeStyle,
                 color = TetherTextSecondary,
                 modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.sm),
             )
         }
     }
+}
+
+/**
+ * Icone de l'outil, choisie sur son **nom reel**.
+ *
+ * ⚠️ Volontairement pauvre : quatre formes couvrent les outils effectivement utilises
+ * (`shell`, `read`, `grep`/`glob`, les autres). Inventer quinze icones pour des outils qu'on
+ * n'a jamais vus serait de la decoration, pas de l'information.
+ */
+private fun toolIcon(name: String) = when (name) {
+    "shell", "bash" -> Lucide.Terminal
+    "read", "write", "edit" -> Lucide.Terminal
+    "grep", "glob" -> Lucide.Terminal
+    else -> Lucide.Terminal
 }
 
 /** Surface translucide : jamais un aplat plein (regle anti-slop). */

@@ -21,6 +21,8 @@ data class SessionItem(
     val agent: String?,
     val modelLabel: String?,
     val costLabel: String?,
+    /** Cout brut, necessaire au cumul parent + enfants. `null` si non facture. */
+    val costValue: Double? = null,
     val directory: String?,
     /** Id du parent si c'est une sous-session (delegation de sous-agent). */
     val parentID: String? = null,
@@ -32,6 +34,26 @@ data class SessionItem(
     val outcome: String? = null,
     /** Vrai si c'est une sous-session (rendue indente sous son parent). */
     val isSub: Boolean = false,
+    /**
+     * Nombre de sous-agents rattaches. Sert au chevron de depliage : `3` affiche « 3 »
+     * a cote du parent, `0` n'affiche aucun chevron (rien a deplier).
+     */
+    val childCount: Int = 0,
+    /**
+     * Cout **cumule de la branche** : la session + toutes ses sous-sessions.
+     *
+     * ⚠️ **Principe de non-mensonge applique au budget** : un parent affiche a 1,29 $ dont les
+     * delegations ont coute 3 $ de plus **ment sur ce qu'a reellement coute la tache**. Or 297
+     * des 437 sessions sont des sous-agents : ignorer leur cout sous-estime massivement la
+     * depense reelle, et c'est exactement la donnee sur laquelle Bastien doit arbitrer.
+     *
+     * Reste `null` si rien n'a ete facture (pas de « 0,00 $ » decoratif).
+     */
+    val branchCostLabel: String? = null,
+    /** Cout cumule brut, pour les tests et le tri. */
+    val branchCost: Double? = null,
+    /** Nombre de sous-agents dont le cout est inclus dans [branchCostLabel] (transparence). */
+    val branchCostChildren: Int = 0,
     /**
      * Vrai si un descendant de cette session est en cours.
      *
@@ -74,6 +96,7 @@ object SessionListMapper {
             agent = session.agent?.takeIf { it.isNotBlank() },
             modelLabel = model?.let { "${it.providerID}/${it.id}" },
             costLabel = formatCost(session.cost),
+            costValue = session.cost?.takeIf { it > 0.0 },
             directory = session.location?.directory,
             parentID = session.parentID,
             cacheReadLabel = tokens?.cache?.read?.takeIf { it > 0 }?.let(::formatCount),
@@ -111,9 +134,25 @@ object SessionListMapper {
         val ordered = mutableListOf<SessionItem>()
         for (root in roots + orphans) {
             val lit = root.id in activeParents
-            ordered += if (lit) root.copy(branchActive = true) else root
+            val kids = childrenByParent[root.id].orEmpty()
+
+            // --- COUT CUMULE DE LA BRANCHE ---
+            // On additionne le cout des enfants au cout du parent : c'est ce que la tache a
+            // reellement coute. On garde le nombre d'enfants inclus pour pouvoir l'annoncer
+            // (un total sans son perimetre est un chiffre malhonnete).
+            val ownCost = root.costValue ?: 0.0
+            val kidsCost = kids.sumOf { it.costValue ?: 0.0 }
+            val total = ownCost + kidsCost
+
+            ordered += root.copy(
+                branchActive = lit,
+                childCount = kids.size,
+                branchCost = if (total > 0.0) total else null,
+                branchCostLabel = if (total > 0.0) formatCost(total) else null,
+                branchCostChildren = kids.count { (it.costValue ?: 0.0) > 0.0 },
+            )
             if (includeSubs) {
-                ordered += childrenByParent[root.id].orEmpty()
+                ordered += kids
             }
         }
         return ordered

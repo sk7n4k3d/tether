@@ -3,8 +3,11 @@ package sh.sk7.tether.ui.chat
 import sh.sk7.tether.data.api.ContentPart
 import sh.sk7.tether.data.api.MessageDto
 import sh.sk7.tether.data.api.PromptPayload
+import sh.sk7.tether.data.api.TimeInfo
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.ToolStatus
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -12,6 +15,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChatMessageMapperTest {
+
+    private fun jsonObject(raw: String): JsonObject =
+        Json.parseToJsonElement(raw) as JsonObject
 
     @Test
     fun `un message user a plat devient une bulle utilisateur`() {
@@ -57,6 +63,94 @@ class ChatMessageMapperTest {
         assertEquals("shell", message.tools.first().name)
         assertEquals(ToolStatus.Running, message.tools.first().status)
         assertTrue(message.tools.first().raw.contains("uname -r"))
+    }
+
+    @Test
+    fun `un outil expose ce qu il a recu et ce qu il a produit`() {
+        // Reproduit la charge REELLE mesuree sur le serveur (ses_f2986f22dffe…, 2026-09-25) :
+        // `state.input` porte le quoi, `state.content[].text` porte le resultat, `time` porte
+        // la duree reelle. L'app jetait les trois — c'est le reproche « je vois que shell a
+        // tourne mais pas ce que tu as ecrit ».
+        val state = jsonObject(
+            """
+            {"status":"completed",
+             "input":{"command":"uname -a; echo \"---\"; hostname"},
+             "content":[{"type":"text","text":"Linux le serveur 7.2.6 x86_64\n"},{"type":"text","text":"Command exited with code 0."}]}
+            """.trimIndent(),
+        )
+        val dto = MessageDto(
+            id = "msg_a",
+            type = "assistant",
+            content = listOf(
+                ContentPart(
+                    type = "tool",
+                    id = "call_1",
+                    name = "shell",
+                    state = state,
+                    time = TimeInfo(ran = 1_790_304_656_141, completed = 1_790_304_656_236),
+                ),
+            ),
+        )
+
+        val tool = ChatMessageMapper.fromDto(dto)!!.tools.first()
+
+        assertEquals("uname -a; echo \"---\"; hostname", tool.summary)
+        assertTrue(tool.output!!.contains("Linux le serveur"), tool.output!!)
+        assertTrue(tool.output!!.contains("Command exited with code 0."), tool.output!!)
+        // 95 ms : duree reelle mesuree par le serveur (`time.ran` -> `time.completed`).
+        assertEquals("95 ms", tool.durationLabel)
+    }
+
+    @Test
+    fun `un read expose son chemin et un resume long est tronque`() {
+        fun tool(input: String) = ContentPart(
+            type = "tool",
+            id = "call_1",
+            name = "read",
+            state = jsonObject("""{"status":"completed","input":$input}"""),
+        )
+
+        assertEquals(
+            "…/memory/MEMORY.md",
+            ChatMessageMapper.fromDto(
+                MessageDto(
+                    id = "m",
+                    type = "assistant",
+                    content = listOf(tool("""{"path":"/home/utilisateur/.claude/projects/-home-utilisateur/memory/MEMORY.md"}""")),
+                ),
+            )!!.tools.first().summary,
+        )
+
+        // Un resume de 300 caracteres doit tenir sur UNE ligne : tronque, jamais jete.
+        val long = ChatMessageMapper.fromDto(
+            MessageDto(
+                id = "m",
+                type = "assistant",
+                content = listOf(tool("""{"command":"${"x".repeat(300)}"}""")),
+            ),
+        )!!.tools.first().summary!!
+        assertTrue(long.length <= 121, "tronque a 120 + ellipse, obtenu ${long.length}")
+        assertTrue(long.endsWith("…"))
+        assertTrue(!long.contains('\n'))
+    }
+
+    @Test
+    fun `une entree sans cle connue ne fabrique pas de resume`() {
+        // Regle : mieux vaut aucune ligne qu'un resume invente.
+        val dto = MessageDto(
+            id = "m",
+            type = "assistant",
+            content = listOf(
+                ContentPart(
+                    type = "tool",
+                    id = "call_1",
+                    name = "mystere",
+                    state = jsonObject("""{"status":"completed","input":{"unknownKey":"v"}}"""),
+                ),
+            ),
+        )
+
+        assertEquals(null, ChatMessageMapper.fromDto(dto)!!.tools.first().summary)
     }
 
     @Test

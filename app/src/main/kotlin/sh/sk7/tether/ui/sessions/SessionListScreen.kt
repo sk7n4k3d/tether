@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import sh.sk7.tether.ui.theme.Spacing
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -134,6 +136,17 @@ fun SessionListScreen(
                 }
                 is SessionListUiState.Loaded -> {
                     val items = current.items
+                    // ⚠️ Sous-agents **REPLIES PAR DEFAUT** : avec 297 sous-agents sur 437
+                    // sessions, les afficher tous noie les sessions principales. On retient
+                    // donc l'ensemble des parents OUVERTS (et non l'inverse), pour que le
+                    // defaut soit « replie » sans avoir a pre-remplir la liste.
+                    var expandedParents by remember { mutableStateOf(emptySet<String>()) }
+                    // Liste rendue : un parent replie masque ses enfants.
+                    val visible = remember(items, expandedParents) {
+                        items.filter { item ->
+                            item.parentID == null || item.parentID in expandedParents
+                        }
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
@@ -148,10 +161,26 @@ fun SessionListScreen(
                             item(key = "usage-header") { UsageHeader(usage) }
                         }
 
-                        items(items, key = { it.id }) { item ->
+                        items(visible, key = { it.id }) { item ->
                             SessionRow(
                                 item = item,
+                                // Chevron : ouvre/ferme les sous-agents. Present seulement
+                                // si la session en a (sinon aucun controle inutile).
+                                onToggleSubs = if (item.childCount > 0) {
+                                    {
+                                        expandedParents = if (item.id in expandedParents) {
+                                            expandedParents - item.id
+                                        } else {
+                                            expandedParents + item.id
+                                        }
+                                    }
+                                } else null,
+                                subsExpanded = item.id in expandedParents,
                                 onClick = { onOpenSession(item.id) },
+                                // ⚠️ Animation de depliage : les enfants apparaissent avec
+                                // un glissement, pas d'un coup. C'est ce qui rend un arbre
+                                // lisible plutot que brutal.
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }

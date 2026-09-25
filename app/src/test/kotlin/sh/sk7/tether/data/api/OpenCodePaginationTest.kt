@@ -89,6 +89,10 @@ class OpenCodePaginationTest {
         assertEquals(listOf("msg_a", "msg_b"), all.map { it.id })
         // ⚠️ L'OpenAPI interdit de combiner `order` et `cursor` : la 2e page ne doit pas
         // renvoyer `order`, sinon le serveur repond InvalidCursorError.
+        //
+        // Verifie sur le serveur (2026-09-25) : combiner les deux rend un **400 Bad Request**,
+        // mais c'est sans consequence sur l'ordre — le curseur **encode** l'ordre de la page
+        // (`{"order":"asc","direction":"next"}`), donc les pages suivantes restent en `asc`.
         assertTrue(requests.first().contains("order=asc"), requests.first())
         assertTrue(!requests[1].contains("order="), requests[1])
         assertTrue(requests[1].contains("cursor=p1"), requests[1])
