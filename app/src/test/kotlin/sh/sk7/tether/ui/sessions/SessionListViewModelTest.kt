@@ -11,10 +11,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import sh.sk7.tether.data.api.Agent
+import sh.sk7.tether.data.api.CursorPage
 import sh.sk7.tether.data.api.InMemoryCredentialsProvider
+import sh.sk7.tether.data.api.MessageDto
 import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
 import sh.sk7.tether.data.api.OpenCodeGateway
+import sh.sk7.tether.data.api.PromptAcceptance
 import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.api.TimeInfo
@@ -93,6 +96,46 @@ class SessionListViewModelTest {
             lastCreateAgent = agent
             failure?.let { throw it }
             return created
+        }
+
+        override suspend fun sessionsPage(
+            settings: ConnectionSettings,
+            limit: Int?,
+            cursor: String?,
+        ): CursorPage<Session> {
+            sessionsCalls++
+            failure?.let { throw it }
+            return CursorPage(sessions)
+        }
+
+        override suspend fun session(settings: ConnectionSettings, sessionID: String): Session {
+            failure?.let { throw it }
+            return sessions.firstOrNull { it.id == sessionID } ?: Session(id = sessionID)
+        }
+
+        override suspend fun prompt(
+            settings: ConnectionSettings,
+            sessionID: String,
+            text: String,
+        ): PromptAcceptance {
+            failure?.let { throw it }
+            return PromptAcceptance(id = "msg_1", sessionID = sessionID, type = "user")
+        }
+
+        override suspend fun messagesPage(
+            settings: ConnectionSettings,
+            sessionID: String,
+            limit: Int?,
+            cursor: String?,
+            order: String?,
+        ): CursorPage<MessageDto> {
+            failure?.let { throw it }
+            return CursorPage(emptyList())
+        }
+
+        override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean {
+            failure?.let { throw it }
+            return true
         }
     }
 

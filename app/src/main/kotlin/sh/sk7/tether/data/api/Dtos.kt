@@ -30,6 +30,23 @@ data class SessionEnvelope(val data: Session)
 @Serializable
 data class Cursor(val previous: String? = null, val next: String? = null)
 
+/**
+ * Une page d'un listing pagine, avec le curseur pour continuer.
+ *
+ * Les routes `GET /api/session` et `GET /api/session/{id}/message` paginent par defaut a
+ * **50** elements : sans suivre [next], une liste est tronquee en silence (428 sessions
+ * reelles le 2026-09-25). [next] est nul quand il n'y a plus rien a charger.
+ */
+data class CursorPage<T>(
+    val data: List<T>,
+    val next: String? = null,
+    val previous: String? = null,
+)
+
+/** Reponse de `POST /api/session/{id}/interrupt` : `{interrupted}`. */
+@Serializable
+data class InterruptResponse(val interrupted: Boolean = false)
+
 @Serializable
 data class LocationInfo(val directory: String, val project: ProjectInfo? = null)
 

@@ -71,13 +71,13 @@ class EventStream(
     private val http: HttpClient,
     private val json: kotlinx.serialization.json.Json = OpenCodeClient.json,
     private val backoff: Backoff = Backoff.Default,
-) {
+) : EventSource {
     private val baseUrl: String = baseUrl.trimEnd('/')
 
     private val _state = MutableStateFlow(ConnectionState.Disconnected)
 
     /** Etat courant, a observer pour resynchroniser via le REST a chaque reconnexion. */
-    val state: StateFlow<ConnectionState> = _state.asStateFlow()
+    override val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
     /** Derniere erreur de connexion, pour diagnostic. */
     @Volatile
@@ -88,7 +88,7 @@ class EventStream(
      * Flux d'evenements decode. Se reconnecte automatiquement ; ne termine que si le
      * collecteur annule. Un evenement JSON illisible est **ignore** (jamais fatal).
      */
-    fun connect(): Flow<OcEvent> = flow {
+    override fun connect(): Flow<OcEvent> = flow {
         var attempt = 0
         while (currentCoroutineContext().isActive) {
             _state.value = ConnectionState.Connecting

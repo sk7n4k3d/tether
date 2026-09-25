@@ -105,7 +105,7 @@ class SessionListViewModel @Inject constructor(
     }
 
     private suspend fun load(settings: ConnectionSettings): SessionListUiState {
-        val sessions = gateway.sessions(settings)
+        val sessions = gateway.allSessions(settings)
         if (sessions.isEmpty()) return SessionListUiState.Empty(settings.directory)
         val items = SessionListMapper.toItems(sessions)
         // Modeles et agents sont secondaires : leur echec ne doit pas masquer la liste.

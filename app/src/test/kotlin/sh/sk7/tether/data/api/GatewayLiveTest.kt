@@ -55,4 +55,21 @@ class GatewayLiveTest {
         assertTrue(agents.isNotEmpty(), "aucun agent : le parametre location[directory] est mal signe")
         assertTrue(models.any { it.id == "deepseek-v4.1-flash" })
     }
+
+    /**
+     * Defaut connu de la Task 1.5 : `GET /api/session` pagine a 50 par defaut. `allSessions`
+     * doit suivre le curseur et rendre **plus de 50** sessions (428 mesurees le 2026-09-25).
+     */
+    @Test
+    fun `allSessions suit le curseur et depasse la premiere page de 50`() = runBlocking<Unit> {
+        val gateway = gateway()
+        val first = gateway.sessionsPage(settings(), limit = 50, cursor = null)
+        assertEquals(50, first.data.size, "la premiere page fait 50")
+        assertTrue(first.next != null, "le curseur next doit etre present apres la premiere page")
+
+        val all = gateway.allSessions(settings())
+        assertTrue(all.size > 50, "pagination non suivie : ${all.size} sessions seulement")
+        assertEquals(all.size, all.map { it.id }.distinct().size, "sessions dupliquees entre pages")
+        println("allSessions -> ${all.size} sessions (${all.size / 50 + 1} pages)")
+    }
 }

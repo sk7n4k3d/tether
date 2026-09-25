@@ -49,14 +49,52 @@ class OpenCodeClient(
         return http.get("$baseUrl/api/info") { auth(credentials) }.body()
     }
 
-    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> {
+    /**
+     * Une page de `GET /api/session`. ⚠️ La route pagine par defaut a **50** : sans suivre
+     * `cursor.next`, la liste est tronquee en silence (428 sessions reelles le 2026-09-25).
+     * `limit` est honore par le serveur (verifie : 200 par page en 4 pages).
+     */
+    suspend fun sessionsPage(
+        directory: String,
+        limit: Int? = null,
+        cursor: String? = null,
+    ): CursorPage<Session> {
         val credentials = credentialsProvider.credentials()
-        return http.get("$baseUrl/api/session") {
+        val envelope = http.get("$baseUrl/api/session") {
             auth(credentials)
             parameter("directory", directory)
             limit?.let { parameter("limit", it) }
             cursor?.let { parameter("cursor", it) }
-        }.body<DataEnvelope<Session>>().data
+        }.body<DataEnvelope<Session>>()
+        return envelope.toPage()
+    }
+
+    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> =
+        sessionsPage(directory, limit, cursor).data
+
+    /**
+     * Une page de `GET /api/session/{id}/message`.
+     *
+     * ⚠️ `order` ne s'applique qu'a la **premiere** page : l'OpenAPI precise « Do not combine
+     * with order », le curseur porte deja le sens. Verifie : `order=asc` puis `cursor.next`
+     * pagine vers l'avant **sans recouvrement**.
+     */
+    suspend fun messagesPage(
+        sessionID: String,
+        limit: Int? = null,
+        cursor: String? = null,
+        order: String? = null,
+        type: String? = null,
+    ): CursorPage<MessageDto> {
+        val credentials = credentialsProvider.credentials()
+        val envelope = http.get("$baseUrl/api/session/$sessionID/message") {
+            auth(credentials)
+            limit?.let { parameter("limit", it) }
+            cursor?.let { parameter("cursor", it) }
+            order?.let { parameter("order", it) }
+            type?.let { parameter("type", it) }
+        }.body<DataEnvelope<MessageDto>>()
+        return envelope.toPage()
     }
 
     suspend fun messages(
@@ -65,15 +103,14 @@ class OpenCodeClient(
         cursor: String? = null,
         order: String? = null,
         type: String? = null,
-    ): List<MessageDto> {
+    ): List<MessageDto> = messagesPage(sessionID, limit, cursor, order, type).data
+
+    /** `POST /api/session/{id}/interrupt` : stoppe l'execution en cours. `{interrupted}`. */
+    suspend fun interrupt(sessionID: String): Boolean {
         val credentials = credentialsProvider.credentials()
-        return http.get("$baseUrl/api/session/$sessionID/message") {
+        return http.post("$baseUrl/api/session/$sessionID/interrupt") {
             auth(credentials)
-            limit?.let { parameter("limit", it) }
-            cursor?.let { parameter("cursor", it) }
-            order?.let { parameter("order", it) }
-            type?.let { parameter("type", it) }
-        }.body<DataEnvelope<MessageDto>>().data
+        }.body<InterruptResponse>().interrupted
     }
 
     suspend fun models(location: String): List<Model> {
@@ -95,6 +132,14 @@ class OpenCodeClient(
             auth(credentials)
             parameter("location[directory]", location)
         }.body<DataEnvelope<Agent>>().data
+    }
+
+    /** `GET /api/session/{id}` : renvoie `{data: <Session>}` (un objet), pour le titre. */
+    suspend fun session(sessionID: String): Session {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID") {
+            auth(credentials)
+        }.body<SessionEnvelope>().data
     }
 
     /** `POST /api/session` renvoie `{data: <Session>}` = un OBJET, pas un tableau. */
@@ -133,6 +178,9 @@ class OpenCodeClient(
         if (credentials == null) return
         basicAuth(credentials.username, credentials.password)
     }
+
+    private fun <T> DataEnvelope<T>.toPage(): CursorPage<T> =
+        CursorPage(data = data, next = cursor?.next, previous = cursor?.previous)
 
     private class FixedCredentialsProvider(
         private val fixed: BasicAuthCredentials,
