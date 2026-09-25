@@ -102,6 +102,30 @@ class ChatMessageMapperTest {
     }
 
     @Test
+    fun `un raisonnement expose sa duree reelle`() {
+        // Mesure serveur (Markdown check, 2026-09-25) : `time.created` 1790308830868 ->
+        // `time.completed` 1790308831563 = 695 ms sur la part `reasoning`.
+        val dto = MessageDto(
+            id = "msg_a",
+            type = "assistant",
+            content = listOf(
+                ContentPart(
+                    type = "reasoning",
+                    text = "je reflechis",
+                    time = TimeInfo(created = 1_790_308_830_868, completed = 1_790_308_831_563),
+                ),
+                ContentPart(type = "text", text = "voila"),
+            ),
+        )
+
+        val message = ChatMessageMapper.fromDto(dto)!!
+
+        // Sans ce champ, la duree disparaissait des qu'on rechargeait l'historique : le direct
+        // l'affichait, le REST non. Une information qui depend du chemin de lecture est fausse.
+        assertEquals("695 ms", message.reasoningDurationLabel)
+    }
+
+    @Test
     fun `un read expose son chemin et un resume long est tronque`() {
         fun tool(input: String) = ContentPart(
             type = "tool",

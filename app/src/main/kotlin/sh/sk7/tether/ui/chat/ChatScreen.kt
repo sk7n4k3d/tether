@@ -232,7 +232,7 @@ private fun MessageBubble(message: ChatMessage) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         message.reasoning.takeIf { it.isNotBlank() }?.let { reasoning ->
-            ReasoningBlock(reasoning)
+            ReasoningBlock(reasoning, durationLabel = message.reasoningDurationLabel)
         }
         if (message.text.isNotBlank()) MarkdownBody(message.text)
         message.tools.forEach { ToolCard(it) }

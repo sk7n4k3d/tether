@@ -55,11 +55,19 @@ object ChatMessageMapper {
         val reasoning = StringBuilder()
         val tools = mutableListOf<ToolCall>()
         val unknown = mutableListOf<String>()
+        // Duree du raisonnement : portee par la part `reasoning` elle-meme (`time.created` ->
+        // `time.completed`), pas par le message. On garde la premiere mesure non nulle.
+        var reasoningDuration: String? = null
 
         dto.content.forEachIndexed { index, part ->
             when (part.type) {
                 "text" -> part.text?.let { text.append(it) }
-                "reasoning" -> part.text?.let { reasoning.append(it) }
+                "reasoning" -> {
+                    part.text?.let { reasoning.append(it) }
+                    if (reasoningDuration == null) {
+                        reasoningDuration = formatDuration(part.time?.created, part.time?.completed)
+                    }
+                }
                 "tool" -> tools += part.toToolCall(index)
                 else -> unknown += part.rawJson()
             }
@@ -70,6 +78,7 @@ object ChatMessageMapper {
             role = Role.Assistant,
             text = text.toString(),
             reasoning = reasoning.toString(),
+            reasoningDurationLabel = reasoningDuration,
             tools = tools,
             rawFallback = unknown.takeIf { it.isNotEmpty() }?.joinToString("\n"),
         )

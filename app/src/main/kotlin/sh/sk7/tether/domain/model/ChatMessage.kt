@@ -15,6 +15,16 @@ data class ChatMessage(
     val role: Role,
     val text: String = "",
     val reasoning: String = "",
+    /**
+     * Duree du raisonnement, formatee (« 695 ms »), telle que le **REST** la porte.
+     *
+     * ⚠️ Le serveur expose `content[].time.created` / `time.completed` sur la part
+     * `reasoning` (mesure : 1790308830868 -> 1790308831563, soit 695 ms). Sans ce champ, la
+     * ligne « Raisonnement » perdait sa duree **des qu'on rechargeait l'historique**, alors
+     * que le direct l'affichait : une information qui disparait selon le chemin de lecture est
+     * exactement ce qu'on ne veut pas.
+     */
+    val reasoningDurationLabel: String? = null,
     val tools: List<ToolCall> = emptyList(),
     /** Charge d'un contenu de forme inconnue : affichee, jamais jetee (Review Focus n°4). */
     val rawFallback: String? = null,
