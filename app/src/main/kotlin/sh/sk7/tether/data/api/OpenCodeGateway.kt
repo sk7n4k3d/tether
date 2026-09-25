@@ -104,6 +104,32 @@ interface OpenCodeGateway {
     /** `POST /interrupt` : stoppe l'execution en cours. */
     suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean
 
+    /**
+     * `PATCH /api/session/{id}` : renomme la session.
+     *
+     * ⚠️ Le corps n'accepte que `title` et `permissions` (`additionalProperties: false`) et le
+     * serveur repond **204 sans corps**. On renvoie donc `true` sur succes, jamais un objet.
+     */
+    suspend fun renameSession(settings: ConnectionSettings, sessionID: String, title: String): Boolean
+
+    /** `DELETE /api/session/{id}` : supprime definitivement la session. */
+    suspend fun deleteSession(settings: ConnectionSettings, sessionID: String)
+
+    /**
+     * `POST /api/session/{id}/fork` : duplique la session a partir d'un point.
+     *
+     * ⚠️ Avec `before = null`, on forke **toute** la session : le corps `{}` est valide.
+     */
+    suspend fun forkSession(settings: ConnectionSettings, sessionID: String): Session
+
+    /**
+     * `POST /api/session/{id}/compact` : resume le contexte pour liberer la fenetre.
+     *
+     * Renvoie `true` si le serveur a accepte. ⚠️ La compaction est **asynchrone** : le resume
+     * n'est pas encore ecrit au retour de l'appel, il arrive par le flux.
+     */
+    suspend fun compactSession(settings: ConnectionSettings, sessionID: String): Boolean
+
     companion object {
         /** 200 tient en 4 pages pour 428 sessions (mesure 2026-09-25), sans charger d'un bloc. */
         const val DEFAULT_PAGE_SIZE: Int = 200
@@ -169,4 +195,19 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean =
         client(settings).interrupt(sessionID)
+
+    override suspend fun renameSession(
+        settings: ConnectionSettings,
+        sessionID: String,
+        title: String,
+    ): Boolean = client(settings).renameSession(sessionID, title)
+
+    override suspend fun deleteSession(settings: ConnectionSettings, sessionID: String) =
+        client(settings).deleteSession(sessionID)
+
+    override suspend fun forkSession(settings: ConnectionSettings, sessionID: String): Session =
+        client(settings).forkSession(sessionID)
+
+    override suspend fun compactSession(settings: ConnectionSettings, sessionID: String) =
+        client(settings).compactSession(sessionID)
 }

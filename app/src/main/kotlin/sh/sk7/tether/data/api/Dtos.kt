@@ -179,6 +179,14 @@ data class ContentPart(
 @Serializable
 data class PromptBody(val text: String)
 
+/** `PATCH /api/session/{id}` : `title` seul (`additionalProperties: false`). */
+@Serializable
+data class RenameSessionBody(val title: String)
+
+/** Corps vide `{}` : `fork` sans `before` forke la session entiere, `compact` sans `id`. */
+@Serializable
+data class ForkSessionBody(val before: String? = null)
+
 @Serializable
 data class PromptEnvelope(val data: PromptAcceptance)
 

@@ -101,6 +101,16 @@ class SessionListViewModel @Inject constructor(
     private val _create = MutableStateFlow(CreateSessionState())
     val create: StateFlow<CreateSessionState> = _create.asStateFlow()
 
+    /**
+     * Erreur d'une action de session (renommer, fork, suppression…).
+     *
+     * ⚠️ **Distincte de [SessionListUiState.Error]** : une resync qui echoue ne doit pas
+     * remplacer la liste par un ecran d'erreur. Une action qui echoue est une information
+     * ponctuelle a montrer, pas un etat d'ecran.
+     */
+    private val _sessionError = MutableStateFlow<String?>(null)
+    val sessionError: StateFlow<String?> = _sessionError.asStateFlow()
+
     init {
         refresh()
     }
@@ -235,6 +245,84 @@ class SessionListViewModel @Inject constructor(
         } catch (e: Exception) {
             _state.value = SessionListUiState.Error(ConnectionErrors.describe(e))
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Options de session (renommer, fork, compacter, supprimer)
+    // ------------------------------------------------------------------
+
+    /**
+     * Renomme une session (`PATCH`).
+     *
+     * ⚠️ On recharge la liste ensuite : le titre est une donnee **serveur**, on ne le devine
+     * pas localement. Si l'appel echoue, rien ne change a l'ecran (pas de renommage fantome).
+     */
+    fun renameSession(sessionID: String, title: String) {
+        val clean = title.trim()
+        if (clean.isEmpty()) return
+        scope.launch {
+            val settings = store.current()
+            runCatching { gateway.renameSession(settings, sessionID, clean) }
+                .onSuccess { refreshAfterCreate() }
+                .onFailure { error -> _sessionError.value = ConnectionErrors.describe(error) }
+        }
+    }
+
+    /**
+     * Forke une session (`POST /fork`) puis recharge la liste : la copie apparait en haut.
+     */
+    fun forkSession(sessionID: String) {
+        scope.launch {
+            val settings = store.current()
+            runCatching { gateway.forkSession(settings, sessionID) }
+                .onSuccess { refreshAfterCreate() }
+                .onFailure { error -> _sessionError.value = ConnectionErrors.describe(error) }
+        }
+    }
+
+    /** Interrompt le tour en cours (`POST /interrupt`), puis recharge (l'etat a change). */
+    fun interruptSession(sessionID: String) {
+        scope.launch {
+            val settings = store.current()
+            runCatching { gateway.interrupt(settings, sessionID) }
+                .onSuccess { refreshAfterCreate() }
+                .onFailure { error -> _sessionError.value = ConnectionErrors.describe(error) }
+        }
+    }
+
+    /**
+     * Compacte le contexte (`POST /compact`).
+     *
+     * ⚠️ Operation **longue et asynchrone** : l'appel est accepte, le resume arrive ensuite par
+     * le flux. On ne recharge donc pas immediatement (rien n'a encore change) — l'utilisateur
+     * le verra dans la conversation.
+     */
+    fun compactSession(sessionID: String) {
+        scope.launch {
+            val settings = store.current()
+            runCatching { gateway.compactSession(settings, sessionID) }
+                .onFailure { error -> _sessionError.value = ConnectionErrors.describe(error) }
+        }
+    }
+
+    /**
+     * Supprime une session (`DELETE`).
+     *
+     * ⚠️ **Irreversible** : c'est l'appelant qui doit avoir demande confirmation. Le ViewModel
+     * ne supprime que sur ordre explicite.
+     */
+    fun deleteSession(sessionID: String) {
+        scope.launch {
+            val settings = store.current()
+            runCatching { gateway.deleteSession(settings, sessionID) }
+                .onSuccess { refreshAfterCreate() }
+                .onFailure { error -> _sessionError.value = ConnectionErrors.describe(error) }
+        }
+    }
+
+    /** Efface l'erreur d'action (apres l'avoir montree). */
+    fun clearSessionError() {
+        _sessionError.value = null
     }
 
     private fun Model.toRef(): ModelRef =

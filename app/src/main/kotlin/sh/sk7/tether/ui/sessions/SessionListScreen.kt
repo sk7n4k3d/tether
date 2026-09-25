@@ -73,6 +73,12 @@ fun SessionListScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val create by viewModel.create.collectAsStateWithLifecycle()
+    val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
+    // Dialogues d'action : la session visee, ou null. L'etat vit ici (et non dans la branche
+    // `Loaded`) parce que les boites sont affichees **hors** du `when` : si la liste passe par
+    // un etat transitoire pendant l'action, le dialogue ne doit pas disparaitre sous le doigt.
+    var renaming by remember { mutableStateOf<SessionItem?>(null) }
+    var deleting by remember { mutableStateOf<SessionItem?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -177,6 +183,13 @@ fun SessionListScreen(
                                 } else null,
                                 subsExpanded = item.id in expandedParents,
                                 onClick = { onOpenSession(item.id) },
+                                // Options de session : chaque action ouvre une route qui existe
+                                // cote serveur (PATCH, fork, interrupt, compact, DELETE).
+                                onRename = { renaming = item },
+                                onFork = { viewModel.forkSession(item.id) },
+                                onInterrupt = { viewModel.interruptSession(item.id) },
+                                onCompact = { viewModel.compactSession(item.id) },
+                                onDelete = { deleting = item },
                                 // ⚠️ Animation de depliage : les enfants apparaissent avec
                                 // un glissement, pas d'un coup. C'est ce qui rend un arbre
                                 // lisible plutot que brutal.
@@ -202,6 +215,119 @@ fun SessionListScreen(
             onDismiss = viewModel::dismissCreate,
         )
     }
+
+    renaming?.let { item ->
+        RenameSessionDialog(
+            item = item,
+            onConfirm = { title ->
+                renaming = null
+                viewModel.renameSession(item.id, title)
+            },
+            onDismiss = { renaming = null },
+        )
+    }
+
+    deleting?.let { item ->
+        DeleteSessionDialog(
+            item = item,
+            onConfirm = {
+                deleting = null
+                viewModel.deleteSession(item.id)
+            },
+            onDismiss = { deleting = null },
+        )
+    }
+
+    sessionError?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearSessionError,
+            title = { Text("Action impossible", color = TetherTextPrimary) },
+            text = { Text(message, color = TetherTextSecondary) },
+            confirmButton = {
+                TextButton(onClick = viewModel::clearSessionError) {
+                    Text("Fermer", color = TetherAccent)
+                }
+            },
+            containerColor = TetherSurface,
+        )
+    }
+}
+
+/**
+ * Renommer : une boite d'une seule ligne, pre-remplie avec le titre actuel.
+ *
+ * ⚠️ L'action n'est **pas** appliquee a la volee : le titre est une donnee serveur, on attend
+ * la validation. Valider avec un titre inchange ne fait rien (aucun appel reseau inutile).
+ */
+@Composable
+private fun RenameSessionDialog(
+    item: SessionItem,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draft by remember(item.id) { mutableStateOf(item.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Renommer la session", color = TetherTextPrimary) },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                singleLine = true,
+                label = { Text("Titre") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(draft) },
+                enabled = draft.isNotBlank() && draft.trim() != item.title,
+            ) {
+                Text("Renommer", color = TetherAccent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annuler", color = TetherTextSecondary) }
+        },
+        containerColor = TetherSurface,
+    )
+}
+
+/**
+ * Supprimer : la **seule** action irreversible de la liste, donc la seule a demander confirmation.
+ *
+ * ⚠️ Le titre de la session est affiche dans le corps : on supprime une session precise, pas
+ * « une session ». Le libelle du bouton dit ce qui va se passer (« Supprimer »), il ne dit pas
+ * « OK ».
+ */
+@Composable
+private fun DeleteSessionDialog(
+    item: SessionItem,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Supprimer cette session ?", color = TetherTextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(item.title, color = TetherTextPrimary)
+                Text(
+                    text = "Cette action est définitive. La conversation et son historique " +
+                        "seront perdus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TetherAlert,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Supprimer", color = TetherAlert) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Annuler", color = TetherTextSecondary) }
+        },
+        containerColor = TetherSurface,
+    )
 }
 
 @Composable

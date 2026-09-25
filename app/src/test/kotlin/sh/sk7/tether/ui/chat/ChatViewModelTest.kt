@@ -157,6 +157,19 @@ class ChatViewModelTest {
             interrupts++
             return true
         }
+
+        override suspend fun renameSession(
+            settings: ConnectionSettings,
+            sessionID: String,
+            title: String,
+        ): Boolean = true
+
+        override suspend fun deleteSession(settings: ConnectionSettings, sessionID: String) = Unit
+
+        override suspend fun forkSession(settings: ConnectionSettings, sessionID: String): Session =
+            Session(id = "ses_fork", title = "fork")
+
+        override suspend fun compactSession(settings: ConnectionSettings, sessionID: String): Boolean = true
     }
 
     private fun viewModel(

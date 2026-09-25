@@ -69,6 +69,11 @@ fun SessionRow(
     /** `null` = pas de sous-agents : le nœud n'est pas cliquable (rien a ouvrir). */
     onToggleSubs: (() -> Unit)? = null,
     subsExpanded: Boolean = false,
+    onRename: (() -> Unit)? = null,
+    onFork: (() -> Unit)? = null,
+    onInterrupt: (() -> Unit)? = null,
+    onCompact: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     val isSub = item.isSub
     val state = item.nodeState
@@ -239,17 +244,29 @@ fun SessionRow(
                 .padding(vertical = Spacing.md, horizontal = Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
-            Text(
-                text = item.title,
-                style = if (isSub) {
-                    MaterialTheme.typography.bodyMedium
-                } else {
-                    MaterialTheme.typography.titleSmall
-                },
-                color = if (isSub) TetherTextSecondary else TetherTextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Titre + menu sur la MEME ligne. Le menu se cale a droite, et suit le titre
+            // (donc il se decale avec lui sur une sous-session).
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    text = item.title,
+                    style = if (isSub) {
+                        MaterialTheme.typography.bodyMedium
+                    } else {
+                        MaterialTheme.typography.titleSmall
+                    },
+                    color = if (isSub) TetherTextSecondary else TetherTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                SessionOptionsMenu(
+                    onRename = onRename,
+                    onFork = onFork,
+                    onInterrupt = onInterrupt,
+                    onCompact = onCompact,
+                    onDelete = onDelete,
+                )
+            }
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
