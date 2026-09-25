@@ -73,6 +73,7 @@ import com.composables.icons.lucide.Activity
 import com.composables.icons.lucide.ShieldCheck
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
+import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Server
 import com.composables.icons.lucide.Settings
 import com.composables.icons.lucide.WifiOff
@@ -150,6 +151,22 @@ fun SessionListScreen(
                             contentDescription = "Approbations en attente",
                             tint = pendingTint,
                         )
+                    }
+                    // ⚠️ **Ce bouton N'EST PAS un doublon du swipe — ne pas le retirer.**
+                    //
+                    // Il a ete demande comme « doublon du rafraichissement par glissement », et
+                    // c'est vrai a l'usage. Mais c'est aussi **l'alternative non gestuelle exigee
+                    // par le projet** : `docs/superpowers/specs/2026-09-25-tether-etat-vivant-design.md`
+                    // §5.4 (« Alternative non gestuelle aux swipes : le pull-to-refresh a un
+                    // bouton »). L'exigence est de niveau **A** en WCAG 2.5.1 (Pointer Gestures) :
+                    // un geste « path-based » doit avoir un equivalent en **un seul tap**.
+                    //
+                    // Le retirer priverait cet ecran de son seul rafraichissement accessible, pour
+                    // qui ne peut pas faire un glissement (douleur, tremblement, appareil tenu
+                    // d'une main, lecteur d'ecran). Le swipe reste la voie rapide ; ce bouton est
+                    // la voie accessible — deux contraintes differentes, pas un doublon.
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        Icon(Lucide.RefreshCw, contentDescription = "Recharger")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Lucide.Settings, contentDescription = "Réglages")

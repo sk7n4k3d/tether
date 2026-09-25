@@ -415,6 +415,13 @@ class ChatViewModel @Inject constructor(
         // jusqu'a reussir le compare-and-set : en reduisant **depuis `current`**, chaque tentative
         // part de l'etat reellement en place, et aucune mise a jour concurrente ne se perd.
         //
+        // ⚠️ **Corollaire : le bloc doit rester PUR.** `update` peut le rejouer plusieurs fois ;
+        // tout effet de bord y serait applique a chaque tentative. C'est pour ca que la purge des
+        // liens d'optimistes vit hors de la transaction (voir [pruneOptimisticLinks]) — dedans,
+        // elle faisait perdre le lien id-local -> id-serveur sur un rejeu, et la confirmation
+        // retombait sur le match par texte (course revéléee par
+        // `un ancien message de meme texte ne confirme pas un optimiste frais`).
+        //
         // ⚠️ `running` est declare **hors** du bloc pour ressortir : `update` ne rend pas de
         // valeur. Il est recalcule a chaque tentative, donc apres la derniere il est juste.
         var running = false
@@ -431,6 +438,8 @@ class ChatViewModel @Inject constructor(
                 error = null,
             )
         }
+        // ⚠️ Hors transaction : l'etat ecrit est celui sur lequel on purge.
+        pruneOptimisticLinks()
         if (running) armGrace() else cancelGrace()
     }
 
@@ -490,11 +499,37 @@ class ChatViewModel @Inject constructor(
         }
         if (kept.size == chat.messages.size) return chat
 
-        // Purge les liens des optimistes desormais retires (pas de croissance sans borne).
-        val keptLocalIds = kept.filter { it.id.startsWith(OPTIMISTIC_PREFIX) }.map { it.id }.toHashSet()
-        acceptedOptimistic.keys.retainAll(keptLocalIds)
-        preexistingUserIds.keys.retainAll(keptLocalIds)
+        // ⚠️ **AUCUN effet de bord ici.** [dedupeOptimistic] est appele **dans** un
+        // `_state.update` (voir [applyEvent]) : `MutableStateFlow` **rejoue** ce bloc quand le
+        // compare-and-set echoue, donc tout effet de bord y serait applique plusieurs fois, ou
+        // applique alors que l'ecriture d'etat n'a pas eu lieu.
+        //
+        // Concretement, la purge des liens qui vivait ici (`acceptedOptimistic.keys.retainAll`)
+        // faisait perdre le lien id-local -> id-serveur sur un rejeu. La confirmation retombait
+        // alors sur le match **par texte**, et un ancien message identique consommait l'envoi
+        // frais : l'optimiste disparaissait de l'ecran. C'est la course que le test
+        // `un ancien message de meme texte ne confirme pas un optimiste frais` revelait de
+        // facon intermittente (1 echec sur 5 runs complets, 0 en isolation).
+        //
+        // La purge vit desormais dans [pruneOptimisticLinks], **hors** de la transaction.
         return chat.copy(messages = kept)
+    }
+
+    /**
+     * **Retire les liens des optimistes qui ne sont plus affiches.**
+     *
+     * ⚠️ Appelee **apres** un `_state.update`, jamais dedans : c'est de l'hygiene memoire, pas
+     * une regle de correction. Les entrees orphelines ne sont jamais lues (on n'interroge les
+     * maps qu'avec l'id d'un message present), donc les oublier ne casserait rien — mais les
+     * laisser croitre sans borne sur une longue session serait neglige.
+     */
+    private fun pruneOptimisticLinks() {
+        val present = _state.value.chat.messages
+            .filter { it.isOptimistic }
+            .map { it.id }
+            .toHashSet()
+        acceptedOptimistic.keys.retainAll(present)
+        preexistingUserIds.keys.retainAll(present)
     }
 
     /**
