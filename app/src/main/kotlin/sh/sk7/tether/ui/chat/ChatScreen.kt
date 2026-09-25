@@ -59,6 +59,7 @@ import dev.snipme.highlights.Highlights
 import dev.snipme.highlights.model.SyntaxThemes
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
+import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherBackground
@@ -251,11 +252,17 @@ private fun StreamingBlock(chat: sh.sk7.tether.domain.model.SessionUiState) {
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        chat.streamingReasoning?.takeIf { it.isNotBlank() }?.let { ReasoningBlock(it) }
+        // Le raisonnement se replie : c'est de l'information secondaire, elle ne doit pas
+        // noyer la reponse (constat sur le Pixel : jusqu'a 2 ecrans de bloc gris).
+        chat.streamingReasoning?.takeIf { it.isNotBlank() }?.let {
+            ReasoningBlock(text = it, durationLabel = chat.reasoningDurationLabel)
+        }
+        chat.streamingTools.forEach { call ->
+            ToolCard(call = call, durationLabel = chat.toolDurations[call.id])
+        }
         chat.streamingText?.takeIf { it.isNotBlank() }?.let { MarkdownBody(it) }
-        chat.streamingTools.forEach { ToolCard(it) }
     }
 }
 
@@ -313,29 +320,6 @@ private fun MarkdownBody(text: String) {
 }
 
 /** Raisonnement du modele : discret, repliable mentalement (texte secondaire, italique). */
-@Composable
-private fun ReasoningBlock(text: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(TetherSurface, RoundedCornerShape(10.dp))
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(
-            Lucide.Brain,
-            contentDescription = null,
-            tint = TetherTextSecondary,
-            modifier = Modifier.size(15.dp),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = TetherTextSecondary,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
 
 /** Contenu de forme inconnue : affiche brut, jamais jete (Review Focus n°4). */
 @Composable

@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.remember
+import sh.sk7.tether.ui.theme.Spacing
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -128,15 +132,28 @@ fun SessionListScreen(
                         onAction = viewModel::refresh,
                     )
                 }
-                is SessionListUiState.Loaded -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(current.items, key = { it.id }) { item ->
-                        SessionCard(item = item, onClick = { onOpenSession(item.id) })
+                is SessionListUiState.Loaded -> {
+                    val items = current.items
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = 96.dp,
+                        ),
+                        // ⚠️ AUCUN espacement vertical ici : un `spacedBy` creerait des trous
+                        // que le rail ne traverserait pas, coupant le fil entre les lignes.
+                        // L'aeration vit dans le padding interne de chaque SessionRow.
+                    ) {
+                        // En-tete : ce que l'app consomme. Toujours visible, jamais demande.
+                        current.usage?.let { usage ->
+                            item(key = "usage-header") { UsageHeader(usage) }
+                        }
+
+                        items(items, key = { it.id }) { item ->
+                            SessionRow(
+                                item = item,
+                                onClick = { onOpenSession(item.id) },
+                            )
+                        }
                     }
                 }
             }

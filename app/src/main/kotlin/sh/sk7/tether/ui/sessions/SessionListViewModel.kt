@@ -23,6 +23,26 @@ import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
 
+/**
+ * Consommation agregee du serveur opencode.
+ *
+ * ⚠️ **Principe de non-mensonge** (`docs/design-soul.md` §3) : Bastien ne voyait ni son cout
+ * ni ses tokens, alors que l'API les expose. Ce bloc les rend visibles **sans qu'on les
+ * demande** — c'est un instrument de controle, pas un chat.
+ *
+ * @param costTotal somme des couts des sessions chargees.
+ * @param sessions nombre de sessions agregees (pour dire honnetement sur quoi on calcule).
+ */
+data class UsageInfo(
+    val costTotal: Double,
+    val sessions: Int,
+    val tokensIn: Long,
+    val tokensOut: Long,
+    val cacheRead: Long,
+) {
+    val hasAny: Boolean get() = costTotal > 0.0 || tokensIn > 0 || tokensOut > 0
+}
+
 /** Etat de l'ecran de liste des sessions. */
 sealed interface SessionListUiState {
     /** Aucun mot de passe enregistre : l'ecran renvoie vers les reglages. */
@@ -34,6 +54,8 @@ sealed interface SessionListUiState {
         val items: List<SessionItem>,
         val models: List<Model>,
         val agents: List<Agent>,
+        /** Consommation agregee. `null` = le serveur ne l'expose pas (pas d'erreur). */
+        val usage: UsageInfo? = null,
         /** Agent du serveur retenu a la creation, `null` = laisser le serveur decider. */
         val createAgent: String? = null,
         /** Modele choisi ; **obligatoire** a la creation (contrainte API). */
@@ -107,7 +129,8 @@ class SessionListViewModel @Inject constructor(
     private suspend fun load(settings: ConnectionSettings): SessionListUiState {
         val sessions = gateway.allSessions(settings)
         if (sessions.isEmpty()) return SessionListUiState.Empty(settings.directory)
-        val items = SessionListMapper.toItems(sessions)
+        // L'arbre : chaque parent suivi de ses sous-agents (67 % des sessions reelles).
+        val items = SessionListMapper.toTree(sessions)
         // Modeles et agents sont secondaires : leur echec ne doit pas masquer la liste.
         val models = runCatching { gateway.models(settings) }.getOrDefault(emptyList())
         val agents = runCatching { gateway.agents(settings) }.getOrDefault(emptyList())
@@ -115,8 +138,33 @@ class SessionListViewModel @Inject constructor(
             items = items,
             models = models,
             agents = agents,
+            usage = aggregateUsage(sessions),
             createModel = defaultModel(sessions, models),
         )
+    }
+
+    /**
+     * Agrege la consommation sur les sessions chargees.
+     *
+     * ⚠️ On calcule sur ce qu'on a **reellement recu** (et on dit combien), jamais sur une
+     * estimation : un chiffre invente dans un cockpit est pire que pas de chiffre.
+     * Le cache est compte a part car il represente 94,7 % du volume reel du profil.
+     */
+    private fun aggregateUsage(sessions: List<Session>): UsageInfo? {
+        var cost = 0.0
+        var tIn = 0L
+        var tOut = 0L
+        var cache = 0L
+        for (s in sessions) {
+            cost += s.cost ?: 0.0
+            s.tokens?.let {
+                tIn += it.input
+                tOut += it.output
+                cache += it.cache.read
+            }
+        }
+        val usage = UsageInfo(cost, sessions.size, tIn, tOut, cache)
+        return if (usage.hasAny) usage else null
     }
 
     /**

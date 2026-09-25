@@ -49,9 +49,9 @@ object EventReducer {
             "session.text.ended" -> onTextEnded(state, event.data)
 
             // --- Raisonnement ---
-            "session.reasoning.started" -> onReasoningStarted(state, event.data)
+            "session.reasoning.started" -> onReasoningStarted(state, event.data, event.created)
             "session.reasoning.delta" -> onReasoningDelta(state, event.data)
-            "session.reasoning.ended" -> onReasoningEnded(state, event.data)
+            "session.reasoning.ended" -> onReasoningEnded(state, event.data, event.created)
 
             // --- Etapes ---
             "session.step.started" -> onStepStarted(state, event.data)
@@ -82,9 +82,9 @@ object EventReducer {
             "session.tool.input.delta",
             "session.tool.input.ended",
             "session.tool.called",
-            "session.tool.progress" -> onToolEvent(state, event.data, ToolStatus.Running)
-            "session.tool.success" -> onToolEvent(state, event.data, ToolStatus.Succeeded)
-            "session.tool.failed" -> onToolEvent(state, event.data, ToolStatus.Failed)
+            "session.tool.progress" -> onToolEvent(state, event.data, ToolStatus.Running, event.created)
+            "session.tool.success" -> onToolEvent(state, event.data, ToolStatus.Succeeded, event.created)
+            "session.tool.failed" -> onToolEvent(state, event.data, ToolStatus.Failed, event.created)
 
             // --- Contenu de forme inconnue : conserve, jamais interprete ---
             "session.message.content.updated" -> onUnknownContent(state, event)
@@ -123,20 +123,25 @@ object EventReducer {
     // Raisonnement
     // ------------------------------------------------------------------
 
-    private fun onReasoningStarted(state: SessionUiState, data: JsonObject): SessionUiState =
-        state.withAssistantMessageID(data.str("assistantMessageID"))
+    private fun onReasoningStarted(state: SessionUiState, data: JsonObject, at: Long?): SessionUiState =
+        state
+            .withAssistantMessageID(data.str("assistantMessageID"))
+            // On retient le debut pour pouvoir afficher « Raisonne 12 s » une fois fini.
+            .copy(reasoningStartedAt = at)
 
     private fun onReasoningDelta(state: SessionUiState, data: JsonObject): SessionUiState {
         val delta = data.str("delta") ?: return state
         return state.copy(streamingReasoning = (state.streamingReasoning ?: "") + delta)
     }
 
-    private fun onReasoningEnded(state: SessionUiState, data: JsonObject): SessionUiState {
+    private fun onReasoningEnded(state: SessionUiState, data: JsonObject, at: Long?): SessionUiState {
         var next = state.withAssistantMessageID(data.str("assistantMessageID"))
         if (next.streamingReasoning == null) {
             data.str("text")?.let { next = next.copy(streamingReasoning = it) }
         }
-        return next
+        // Duree du raisonnement : la ligne repliee doit la porter, sinon on ne peut pas
+        // distinguer 2 s de reflexion de 2 min (defaut releve sur ChatGPT/Claude/Grok).
+        return next.copy(reasoningDurationLabel = formatDuration(state.reasoningStartedAt, at))
     }
 
     // ------------------------------------------------------------------
@@ -270,7 +275,7 @@ object EventReducer {
      * n'est un texte non vide, on renvoie l'etat **inchange** (jamais d'entree corrompue).
      * A confirmer par capture reelle en Phase 2.
      */
-    private fun onToolEvent(state: SessionUiState, data: JsonObject, status: ToolStatus): SessionUiState {
+    private fun onToolEvent(state: SessionUiState, data: JsonObject, status: ToolStatus, at: Long?): SessionUiState {
         val id = data.str("toolCallID")
             ?: data.str("callID")
             ?: data.str("toolID")
@@ -285,13 +290,41 @@ object EventReducer {
         } else {
             status
         }
-        val updated = ToolCall(id = id, name = name, status = effective, raw = data.toJsonString())
+        val updated = ToolCall(
+            id = id,
+            name = name,
+            status = effective,
+            raw = data.toJsonString(),
+            // A la creation on retient le debut ; sinon on conserve celui deja connu.
+            startedAt = existing?.startedAt ?: at,
+        )
         val tools = if (existing == null) {
             state.streamingTools + updated
         } else {
             state.streamingTools.map { if (it.id == id) updated else it }
         }
-        return state.copy(streamingTools = tools)
+        // Duree de l'outil : un `shell` de 40 s sans duree passe pour de la reflexion.
+        val duration = if (status.isTerminal()) formatDuration(updated.startedAt, at) else null
+        val durations = if (duration != null) state.toolDurations + (id to duration) else state.toolDurations
+        return state.copy(streamingTools = tools, toolDurations = durations)
+    }
+
+    /**
+     * Formate une duree entre deux horodatages serveur.
+     *
+     * Fonction **pure** : aucun appel a l'horloge du telephone. Renvoie `null` si l'un des
+     * deux horodatages manque ou si l'ecart est aberrant (flux rejoue, resync) — mieux vaut
+     * aucune duree qu'une duree fausse.
+     */
+    private fun formatDuration(startedAt: Long?, endedAt: Long?): String? {
+        if (startedAt == null || endedAt == null) return null
+        val delta = endedAt - startedAt
+        if (delta <= 0 || delta > 3_600_000) return null
+        return when {
+            delta < 1_000 -> "${delta} ms"
+            delta < 60_000 -> "${delta / 1_000} s"
+            else -> "${delta / 60_000} min ${(delta % 60_000) / 1_000} s"
+        }
     }
 
     private fun ToolStatus.isTerminal(): Boolean =

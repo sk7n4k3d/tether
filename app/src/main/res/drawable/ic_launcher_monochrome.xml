@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tether — calque MONOCHROME (themed icons, Material You, API 33+).
+  ⚠️ Seul le CANAL ALPHA compte : le systeme ignore la couleur et applique son tint.
+  Donc : aplats opaques parfaits, aucun degrade, aucun trou.
+  Meme geometrie que le foreground.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M43,54 L65,54"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M34,54 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:fillColor="#FFFFFF" />
+
+    <path
+        android:pathData="M74,54 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:fillColor="#00000000" />
+</vector>

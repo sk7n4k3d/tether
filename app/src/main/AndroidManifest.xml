@@ -14,7 +14,9 @@
     <application
         android:name=".TetherApp"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="Tether"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Tether">

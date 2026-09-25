@@ -34,6 +34,14 @@ data class ToolCall(
     val name: String = "",
     val status: ToolStatus = ToolStatus.Running,
     val raw: String = "",
+    /**
+     * Horodatage serveur (`event.created`) du debut de l'outil. Sert a calculer la duree.
+     *
+     * ⚠️ On utilise l'horodatage **de l'evenement**, jamais `System.currentTimeMillis()` :
+     *  - le reducer reste **pur** (voir le commentaire de classe d'`EventReducer`) ;
+     *  - la duree mesure le temps **du serveur**, pas celui du telephone.
+     */
+    val startedAt: Long? = null,
 )
 
 enum class ToolStatus { Running, Succeeded, Failed }
@@ -68,6 +76,23 @@ data class SessionUiState(
     val pendingForm: FormRequest? = null,
     /** Hashes du bloc d'instructions (`session.instructions.updated`, cles `core/...`). */
     val instructions: Map<String, String> = emptyMap(),
+    /**
+     * Duree du raisonnement du tour en cours, formatee (« 12 s »).
+     *
+     * Mesuree entre `session.reasoning.started` et `session.reasoning.ended`. La ligne
+     * repliee du raisonnement DOIT porter une duree : sans elle, l'utilisateur ne sait pas
+     * si le modele a reflechi 2 secondes ou 2 minutes (regle tiree de ChatGPT/Claude/Grok,
+     * qui affichent tous « Thought for Xs »).
+     */
+    val reasoningDurationLabel: String? = null,
+    /** Horodatage serveur du debut du raisonnement (interne : sert au calcul, non affiche). */
+    val reasoningStartedAt: Long? = null,
+    /**
+     * Duree par appel d'outil, indexee par id de `ToolCall`.
+     *
+     * Même raison : un `shell` de 40 s sans duree passe pour de la reflexion du modele.
+     */
+    val toolDurations: Map<String, String> = emptyMap(),
     val cost: Double? = null,          // alimente par session.usage.updated
     val tokens: Tokens? = null,        // alimente par session.usage.updated
 )
