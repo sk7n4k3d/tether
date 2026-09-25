@@ -53,6 +53,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Brain
+import com.composables.icons.lucide.GitCompare
+import com.composables.icons.lucide.Layers
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Square
@@ -89,6 +91,10 @@ import sh.sk7.tether.ui.theme.TetherTextSecondary
 @Composable
 fun ChatScreen(
     onBack: () -> Unit,
+    /** Ouvre les diffs **de cette session** : ce que l'agent a reellement change. */
+    onOpenDiff: () -> Unit = {},
+    /** Ouvre le contexte **de cette session** : ce qui occupe la fenetre. */
+    onOpenContext: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
@@ -217,6 +223,16 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        // ⚠️ Deux actions de plus dans la barre, et elles sont justifiees : les
+                        // diffs et le contexte sont les deux informations qu'un client d'agent a
+                        // et qu'un client de chat n'a pas. Les enfouir reviendrait a les rendre
+                        // invisibles — or c'est precisement ce qu'on vient chercher.
+                        IconButton(onClick = onOpenDiff) {
+                            Icon(Lucide.GitCompare, contentDescription = "Fichiers modifiés")
+                        }
+                        IconButton(onClick = onOpenContext) {
+                            Icon(Lucide.Layers, contentDescription = "Fenêtre de contexte")
+                        }
                         // ⚠️ L'export est une action d'ECRAN, pas de message : on exporte la
                         // conversation entiere. Le mettre dans le menu d'un message laisserait
                         // croire qu'on n'exporte que lui.

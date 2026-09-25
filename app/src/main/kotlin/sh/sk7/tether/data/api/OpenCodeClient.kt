@@ -385,6 +385,20 @@ class OpenCodeClient(
         }.body<VcsEnvelope<FileDiffDto>>().data
     }
 
+    /**
+     * `GET /api/vcs` : le repository et sa branche.
+     *
+     * ⚠️ `provider` **absent** signifie « pas un depot ». C'est l'information qui permet de ne pas
+     * mentir sur une absence de modifications.
+     */
+    suspend fun vcsInfo(location: String): VcsInfoDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/vcs") {
+            auth(credentials)
+            at(location)
+        }.body<VcsObjectEnvelope<VcsInfoDto>>().data
+    }
+
     /** `GET /api/vcs/status` : les fichiers touches, sans les patches (plus leger). */
     suspend fun vcsStatus(location: String): List<VcsFileStatusDto> {
         val credentials = credentialsProvider.credentials()

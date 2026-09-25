@@ -185,32 +185,95 @@ data class VcsFileStatusDto(
     val status: String = "modified",
 )
 
+/**
+ * `Vcs.Info` — **le repertoire est-il versionne ?**
+ *
+ * ⚠️ C'est le seul moyen de distinguer « aucune modification » de « pas un depot ». Mesure du
+ * 2026-09-25 :
+ *  - `/home/utilisateur`         -> `{"branch":{}}`, **aucun `provider`** : pas un depot ;
+ *  - `Projects/tether`        -> `{"provider":"git","branch":{"current":"master",…}}`.
+ *
+ * Sans cette distinction, l'ecran afficherait « aucune modification » pour un repertoire ou
+ * **rien ne peut etre annule** — deux faits opposes dits par la meme phrase.
+ */
+@Serializable
+data class VcsInfoDto(
+    val provider: String? = null,
+    val branch: VcsBranchInfoDto? = null,
+) {
+    val isVersioned: Boolean get() = !provider.isNullOrBlank()
+}
+
+@Serializable
+data class VcsBranchInfoDto(
+    val current: String? = null,
+    val default: String? = null,
+)
+
 /** `GET /api/vcs/branch` : `{location, data: [noms de branches]}`. */
 @Serializable
 data class VcsBranchEnvelope(val location: LocationInfo? = null, val data: List<String> = emptyList())
 
 /**
- * Une part de la **fenetre de contexte** (`GET /api/session/{id}/context`).
+ * Une entree de la **fenetre de contexte** (`GET /api/session/{id}/context`).
  *
- * ⚠️ C'est le seul endroit ou l'on peut repondre a « qu'est-ce qui mange ma fenetre ? »
- * (issue #6152, 145 👍). Le serveur y liste les messages qui seront **reellement** envoyes, avec
- * leur cout et leurs tokens : la liste n'est donc pas l'historique complet, et c'est justement
- * pour ca qu'elle est utile.
+ * ### Formes RELEVEES sur 98 entrees reelles (2026-09-25), pas devinees
+ * La premiere version de ce DTO avait ete ecrite d'apres l'OpenAPI seul, et elle **echouait au
+ * decodage** — `summary` y etait type en booleen alors que le serveur y met une **chaine de
+ * plusieurs kilo-octets** (le resume de compaction). Le decodage levait
+ * `JsonConvertException` et l'ecran affichait « Contexte indisponible » sur une session saine.
  *
- * Formes relevees : `{type, id, time, status, reason, model, summary, recent, cost, tokens}`.
+ * Cles reellement presentes, par type de message :
+ *
+ * | type | cles |
+ * |---|---|
+ * | `assistant` | `agent, content, cost, finish, model, time, tokens, id, type` |
+ * | `compaction` | `summary, reason, recent, status, cost, model, time, tokens, id, type` |
+ * | `user` | `text, files, agents, time, id, type` |
+ * | `synthetic` · `system` | `text, description, metadata, time, id, type` |
+ * | `idle` | `outcome, time, id, type` |
+ *
+ * ⚠️ **Seuls `assistant` et `compaction` portent `cost` et `tokens`.** Les autres n'en ont pas —
+ * et c'est normal : ils ne declenchent pas d'appel au modele. Un ecran qui afficherait « 0 $ »
+ * pour eux laisserait croire a des messages gratuits, alors que la question ne s'applique pas.
  */
 @Serializable
 data class ContextMessageDto(
     val type: String = "",
     val id: String = "",
     val time: TimeInfo? = null,
-    /** `status` du message dans la fenetre (`active`, `pruned`… selon le serveur). */
-    val status: String? = null,
-    /** Pourquoi il est la (ou non) — le champ le plus interessant de toute la reponse. */
+
+    // ---- champs de compaction : le message qui REMPLACE l'historique ----
+
+    /**
+     * Le **texte du resume de compaction**, plusieurs kilo-octets.
+     *
+     * ⚠️ Une chaine, jamais un booleen. C'est une donnee de plusieurs milliers de caracteres :
+     * l'UI ne doit pas l'afficher d'un bloc, seulement sa **taille** — c'est la taille qui
+     * explique ou est passe le contexte, pas le texte.
+     */
+    val summary: String? = null,
+    /** Pourquoi la compaction a eu lieu (`manual`, `auto`…). */
     val reason: String? = null,
+    /** `recent` est une **chaine** cote serveur, pas un booleen (mesure). */
+    val recent: String? = null,
+    /** `completed`, `running`… */
+    val status: String? = null,
+
+    // ---- champs des autres types ----
+
+    /** `user`, `synthetic`, `system`. */
+    val text: String? = null,
+    /** `synthetic`, `system` : la nature du message injecte. */
+    val description: String? = null,
+    /** `assistant` : quel agent a produit le message. */
+    val agent: String? = null,
+    /** `idle` : l'issue du tour (`succeeded`, `error`…). */
+    val outcome: String? = null,
+
+    // ---- mesures, presentes sur assistant et compaction seulement ----
+
     val model: ModelRef? = null,
-    val summary: Boolean? = null,
-    val recent: Boolean? = null,
     val cost: Double? = null,
     val tokens: Tokens? = null,
 )
@@ -333,3 +396,14 @@ data class InboxItemDto(
             }
         }
 }
+
+/**
+ * `{location, data}` ou **`data` est un OBJET** et non une liste.
+ *
+ * ⚠️ Troisieme forme d'enveloppe du serveur, apres `{data:[...]}` et `{location, data:[...]}`.
+ * Mesure : `GET /api/vcs` rend `{"location":{...},"data":{"provider":"git","branch":{...}}}`.
+ * Utiliser l'enveloppe de liste ferait echouer le decodage — donc l'ecran conclurait a tort a une
+ * absence de depot.
+ */
+@Serializable
+data class VcsObjectEnvelope<T>(val location: LocationInfo? = null, val data: T? = null)

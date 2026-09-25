@@ -34,6 +34,8 @@ import sh.sk7.tether.ui.sessions.SessionListScreen
 import sh.sk7.tether.ui.settings.AboutScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
 import sh.sk7.tether.ui.settings.SettingsScreen
+import sh.sk7.tether.ui.diff.DiffScreen
+import sh.sk7.tether.ui.context.SessionContextScreen
 import sh.sk7.tether.ui.stats.StatsScreen
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 
@@ -58,7 +60,24 @@ object Routes {
     /** Connexion, en mode premiere ouverture (sans retour, avec guidage). */
     const val ONBOARDING = "onboarding"
 
+    /**
+     * Diffs d'une session : ce que l'agent a reellement change.
+     *
+     * ⚠️ La session est un **argument optionnel** : le meme ecran sert aussi a regarder le depot
+     * seul (modifications non commitees, ecart de branche, derniers commits). Sans session, la
+     * portee « Session » n'est simplement pas proposee.
+     */
+    const val DIFF = "diff?sessionID={sessionID}"
+    const val DIFF_NO_SESSION = "diff"
+
+    /** Contexte d'une session : ce qui occupe la fenetre, et ce que ca coute. */
+    const val CONTEXT = "context/{sessionID}"
+
     fun chat(sessionID: String): String = "chat/$sessionID"
+
+    fun diff(sessionID: String): String = "diff?sessionID=$sessionID"
+
+    fun context(sessionID: String): String = "context/$sessionID"
 }
 
 /**
@@ -135,7 +154,39 @@ fun TetherNavHost(
             route = Routes.CHAT,
             arguments = listOf(navArgument(Routes.ARG_SESSION_ID) { type = NavType.StringType }),
         ) {
-            ChatScreen(onBack = { navController.popBackStack() })
+            val sessionID = it.arguments?.getString(Routes.ARG_SESSION_ID).orEmpty()
+            ChatScreen(
+                onBack = { navController.popBackStack() },
+                onOpenDiff = { navController.navigate(Routes.diff(sessionID)) },
+                onOpenContext = { navController.navigate(Routes.context(sessionID)) },
+            )
+        }
+        composable(
+            route = Routes.DIFF,
+            arguments = listOf(
+                navArgument(Routes.ARG_SESSION_ID) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) {
+            ScreenScaffold(title = "Modifications", onBack = { navController.popBackStack() }) {
+                DiffScreen()
+            }
+        }
+        composable(Routes.DIFF_NO_SESSION) {
+            ScreenScaffold(title = "Modifications", onBack = { navController.popBackStack() }) {
+                DiffScreen()
+            }
+        }
+        composable(
+            route = Routes.CONTEXT,
+            arguments = listOf(navArgument(Routes.ARG_SESSION_ID) { type = NavType.StringType }),
+        ) {
+            ScreenScaffold(title = "Contexte", onBack = { navController.popBackStack() }) {
+                SessionContextScreen()
+            }
         }
         composable(Routes.STATS) {
             ScreenScaffold(title = "Statistiques", onBack = { navController.popBackStack() }) {

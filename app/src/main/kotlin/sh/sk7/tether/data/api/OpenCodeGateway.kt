@@ -260,6 +260,18 @@ interface OpenCodeGateway {
     suspend fun vcsDiff(settings: ConnectionSettings, mode: String): List<FileDiffDto>
 
     /**
+     * Le diff d'un **repertoire donne** (`GET /api/vcs/diff`).
+     *
+     * ⚠️ Distinct de [vcsDiff] : une session peut travailler ailleurs que dans le repertoire
+     * configure pour l'app, et c'est ce depot-la qui doit etre mesure.
+     */
+    suspend fun vcsDiffIn(
+        settings: ConnectionSettings,
+        directory: String,
+        mode: String,
+    ): List<FileDiffDto>
+
+    /**
      * Le `projectID` du repertoire configure, tel que le serveur le calcule.
      *
      * ⚠️ Necessaire a `/api/worktree`, qui n'accepte qu'un `projectID` et pas un chemin.
@@ -268,6 +280,15 @@ interface OpenCodeGateway {
 
     /** Les fichiers touches, sans patch (`GET /api/vcs/status`). */
     suspend fun vcsStatus(settings: ConnectionSettings): List<VcsFileStatusDto>
+
+    /**
+     * Le depot d'un repertoire, ou `null` s'il n'y est pas versionne (`GET /api/vcs`).
+     *
+     * ⚠️ `directory` est un parametre et non `settings.directory` : une session peut travailler
+     * dans un autre repertoire que celui configure pour l'app, et c'est **ce** depot-la qui
+     * l'interesse.
+     */
+    suspend fun vcsInfo(settings: ConnectionSettings, directory: String): VcsInfoDto?
 
     /**
      * **Ce qui occupe la fenetre de contexte** (`GET /session/{id}/context`).
@@ -529,6 +550,17 @@ class KtorOpenCodeGateway @Inject constructor(
         settings: ConnectionSettings,
         mode: String,
     ): List<FileDiffDto> = client(settings).vcsDiff(settings.directory, mode)
+
+    override suspend fun vcsDiffIn(
+        settings: ConnectionSettings,
+        directory: String,
+        mode: String,
+    ): List<FileDiffDto> = client(settings).vcsDiff(directory, mode)
+
+    override suspend fun vcsInfo(
+        settings: ConnectionSettings,
+        directory: String,
+    ): VcsInfoDto? = client(settings).vcsInfo(directory)
 
     /**
      * ⚠️ On renvoie `null` si le serveur ne donne pas de projet : ce n'est **pas** une erreur

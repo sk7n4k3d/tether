@@ -21,6 +21,7 @@ import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.data.api.VcsFileStatusDto
+import sh.sk7.tether.data.api.VcsInfoDto
 import sh.sk7.tether.data.api.WorktreeDirDto
 import sh.sk7.tether.data.api.WorktreeInfoDto
 import sh.sk7.tether.data.settings.ConnectionSettings
@@ -159,7 +160,18 @@ open class NeutralGateway : OpenCodeGateway {
         mode: String,
     ): List<FileDiffDto> = emptyList()
 
+    override suspend fun vcsDiffIn(
+        settings: ConnectionSettings,
+        directory: String,
+        mode: String,
+    ): List<FileDiffDto> = emptyList()
+
     override suspend fun projectID(settings: ConnectionSettings): String? = null
+
+    override suspend fun vcsInfo(
+        settings: ConnectionSettings,
+        directory: String,
+    ): VcsInfoDto = VcsInfoDto(provider = "git")
 
     override suspend fun vcsStatus(settings: ConnectionSettings): List<VcsFileStatusDto> = emptyList()
 
