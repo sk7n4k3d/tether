@@ -6,18 +6,18 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import sh.sk7.tether.data.event.DefaultEventSourceFactory
+import sh.sk7.tether.data.event.EventSourceFactory
 import sh.sk7.tether.ui.chat.ChatViewModel
-import sh.sk7.tether.ui.chat.DefaultEventStreamFactory
-import sh.sk7.tether.ui.chat.EventStreamFactory
 
-/** Lie la fabrique de flux SSE a son implementation Ktor. */
+/** Lie la fabrique de flux SSE a son implementation Ktor et fournit ses constantes. */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class EventModule {
 
     @Binds
     @Singleton
-    abstract fun bindEventStreamFactory(impl: DefaultEventStreamFactory): EventStreamFactory
+    abstract fun bindEventSourceFactory(impl: DefaultEventSourceFactory): EventSourceFactory
 
     companion object {
         @Provides

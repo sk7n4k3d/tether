@@ -48,6 +48,7 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.markdown.renderer)
     implementation(libs.markdown.renderer.code)
+    implementation(libs.highlights)
     implementation(libs.coil.compose)
     implementation(libs.lucide)
     testImplementation(libs.junit)

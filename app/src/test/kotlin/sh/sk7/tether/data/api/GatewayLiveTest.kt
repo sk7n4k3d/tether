@@ -40,9 +40,9 @@ class GatewayLiveTest {
     )
 
     @Test
-    fun `le gateway liste les 50 sessions du repertoire`() = runBlocking<Unit> {
-        val sessions = gateway().sessions(settings())
-        assertEquals(50, sessions.size, "l'API pagine par defaut a 50")
+    fun `allSessions liste les sessions du repertoire`() = runBlocking<Unit> {
+        val sessions = gateway().allSessions(settings())
+        assertTrue(sessions.isNotEmpty(), "aucune session")
         assertTrue(sessions.all { it.id.startsWith("ses_") })
     }
 

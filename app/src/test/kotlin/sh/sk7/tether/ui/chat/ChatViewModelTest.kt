@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.SavedStateHandle
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,7 @@ import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.api.TimeInfo
 import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
+import sh.sk7.tether.data.event.EventSourceFactory
 import sh.sk7.tether.data.event.OcEvent
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.ConnectionStore
@@ -96,13 +98,14 @@ class ChatViewModelTest {
         var messagesCalls = 0
         var lastText: String? = null
 
+        /** Dernier id d'inbox accepte (`PromptAcceptance.id` = id REST du message user). */
+        var lastAcceptedId: String? = null
+
         /** Si non nul, `prompt` attend cette barriere : rend l'etat `Sending` observable. */
         @Volatile
-        var promptGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        var promptGate: CompletableDeferred<Unit>? = null
 
         override suspend fun info(settings: ConnectionSettings): ServerInfo = ServerInfo(version = "2.0.x")
-
-        override suspend fun sessions(settings: ConnectionSettings): List<Session> = emptyList()
 
         override suspend fun sessionsPage(
             settings: ConnectionSettings,
@@ -133,7 +136,10 @@ class ChatViewModelTest {
             lastText = text
             promptGate?.await()
             promptFailure?.let { throw it }
-            return PromptAcceptance(id = "msg_user_1", sessionID = sessionID, type = "user")
+            // ⚠️ Id unique par appel, comme le vrai serveur (`msg_*` neuf a chaque prompt).
+            val id = "msg_accepted_$prompts"
+            lastAcceptedId = id
+            return PromptAcceptance(id = id, sessionID = sessionID, type = "user")
         }
 
         override suspend fun messagesPage(
@@ -159,7 +165,7 @@ class ChatViewModelTest {
         graceMillis: Long = 250,
     ): ChatViewModel {
         val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
-        val factory = EventStreamFactory { source }
+        val factory = EventSourceFactory { source }
         return ChatViewModel(
             savedStateHandle = SavedStateHandle(mapOf("sessionID" to "ses_1")),
             store = store,
@@ -210,7 +216,7 @@ class ChatViewModelTest {
     @Test
     fun `send passe par Sending avant le delai de grace`() {
         val gateway = FakeGateway()
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
         gateway.promptGate = gate
         val vm = viewModel(gateway, FakeEventSource(), graceMillis = 10_000)
 
@@ -218,6 +224,30 @@ class ChatViewModelTest {
 
         assertEquals(UiPhase.Sending, vm.state.value.phase)
         gate.complete(Unit)
+    }
+
+    /**
+     * Le garde-fou anti-blocage (`armGrace`) doit exister **en propre**, pas seulement etre
+     * masque par l'acceptation du POST.
+     *
+     * ⚠️ Le `promptGate` n'est **jamais** complete : `POST /prompt` pend indefiniment, aucun
+     * evenement n'arrive. Sans `armGrace`, l'UI resterait bloquee en `Sending` pour toujours.
+     * C'est exactement le scenario du brief (reseau qui coupe), et le test jumeau du test
+     * « prompt accepte sans evenement » qui, lui, atteint `Awaiting` des l'acceptation.
+     */
+    @Test
+    fun `un POST prompt qui pend sans evenement rend la main apres le delai de grace`() {
+        val gateway = FakeGateway()
+        gateway.promptGate = CompletableDeferred()   // jamais complete : le POST pend
+        val vm = viewModel(gateway, FakeEventSource(), graceMillis = 150)
+
+        vm.send("bonjour")
+
+        // Aucun evenement, aucune acceptation : seul le garde-fou peut rendre la main.
+        val settled = awaitValue(vm.state) { it.phase == UiPhase.Awaiting }
+        assertEquals(UiPhase.Awaiting, settled.phase)
+        assertEquals(1, gateway.prompts, "le POST a bien ete tente")
+        assertTrue(settled.chat.messages.any { it.text == "bonjour" })
     }
 
     // ------------------------------------------------------------------
@@ -263,23 +293,150 @@ class ChatViewModelTest {
     @Test
     fun `le message utilisateur n'est pas duplique quand l'inbox confirme le prompt`() {
         val source = FakeEventSource()
-        val vm = viewModel(FakeGateway(), source)
+        val gateway = FakeGateway()
+        val vm = viewModel(gateway, source)
 
         vm.send("bonjour")
         settle()
-        // Le serveur renvoie le meme message utilisateur avec son vrai id d'inbox.
+        // Le serveur confirme avec le **meme id** que l'acceptation (mesure : inboxID ==
+        // PromptAcceptance.id == id REST du message user).
+        val acceptedId = gateway.lastAcceptedId!!
         runBlocking {
             source.events.emit(
                 ev(
                     "session.inbox.enqueued",
-                    "\"inboxID\":\"msg_inbox_1\",\"item\":{\"type\":\"user\",\"payload\":{\"text\":\"bonjour\"}}",
+                    "\"inboxID\":\"$acceptedId\",\"item\":{\"type\":\"user\",\"payload\":{\"text\":\"bonjour\"}}",
                 ),
             )
         }
 
-        val settled = awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_inbox_1" } }
+        val settled = awaitValue(vm.state) { st -> st.chat.messages.any { it.id == acceptedId } }
         val bonjours = settled.chat.messages.filter { it.role == Role.User && it.text == "bonjour" }
         assertEquals(1, bonjours.size, "le message utilisateur ne doit apparaitre qu'une fois")
+    }
+
+    /**
+     * ⚠️ Deux envois du **meme texte** avant confirmation : la dedup doit se faire par **id**,
+     * pas par texte. Sinon les deux optimistes sont retires d'un coup et un message disparait
+     * de l'ecran alors qu'il est bien parti au serveur.
+     */
+    @Test
+    fun `deux envois du meme texte ne disparaissent pas ensemble a la confirmation du premier`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        val vm = viewModel(gateway, source)
+
+        vm.send("ok")
+        settle()
+        vm.send("ok")
+        settle()
+        val acceptedFirst = "msg_accepted_1"
+
+        // Seul le PREMIER prompt est confirme (inbox) : le second reste optimiste.
+        runBlocking {
+            source.events.emit(
+                ev(
+                    "session.inbox.enqueued",
+                    "\"inboxID\":\"$acceptedFirst\",\"item\":{\"type\":\"user\",\"payload\":{\"text\":\"ok\"}}",
+                ),
+            )
+        }
+
+        val settled = awaitValue(vm.state) { st -> st.chat.messages.any { it.id == acceptedFirst } }
+        val oks = settled.chat.messages.filter { it.role == Role.User && it.text == "ok" }
+        assertEquals(2, oks.size, "un seul optimiste doit etre retire (celui confirme)")
+    }
+
+    /**
+     * Course `session.inbox.enqueued` **avant** l'acceptation HTTP : l'optimiste n'a pas encore
+     * d'id serveur, la reconciliation ne peut se faire que par texte — et elle ne doit
+     * consommer **qu'une** occurrence, pas emporter un second envoi identique en attente.
+     */
+    @Test
+    fun `une inbox recue avant l'acceptation ne consomme qu'un envoi identique`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        val gate = CompletableDeferred<Unit>()
+        gateway.promptGate = gate
+        val vm = viewModel(gateway, source)
+
+        vm.send("ok")
+        settle()
+        vm.send("ok")
+        settle()
+
+        // L'inbox arrive alors que le POST pend encore (aucun id accepte connu).
+        runBlocking {
+            source.events.emit(
+                ev(
+                    "session.inbox.enqueued",
+                    "\"inboxID\":\"msg_inbox_a\",\"item\":{\"type\":\"user\",\"payload\":{\"text\":\"ok\"}}",
+                ),
+            )
+        }
+        Thread.sleep(60)
+
+        val afterInbox = vm.state.value.chat.messages
+        val oks = afterInbox.filter { it.role == Role.User && it.text == "ok" }
+        assertEquals(2, oks.size, "un message serveur ne consomme qu'un optimiste identique")
+        assertTrue(afterInbox.any { it.id == "msg_inbox_a" })
+    }
+
+    /**
+     * Un message serveur **ancien** portant le meme texte ne doit pas faire disparaitre un
+     * optimiste **fraichement accepte** : seul le message dont l'id correspond au prompt
+     * confirme l'optimiste. C'est ce qui rend le lien par id necessaire (le repli par texte
+     * seul consommerait n'importe quel message identique, meme anterieur).
+     */
+    @Test
+    fun `un ancien message de meme texte ne confirme pas un optimiste frais`() {
+        val source = FakeEventSource()
+        // Le REST/resync porte deja un « ok » ancien (id different).
+        val gateway = FakeGateway(dtos = listOf(MessageDto(id = "msg_old_ok", type = "user", text = "ok")))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_old_ok" } }
+
+        vm.send("ok")
+        settle()
+
+        val after = vm.state.value.chat.messages
+        val oks = after.filter { it.role == Role.User && it.text == "ok" }
+        assertEquals(2, oks.size, "l'optimiste doit survivre : seul son id exact le confirme")
+        assertTrue(after.any { it.id.startsWith("local-") }, "l'optimiste est encore affiche")
+    }
+
+    /**
+     * La resync REST ne doit **pas ecraser** les messages que le reducer a produits et que le
+     * mapper ne sait pas reconstruire (repli brut d'un contenu inconnu). Sinon, une
+     * reconnexion en plein tour fait disparaitre ce qui etait affiche.
+     */
+    @Test
+    fun `la resync conserve un message produit par le reducer et absent du REST`() {
+        val source = FakeEventSource(initial = ConnectionState.Disconnected)
+        // Le REST ne connait que le message utilisateur ; l'assistant (repli brut) vient du flux.
+        val gateway = FakeGateway(dtos = listOf(MessageDto(id = "msg_u", type = "user", text = "salut")))
+        val vm = viewModel(gateway, source)
+
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_u" } }
+        runBlocking {
+            source.events.emit(
+                ev("session.message.content.updated", "\"assistantMessageID\":\"msg_partiel\",\"type\":\"inconnu\"", session = "ses_1"),
+            )
+        }
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_partiel" } }
+        val callsBefore = gateway.messagesCalls
+
+        // Une reconnexion declenche une resync : le message du reducer doit survivre.
+        source.setState(ConnectionState.Connected)
+
+        // On attend que la resync ait REELLEMENT tourne avant d'observer le resultat, sinon
+        // l'assertion passerait sur l'etat d'avant la resync.
+        awaitValue(vm.state) { gateway.messagesCalls > callsBefore }
+        Thread.sleep(60)
+
+        val after = vm.state.value.chat.messages
+        assertTrue(after.any { it.id == "msg_partiel" }, "message du reducer conserve")
+        assertTrue(after.any { it.id == "msg_u" }, "message REST present")
     }
 
     // ------------------------------------------------------------------

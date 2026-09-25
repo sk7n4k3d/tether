@@ -5,11 +5,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -80,13 +85,46 @@ fun ChatScreen(
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // Auto-scroll : on reste colle au bas quand le contenu grandit (streaming).
-    val itemCount = state.chat.messages.size +
-        (if (state.chat.streamingText != null || state.chat.streamingReasoning != null ||
+    // Auto-scroll pendant le stream.
+    //
+    // ⚠️ La cle doit couvrir TOUT le contenu transitoire, pas seulement le texte : le mode
+    // reel de ce modele est le **raisonnement** (et les outils). Se limiter a `streamingText`
+    // laissait la vue figee pendant un long `reasoning` (constate sur le Pixel).
+    val transientLength = (state.chat.streamingText?.length ?: 0) +
+        (state.chat.streamingReasoning?.length ?: 0) +
+        state.chat.streamingTools.size
+    val itemCount = state.chat.messages.size + (if (transientLength > 0) 1 else 0)
+
+    // On ne recentre **ensuite** que si l'utilisateur etait deja en bas : sinon, relire
+    // l'historique pendant un stream serait impossible (le scroll serait ramene de force).
+    var stickToBottom by remember { mutableStateOf(true) }
+    var firstScrollDone by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.canScrollForward }.collect { canScroll ->
+            // Tant qu'on n'a pas fait le premier saut, on ne se fie pas a la position
+            // initiale (haut de liste = « peut descendre » = faux negatif).
+            if (firstScrollDone) stickToBottom = !canScroll
+        }
+    }
+    LaunchedEffect(itemCount, transientLength) {
+        if (itemCount == 0) return@LaunchedEffect
+        if (!firstScrollDone) {
+            // Ouverture d'une session : on rejoint le bas, en douceur.
+            listState.animateScrollToItem(itemCount - 1)
+            firstScrollDone = true
+            return@LaunchedEffect
+        }
+        if (!stickToBottom) return@LaunchedEffect
+        val streaming = state.chat.streamingText != null ||
+            state.chat.streamingReasoning != null ||
             state.chat.streamingTools.isNotEmpty()
-        ) 1 else 0)
-    LaunchedEffect(itemCount, state.chat.streamingText) {
-        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+        if (streaming) {
+            // ⚠️ `scrollToItem` **instantané** a chaque token : `animateScrollToItem` serait
+            // annule puis relance en continu (clignotement, et O(n) par delta).
+            listState.scrollToItem(itemCount - 1)
+        } else {
+            listState.animateScrollToItem(itemCount - 1)
+        }
     }
 
     Scaffold(
@@ -121,7 +159,15 @@ fun ChatScreen(
             // en consommant l'inset IME ici et nulle part ailleurs. `adjustNothing` dans le
             // manifest empeche le systeme de **panoramiquer** la fenetre vers le haut (ce qui
             // faisait disparaitre la barre de titre). Mesure : Pixel 1080x2404, IME 986 px.
-            Column(modifier = Modifier.imePadding()) {
+            //
+            // `union(ime, navigationBars)` : clavier **ferme**, l'inset IME vaut 0 et, sans
+            // la barre de navigation, le champ se dessinait **sous** la pill de gestes
+            // (visible sur la capture « avant envoi »). L'union couvre les deux cas.
+            Column(
+                modifier = Modifier.windowInsetsPadding(
+                    WindowInsets.ime.union(WindowInsets.navigationBars),
+                ),
+            ) {
                 state.error?.let { error ->
                     Text(
                         text = error,

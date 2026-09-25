@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
+import sh.sk7.tether.data.event.EventSourceFactory
 import sh.sk7.tether.data.event.OcEvent
 import sh.sk7.tether.data.repository.EventReducer
 import sh.sk7.tether.data.settings.ConnectionSettings
@@ -58,20 +59,6 @@ data class ChatUiState(
 }
 
 /**
- * Construit une [EventSource] pour les reglages courants.
- *
- * `EventStream` depend de l'URL de base et des identifiants, qui changent avec les reglages :
- * on le construit donc **a la demande** plutot qu'a l'injection. C'est aussi la couture qui
- * rend le ViewModel testable en JVM (on injecte une fausse source).
- *
- * `suspend` : les identifiants sont resolus via le `CredentialsProvider` partage au moment
- * de la connexion.
- */
-fun interface EventStreamFactory {
-    suspend fun create(settings: ConnectionSettings): EventSource
-}
-
-/**
  * Detient l'etat de l'ecran de chat et l'alimente de deux sources :
  * - le **flux SSE** ([EventSource]) pour le direct, filtre sur la session affichee ;
  * - le **REST** ([OpenCodeGateway]) a chaque connexion et reconnexion, seule source de
@@ -84,7 +71,7 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val store: ConnectionStore,
     private val gateway: OpenCodeGateway,
-    private val streamFactory: EventStreamFactory,
+    private val streamFactory: EventSourceFactory,
     @param:IoDispatcher
     private val dispatcher: CoroutineDispatcher,
     /** Delai sans evenement avant de rendre la main (etat stable, reessayable). */
@@ -105,6 +92,14 @@ class ChatViewModel @Inject constructor(
 
     private var settings: ConnectionSettings? = null
     private var graceJob: Job? = null
+
+    /**
+     * Lien id-local (`local-N`) -> id serveur accepte (`msg_*`) pour chaque optimiste.
+     *
+     * `PromptAcceptance.id` **est** l'id REST du message utilisateur : c'est lui qui permet
+     * une confirmation exacte, plutot qu'une comparaison de textes (voir [dedupeOptimistic]).
+     */
+    private val acceptedOptimistic = mutableMapOf<String, String>()
 
     init {
         start()
@@ -175,25 +170,73 @@ class ChatViewModel @Inject constructor(
     /**
      * Retire les messages optimistes desormais confirmes par une source serveur.
      *
-     * Le prompt reste affiche immediatement, mais l'evenement `session.inbox.enqueued` (ou la
-     * resync REST) ajoute le **meme** message avec son vrai id : sans ce nettoyage, l'ecran
-     * montre deux fois le message de l'utilisateur (constate sur le Pixel).
+     * La confirmation se fait **par id** : `PromptAcceptance.id` renvoye par `POST /prompt`
+     * **est** l'id REST du message utilisateur (verifie sur le serveur : l'id accepte apparait
+     * ensuite dans `GET /session/{id}/message`). [acceptedOptimistic] garde le lien
+     * id-local -> id-serveur ; des que le message serveur de cet id existe, l'optimiste part.
+     *
+     * ⚠️ Ne JAMAIS dedupliquer principalement par texte : deux envois du meme texte avant
+     * confirmation disparaitraient **ensemble** alors que les deux sont partis au serveur.
+     *
+     * Le repli par texte ne subsiste que pour un optimiste **pas encore accepte** (absent de
+     * [acceptedOptimistic]) : on ne le retire que si un message serveur strictement identique
+     * existe deja. C'est ce qui couvre l'arrivee de `session.inbox.enqueued` avant que
+     * l'acceptation HTTP ne soit traitee.
      */
     private fun dedupeOptimistic(chat: SessionUiState): SessionUiState {
-        if (chat.messages.none { it.id.startsWith(OPTIMISTIC_PREFIX) }) return chat
-        val confirmed = chat.messages.filterNot { it.id.startsWith(OPTIMISTIC_PREFIX) }
-        val kept = chat.messages.filter { local ->
-            !local.id.startsWith(OPTIMISTIC_PREFIX) ||
-                confirmed.none { it.role == Role.User && it.text == local.text }
+        val hasOptimistic = chat.messages.any { it.id.startsWith(OPTIMISTIC_PREFIX) }
+        if (!hasOptimistic) return chat
+
+        val serverMessages = chat.messages.filterNot { it.id.startsWith(OPTIMISTIC_PREFIX) }
+        val serverIds = serverMessages.map { it.id }.toHashSet()
+
+        // Compteur des messages serveur utilisateur par texte, **consomme** au fur et a mesure :
+        // un message serveur confirme **un** optimiste, pas tous ceux qui partagent son texte.
+        val availableByText = serverMessages
+            .filter { it.role == Role.User }
+            .groupingBy { it.text }
+            .eachCount()
+            .toMutableMap()
+
+        val kept = chat.messages.filter { message ->
+            if (!message.id.startsWith(OPTIMISTIC_PREFIX)) return@filter true
+            val acceptedId = acceptedOptimistic[message.id]
+            if (acceptedId != null) {
+                // Lien exact par id (cas nominal : inboxID == PromptAcceptance.id == id REST).
+                acceptedId !in serverIds
+            } else {
+                // Course ou l'inbox arrive avant l'acceptation HTTP : on ne peut lier que par
+                // texte, et on ne consomme **qu'une** occurrence (FIFO) pour ne pas emporter
+                // un deuxieme envoi identique encore en attente.
+                val remaining = availableByText[message.text] ?: 0
+                if (remaining > 0) {
+                    availableByText[message.text] = remaining - 1
+                    false
+                } else {
+                    true
+                }
+            }
         }
-        return if (kept.size == chat.messages.size) chat else chat.copy(messages = kept)
+        if (kept.size == chat.messages.size) return chat
+
+        // Purge les liens des optimistes desormais retires (pas de croissance sans borne).
+        val keptLocalIds = kept.filter { it.id.startsWith(OPTIMISTIC_PREFIX) }.map { it.id }.toHashSet()
+        acceptedOptimistic.keys.retainAll(keptLocalIds)
+        return chat.copy(messages = kept)
     }
 
     /**
      * Recharge l'historique depuis le REST (verite de l'etat).
      *
-     * Les messages optimistes (envoyes localement mais pas encore presents cote serveur) sont
-     * conserves, dedupliques par texte pour ne pas afficher deux fois le meme message.
+     * **Fusion par id**, pas ecrasement : le REST fait foi pour les ids qu'il porte, mais les
+     * messages **absents** du REST sont conserves.
+     *
+     * ⚠️ Ecraser (`messages = fromRest`) perdrait les messages produits par le reducer que le
+     * mapper ne sait pas reconstruire : repli brut de `session.message.content.updated`
+     * ([EventReducer]), ou type de message inconnu du mapper. Sur une **reconnexion en milieu
+     * de tour** (le scenario meme du brief), ils disparaitraient de l'ecran.
+     *
+     * Les optimistes sont ensuite reconcilies par [dedupeOptimistic] (par id).
      */
     fun resync() {
         val current = settings ?: return
@@ -201,12 +244,11 @@ class ChatViewModel @Inject constructor(
             try {
                 val dtos = gateway.allMessages(current, sessionID)
                 val fromRest = ChatMessageMapper.fromDtos(dtos)
+                val restIds = fromRest.map { it.id }.toHashSet()
                 _state.update { state ->
-                    val optimistic = state.chat.messages.filter { local ->
-                        local.id.startsWith(OPTIMISTIC_PREFIX) &&
-                            fromRest.none { it.role == Role.User && it.text == local.text }
-                    }
-                    state.copy(chat = state.chat.copy(messages = fromRest + optimistic))
+                    val absentFromRest = state.chat.messages.filter { it.id !in restIds }
+                    val merged = state.chat.copy(messages = fromRest + absentFromRest)
+                    state.copy(chat = dedupeOptimistic(merged))
                 }
                 loadTitle(current)
             } catch (e: Exception) {
@@ -266,12 +308,18 @@ class ChatViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                gateway.prompt(current, sessionID, body)
+                val accepted = gateway.prompt(current, sessionID, body)
+                // ⚠️ `accepted.id` EST l'id REST du message utilisateur : on le retient pour
+                // dedupliquer par id (et non par texte) des sa prochaine apparition.
+                acceptedOptimistic[optimistic.id] = accepted.id
                 // Accepte : etat stable. Le flux peut ne jamais livrer (reseau coupe).
                 _state.update { if (it.phase == UiPhase.Sending) it.copy(phase = UiPhase.Awaiting) else it }
+                // L'inbox a pu arriver avant l'acceptation : on reconcilie maintenant.
+                _state.update { it.copy(chat = dedupeOptimistic(it.chat)) }
                 cancelGrace()
             } catch (e: Exception) {
                 cancelGrace()
+                acceptedOptimistic.remove(optimistic.id)
                 _state.update {
                     it.copy(
                         chat = it.chat.copy(messages = it.chat.messages - optimistic),

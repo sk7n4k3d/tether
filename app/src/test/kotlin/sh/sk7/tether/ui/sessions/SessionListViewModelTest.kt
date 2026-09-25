@@ -70,12 +70,6 @@ class SessionListViewModelTest {
             return ServerInfo(version = "2.0.x")
         }
 
-        override suspend fun sessions(settings: ConnectionSettings): List<Session> {
-            sessionsCalls++
-            failure?.let { throw it }
-            return sessions
-        }
-
         override suspend fun models(settings: ConnectionSettings): List<Model> {
             failure?.let { throw it }
             return models

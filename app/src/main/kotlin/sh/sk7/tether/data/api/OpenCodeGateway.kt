@@ -18,8 +18,6 @@ import javax.inject.Singleton
 interface OpenCodeGateway {
     suspend fun info(settings: ConnectionSettings): ServerInfo
 
-    suspend fun sessions(settings: ConnectionSettings): List<Session>
-
     /**
      * Toutes les sessions du repertoire, **pagination suivie**.
      *
@@ -43,6 +41,13 @@ interface OpenCodeGateway {
         return all
     }
 
+    /**
+     * Une page de `GET /api/session`.
+     *
+     * ⚠️ Il n'existe **pas** de `sessions()` non pagine : une telle methode renverrait 50
+     * elements par defaut et tronquerait la liste en silence. Toujours passer par
+     * [allSessions] ou par cette page explicite.
+     */
     suspend fun sessionsPage(
         settings: ConnectionSettings,
         limit: Int?,
@@ -116,9 +121,6 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun info(settings: ConnectionSettings): ServerInfo =
         client(settings).info()
-
-    override suspend fun sessions(settings: ConnectionSettings): List<Session> =
-        client(settings).sessionsPage(settings.directory).data
 
     override suspend fun sessionsPage(
         settings: ConnectionSettings,
