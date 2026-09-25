@@ -66,7 +66,7 @@ object EventReducer {
 
             // --- Inbox ---
             "session.inbox.enqueued" -> onInboxEnqueued(state, event.data)
-            "session.inbox.delivered" -> state
+            "session.inbox.delivered" -> onInboxDelivered(state, event.data)
 
             // --- Instructions ---
             "session.instructions.updated" -> onInstructionsUpdated(state, event.data)
@@ -227,14 +227,40 @@ object EventReducer {
         // ⚠️ `as?` et non `jsonObject` : un item primitif/tableau ne doit pas lever.
         val item = data["item"] as? JsonObject
         val text = (item?.get("payload") as? JsonObject)?.str("text")
+        // ⚠️ Le mode de livraison vit dans l'item (`delivery`), capture reelle du 2026-09-25 :
+        // `{"item":{"payload":{"text":"…"},"delivery":"queue"}}`. On le porte sur le message pour
+        // que le chat le DISE au lieu de jeter la distinction `steer` / `queue`.
+        val delivery = (item?.get("delivery") as? JsonPrimitive)?.contentOrNull
         // Item sans texte (piece jointe, image) : on conserve la charge brute de l'item
         // plutot que de faire disparaitre le message utilisateur sans trace.
         val message = if (text != null) {
-            ChatMessage(inboxID, Role.User, text = text)
+            ChatMessage(inboxID, Role.User, text = text, delivery = delivery)
         } else {
-            ChatMessage(inboxID, Role.User, rawFallback = (item ?: data).toJsonString())
+            ChatMessage(inboxID, Role.User, rawFallback = (item ?: data).toJsonString(), delivery = delivery)
         }
         return state.copy(messages = state.messages + message)
+    }
+
+    /**
+     * Le message est **remis a l'agent** : il n'est plus en file.
+     *
+     * ⚠️ C'est le seul signal fiable de sortie de file. `GET /api/session/{id}/message` ne
+     * l'expose pas : mesure du 2026-09-25, une session qui a deux prompts en file rend
+     * `count 0` — l'inbox vit a part de l'historique. Donc une resync REST ne peut pas retirer le
+     * mode : c'est `session.inbox.delivered` qui le fait, message par message.
+     *
+     * ⚠️ On ne retire **que** le marqueur, jamais le message : l'agent vient de le recevoir, il
+     * doit rester dans la conversation.
+     */
+    private fun onInboxDelivered(state: SessionUiState, data: JsonObject): SessionUiState {
+        val inboxID = data.str("inboxID") ?: return state
+        val index = state.messages.indexOfFirst { it.id == inboxID }
+        if (index < 0) return state
+        val current = state.messages[index]
+        if (current.delivery == null) return state
+        return state.copy(
+            messages = state.messages.toMutableList().also { it[index] = current.copy(delivery = null) },
+        )
     }
 
     // ------------------------------------------------------------------

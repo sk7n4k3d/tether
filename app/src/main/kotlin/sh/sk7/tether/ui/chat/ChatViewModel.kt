@@ -11,12 +11,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import sh.sk7.tether.data.api.Agent
@@ -34,6 +37,7 @@ import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.AwaitingGraceMillis
 import sh.sk7.tether.di.IoDispatcher
+import sh.sk7.tether.domain.model.Activity
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.SessionStatus
@@ -92,6 +96,18 @@ data class ChatUiState(
     val hasOlder: Boolean = false,
     /** Un chargement de messages anciens est en cours (indicateur en haut de la liste). */
     val loadingOlder: Boolean = false,
+
+    /**
+     * **Information neutre a montrer a l'utilisateur**, distincte d'une erreur.
+     *
+     * ⚠️ Pourquoi un champ a part et pas [error] : « rien ne bloquait, l'appel etait sans effet »
+     * n'est **pas** une panne. La ranger avec les erreurs ferait afficher en rouge un resultat
+     * normal, et banaliserait la couleur d'alerte qui doit rester rare.
+     */
+    val notice: String? = null,
+
+    /** Ids des messages en file dont l'annulation est en vol (desactive leur bouton). */
+    val cancelling: Set<String> = emptySet(),
 ) {
     val isBusy: Boolean get() = phase == UiPhase.Sending || phase == UiPhase.Streaming
 }
@@ -153,7 +169,7 @@ class ChatViewModel @Inject constructor(
     val commands: StateFlow<List<CommandDto>> = _commands.asStateFlow()
 
     /**
-     * Les modeles et agents disponibles, pour le selecteur d'envoi.
+     * **Les modèles et agents disponibles**, pour le sélecteur d'envoi.
      *
      * ⚠️ Meme regle que les commandes : charge une fois, echec silencieux. Un selecteur vide
      * degrade l'experience, il ne la casse pas.
@@ -163,6 +179,22 @@ class ChatViewModel @Inject constructor(
 
     private val _agents = MutableStateFlow<List<Agent>>(emptyList())
     val agents: StateFlow<List<Agent>> = _agents.asStateFlow()
+
+    /**
+     * **L'activite de CETTE session, vue par le detenteur partage.**
+     *
+     * ⚠️ Distincte de [ChatUiState.phase] : la phase vient du flux SSE, donc elle ne sait rien
+     * d'un tour deja en cours **avant** l'ouverture de l'ecran ou pendant une coupure du flux. Le
+     * detenteur partage interroge le serveur periodiquement, donc il sait. C'est ce qui fait
+     * apparaitre l'action « passer en arriere-plan » sur une session qu'on vient d'ouvrir.
+     *
+     * ⚠️ **Un `val`, jamais un `get()`** : un accesseur qui reconstruirait le flux a chaque
+     * lecture abonnerait une collection de plus a chaque recomposition — fuite garantie, et
+     * autant d'abonnements que de frames.
+     */
+    val sessionActivity: StateFlow<Activity?> = activity.state
+        .map { it.bySession[sessionID]?.activity }
+        .stateIn(scope, SharingStarted.Eagerly, null)
 
     private var settings: ConnectionSettings? = null
     private var graceJob: Job? = null
@@ -191,6 +223,11 @@ class ChatViewModel @Inject constructor(
     private val preexistingUserIds = mutableMapOf<String, Set<String>>()
 
     init {
+        // ⚠️ On s'abonne au détenteur d'état partagé : sans cela, ouvrir le chat **directement**
+        // (deep link de notification) laisserait `sessionActivity` vide, puisque aucun autre écran
+        // ne fait tourner la boucle. Le bouton « arrière-plan » ne saurait alors pas qu'un tour
+        // est en cours.
+        activity.acquire()
         // ⚠️ Charge avant tout envoi : l'utilisateur peut taper `/` des la premiere seconde, et
         // un selecteur vide a ce moment-la ferait croire que le serveur n'a aucune commande.
         loadReferenceData()
@@ -199,6 +236,9 @@ class ChatViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        // ⚠️ Toujours relâcher, même si l'écran est détruit par une erreur : un abonnement qui
+        // fuit laisserait la boucle allumée pour toute la vie du processus.
+        activity.release()
         scope.cancel()
     }
 
@@ -440,6 +480,14 @@ class ChatViewModel @Inject constructor(
                 val dtos = gateway.recentMessages(current, sessionID, ChatWindow.SERVER_PAGE)
                 val fromRest = ChatMessageMapper.fromDtos(dtos)
                 val restIds = fromRest.map { it.id }.toHashSet()
+                // ⚠️ La file est lue **en plus** de l'historique, et pas dedans : mesure du
+                // 2026-09-25, un message en file n'apparait PAS dans `GET /message` (une session
+                // a deux prompts en file rend `count 0`). Sans cette lecture, un message en
+                // attente anterieur a l'ouverture de l'app serait invisible — alors que c'est le
+                // cas principal, puisque l'inbox vit pendant que le serveur travaille.
+                val inbox = runCatching { gateway.sessionInbox(current, sessionID) }
+                    .getOrDefault(emptyList())
+                val queued = ChatMessageMapper.fromInboxItems(inbox)
                 _state.update { state ->
                     // ⚠️ On ne remplace PAS tout : les messages plus anciens deja charges par
                     // [loadOlder] doivent survivre a une resync, sinon remonter puis perdre la
@@ -447,17 +495,126 @@ class ChatViewModel @Inject constructor(
                     // ⚠️ Ordre : [anciens charges] + [fenetre recente du REST]. Les anciens
                     // sont ceux que [loadOlder] a remontes ; ils gardent leur place en tete.
                     val alreadyOlder = state.chat.messages.filter { it.id !in restIds }
+                    // ⚠️ Ordre : on **fusionne la file d'abord**, puis on déduplique. L'item
+                    // d'inbox porte l'id serveur du message envoyé (`accepted.id`), donc le faire
+                    // entrer avant [dedupeOptimistic] permet à l'optimiste d'être reconnu par id —
+                    // l'inverse laisserait temporairement les deux à l'écran.
                     val merged = state.chat.copy(messages = alreadyOlder + fromRest)
+                    val withInbox = ChatMessageMapper.mergeInbox(merged.messages, queued)
                     state.copy(
-                        chat = dedupeOptimistic(merged),
+                        chat = dedupeOptimistic(merged.copy(messages = withInbox)),
                         hasOlder = state.hasOlder || dtos.size >= ChatWindow.SERVER_PAGE,
                     )
                 }
+                // ⚠️ On pousse le compte de file au détenteur d'état partagé : c'est la seule
+                // session dont on connait l'inbox, et c'est ce qui fait vivre la priorité
+                // « en file » de l'en-tête (voir `ActivityMonitor.publishQueue`).
+                activity.publishQueue(sessionID, queued.size)
                 loadMeta(current)
             } catch (e: Exception) {
                 // Une resync ratee ne doit pas effacer ce qui est deja affiche.
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
             }
+        }
+    }
+
+    /**
+     * **Recharge seulement la file d'attente** (`GET /inbox`).
+     *
+     * ⚠️ Chemin leger et distinct de [resync] : on ne recharge tout l'historique que pour savoir
+     * ce qui attend. Appele apres l'envoi d'un prompt (le message part en file) et apres une
+     * annulation (le serveur est la verite, on ne devine pas l'effet localement).
+     */
+    fun refreshQueue() {
+        scope.launch {
+            val current = settings ?: store.current().also { settings = it }
+            if (!current.isConfigured) return@launch
+            runCatching { gateway.sessionInbox(current, sessionID) }
+                .onSuccess { inbox ->
+                    val queued = ChatMessageMapper.fromInboxItems(inbox)
+                    _state.update { state ->
+                        val withInbox = ChatMessageMapper.mergeInbox(state.chat.messages, queued)
+                        state.copy(chat = dedupeOptimistic(state.chat.copy(messages = withInbox)))
+                    }
+                    activity.publishQueue(sessionID, queued.size)
+                }
+                .onFailure { e ->
+                    android.util.Log.w("TetherChat", "lecture de la file impossible", e)
+                }
+        }
+    }
+
+    /**
+     * **Annule un message en file** (`DELETE /session/{id}/inbox/{inboxID}`).
+     *
+     * ⚠️ Reponse directe a l'issue #4821 (126 👍) : un message soumis pendant que l'agent tourne
+     * part en file et, sans cette route, **ne peut plus etre annule**. C'est exactement le
+     * probleme qu'un client compagnon doit resoudre.
+     *
+     * ⚠️ On retire le message **optimistement** (l'appel est en vol) puis on **relit la file** :
+     * le serveur est la verite, et une annulation refusee doit faire revenir le message plutot que
+     * de laisser croire a un succes. ⚠️ `DELETE` rend **204 meme sur un id inconnu** (mesure), donc
+     * un `isSuccess` ne prouve pas que l'entree existait : c'est la relecture qui tranche.
+     */
+    fun cancelQueued(inboxID: String) {
+        if (inboxID in _state.value.cancelling) return
+        _state.update { it.copy(cancelling = it.cancelling + inboxID) }
+        scope.launch {
+            val current = settings ?: store.current().also { settings = it }
+            val ok = runCatching { gateway.dismissInbox(current, sessionID, inboxID) }.getOrDefault(false)
+            _state.update { state ->
+                val kept = if (ok) {
+                    state.chat.messages.filterNot { it.id == inboxID }
+                } else {
+                    state.chat.messages
+                }
+                state.copy(
+                    chat = state.chat.copy(messages = kept),
+                    cancelling = state.cancelling - inboxID,
+                    notice = if (ok) "Message retiré de la file." else "Annulation refusée par le serveur.",
+                )
+            }
+            refreshQueue()
+        }
+    }
+
+    /** Efface l'information neutre (apres l'avoir montree). */
+    fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    /**
+     * **Deplace les outils bloquants en observation d'arriere-plan**
+     * (`POST /session/{id}/background`).
+     *
+     * ⚠️ Mesure du 2026-09-25 : la route repond **204** sur une session existante et **404** sur
+     * une session inconnue — elle est saine, contrairement a `POST /shell` qui rend **500** sur ce
+     * serveur. On peut donc l'exposer.
+     *
+     * ⚠️ **C'est un no-op si rien ne bloque** (doc serveur : « Idle requests are a no-op »). On le
+     * dit a l'utilisateur au lieu de le laisser croire a un echec : une action sans effet n'est pas
+     * une panne, et l'annoncer en rouge serait faux.
+     */
+    fun backgroundTools() {
+        scope.launch {
+            val current = settings ?: store.current().also { settings = it }
+            if (!current.isConfigured) {
+                _state.update { it.copy(error = "Aucun serveur configuré.") }
+                return@launch
+            }
+            runCatching { gateway.backgroundTools(current, sessionID) }
+                .onSuccess { ok ->
+                    _state.update {
+                        it.copy(
+                            notice = if (ok) {
+                                "Outils déplacés en arrière-plan s'il y en avait."
+                            } else {
+                                "Le serveur a refusé la mise en arrière-plan."
+                            },
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(error = ConnectionErrors.describe(e)) }
+                }
         }
     }
 
@@ -580,6 +737,10 @@ class ChatViewModel @Inject constructor(
                 _state.update { if (it.phase == UiPhase.Sending) it.copy(phase = UiPhase.Awaiting) else it }
                 // L'inbox a pu arriver avant l'acceptation : on reconcilie maintenant.
                 _state.update { it.copy(chat = dedupeOptimistic(it.chat)) }
+                // ⚠️ Un prompt envoye pendant que le serveur tourne part en **file** : on relit
+                // l'inbox pour afficher son mode (`steer` / `queue`) sans attendre un evenement
+                // qui, si le flux est coupe, n'arrivera jamais.
+                refreshQueue()
                 cancelGrace()
             } catch (e: Exception) {
                 cancelGrace()

@@ -27,7 +27,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Lucide
+import sh.sk7.tether.push.APPROVE_ROUTE
 import sh.sk7.tether.push.NotificationPermissionRequest
+import sh.sk7.tether.push.routeFromUri
 import sh.sk7.tether.ui.chat.ChatScreen
 import sh.sk7.tether.ui.permissions.PermissionsScreen
 import sh.sk7.tether.ui.server.ServerScreen
@@ -97,29 +99,35 @@ object Routes {
 }
 
 /**
- * **Deep link `opencode://session/<sessionID>`** — ouvre directement une conversation.
+ * **Extrait la destination d'un intent**, ou `null` si ce n'est pas un deep link valide.
+ *
+ * ### Deux cibles
+ *  - `opencode://session/<sessionID>` — ouvrir une conversation (format figé par le publieur) ;
+ *  - `opencode://approve` — ouvrir les approbations (tâche 2.5), cible des notifications de
+ *    décision construites par l'app.
  *
  * ### Pourquoi c'est indispensable
- * Sans lui, taper une notification ouvre la **liste** : l'utilisateur sait qu'il s'est passe
- * quelque chose mais doit retrouver la session a la main parmi 440. Une notification qui ne
- * mene pas a son sujet est une notification qu'on finit par ignorer.
+ * Sans deep link, taper une notification ouvre la **liste** : l'utilisateur sait qu'il s'est passé
+ * quelque chose mais doit retrouver la session à la main parmi 440. Une notification qui ne mène
+ * pas à son sujet est une notification qu'on finit par ignorer.
  *
- * ### Le format est fige par le publieur
- * Le plugin opencode envoie `opencode://session/<id>` (en-tete `Click` de ntfy). C'est ce
- * contrat-la qu'on respecte ici — on ne le redefinit pas.
+ * ⚠️ **Correction mesurée (2026-09-25)** : le `Click` du plugin (`opencode://session/<id>`) ne
+ * peut **pas** arriver par le push — le distributeur UnifiedPush ne transmet que le message et
+ * l'instance, jamais les en-têtes ntfy. Ce format reste correct pour tout ce qui ouvre l'app depuis
+ * ailleurs, mais c'est désormais **l'app** qui choisit sa destination (voir
+ * [sh.sk7.tether.push.targetFor]).
  *
  * ⚠️ On accepte l'ID **tel quel**, sans le valider contre une liste : un ID inconnu donne une
- * session vide, ce qui est un echec inoffensif. Refuser l'ouverture serait pire (l'utilisateur
- * verrait l'app ne rien faire du tout).
+ * session vide, échec inoffensif. Refuser l'ouverture serait pire — l'utilisateur verrait l'app ne
+ * rien faire du tout.
+ *
+ * ⚠️ On retourne une **route de navigation**, pas seulement un id : c'est ce qui permet au deep
+ * link de mener à un écran autre que le chat.
  */
-private const val DEEP_LINK_SCHEME = "opencode"
-private const val DEEP_LINK_HOST = "session"
-
-/** Extrait l'ID de session d'un intent, ou `null` si ce n'est pas un deep link valide. */
-fun sessionIDFromIntent(intent: Intent?): String? {
+fun routeFromIntent(intent: Intent?): String? {
     val uri = intent?.data ?: return null
-    if (uri.scheme != DEEP_LINK_SCHEME || uri.host != DEEP_LINK_HOST) return null
-    return uri.pathSegments.firstOrNull()?.takeIf { it.isNotBlank() }
+    val route = routeFromUri(uri.scheme, uri.host, uri.pathSegments) ?: return null
+    return if (route == APPROVE_ROUTE) Routes.PERMISSIONS else Routes.chat(route)
 }
 
 /**
@@ -156,12 +164,12 @@ fun TetherNavHost(
     DisposableEffect(activity, navController) {
         if (activity == null) return@DisposableEffect onDispose { }
         // Intent deja present (lancement depuis la notification).
-        sessionIDFromIntent(activity.intent)?.let { sessionID ->
-            navController.navigate(Routes.chat(sessionID))
+        routeFromIntent(activity.intent)?.let { route ->
+            navController.navigate(route)
         }
         val listener = androidx.core.util.Consumer<Intent> { intent ->
-            sessionIDFromIntent(intent)?.let { sessionID ->
-                navController.navigate(Routes.chat(sessionID))
+            routeFromIntent(intent)?.let { route ->
+                navController.navigate(route)
             }
         }
         activity.addOnNewIntentListener(listener)

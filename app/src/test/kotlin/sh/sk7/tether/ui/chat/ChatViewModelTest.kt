@@ -211,6 +211,45 @@ class ChatViewModelTest {
             Session(id = "ses_fork", title = "fork")
 
         override suspend fun compactSession(settings: ConnectionSettings, sessionID: String): Boolean = true
+
+        // ------------------------------------------------------------------
+        // File d'attente et arriere-plan (palier 1.8 / 1.9)
+        // ------------------------------------------------------------------
+
+        /** Inbox servie au ViewModel, pilotee par le test. */
+        @Volatile
+        var inbox: List<sh.sk7.tether.data.api.InboxItemDto> = emptyList()
+        var inboxCalls = 0
+        var dismissCalls = 0
+        var lastDismissed: String? = null
+        var backgroundCalls = 0
+
+        override suspend fun sessionInbox(
+            settings: ConnectionSettings,
+            sessionID: String,
+        ): List<sh.sk7.tether.data.api.InboxItemDto> {
+            inboxCalls++
+            return inbox
+        }
+
+        override suspend fun dismissInbox(
+            settings: ConnectionSettings,
+            sessionID: String,
+            inboxID: String,
+        ): Boolean {
+            dismissCalls++
+            lastDismissed = inboxID
+            inbox = inbox.filterNot { it.id == inboxID }
+            return true
+        }
+
+        override suspend fun backgroundTools(
+            settings: ConnectionSettings,
+            sessionID: String,
+        ): Boolean {
+            backgroundCalls++
+            return true
+        }
     }
 
     private fun viewModel(
@@ -644,6 +683,121 @@ class ChatViewModelTest {
             ids.indexOf("msg_ancien") < ids.indexOf("msg_0"),
             "l'ancien doit etre devant, obtenu ${ids.take(4)}",
         )
+    }
+
+    // ------------------------------------------------------------------
+    // File d'attente (palier 1.8)
+    // ------------------------------------------------------------------
+
+    private fun queuedItem(
+        id: String,
+        text: String,
+        delivery: String,
+    ) = sh.sk7.tether.data.api.InboxItemDto(
+        id = id,
+        type = "user",
+        payload = Json.parseToJsonElement("""{"text":"$text"}""").jsonObject,
+        delivery = delivery,
+    )
+
+    @Test
+    fun `la file est chargee a l ouverture avec son mode`() {
+        // ⚠️ Cas principal : un message en file anterieur a l'ouverture de l'app n'a produit aucun
+        // evenement SSE pour nous. Sans la lecture REST de l'inbox, il serait invisible.
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_q", "attends", "queue"))
+
+        val vm = viewModel(gateway, source)
+
+        val settled = awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_q" } }
+        val queued = settled.chat.messages.single { it.id == "msg_q" }
+        assertTrue(queued.isQueued)
+        assertEquals("queue", queued.delivery)
+    }
+
+    @Test
+    fun `annuler un message en file appelle le serveur et le retire`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_q", "attends", "queue"))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_q" } }
+
+        vm.cancelQueued("msg_q")
+
+        awaitValue(vm.state) { st -> st.chat.messages.none { it.id == "msg_q" } }
+        assertEquals(1, gateway.dismissCalls)
+        assertEquals("msg_q", gateway.lastDismissed)
+        assertTrue(vm.state.value.notice != null, "l'annulation est annoncee")
+    }
+
+    @Test
+    fun `un envoi pendant un tour rend le message visible dans la file`() {
+        // ⚠️ Le prompt part en file pendant que le serveur tourne. On relit l'inbox apres
+        // l'acceptation : le mode (`steer`/`queue`) ne doit pas attendre un evenement qui,
+        // flux coupe, n'arrivera jamais.
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_accepted_1", "bonjour", "queue"))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.title != null }
+
+        vm.send("bonjour")
+
+        val settled = awaitValue(vm.state) { st ->
+            st.chat.messages.any { it.id == "msg_accepted_1" && it.isQueued }
+        }
+        assertTrue(settled.chat.messages.none { it.id.startsWith("local-") && it.isQueued })
+        assertTrue(gateway.inboxCalls >= 2, "l'inbox est relue apres l'envoi")
+    }
+
+    @Test
+    fun `retirer un message en file ne le retire pas de la conversation`() {
+        // ⚠️ Un message **livre** (absent de l'inbox) doit RESTER : l'annulation ne concerne que ce
+        // qui attend encore. Le supprimer ferait disparaitre un message que l'agent a recu.
+        val source = FakeEventSource()
+        val gateway = FakeGateway(
+            dtos = listOf(MessageDto(id = "msg_u", type = "user", text = "deja envoye")),
+        )
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_u" } }
+
+        vm.refreshQueue()
+        Thread.sleep(60)
+
+        assertTrue(vm.state.value.chat.messages.any { it.id == "msg_u" })
+    }
+
+    // ------------------------------------------------------------------
+    // Arriere-plan (palier 1.9)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `backgroundTools appelle la route et annonce le resultat sans erreur`() {
+        // ⚠️ La route est un no-op quand rien ne bloque (doc serveur). Le resultat ne doit donc
+        // PAS partir dans `error` : ce n'est pas une panne, et rougir une action normale use la
+        // couleur d'alerte.
+        val gateway = FakeGateway()
+        val vm = viewModel(gateway, FakeEventSource())
+
+        vm.backgroundTools()
+
+        val settled = awaitValue(vm.state) { it.notice != null }
+        assertEquals(1, gateway.backgroundCalls)
+        assertEquals(null, settled.error)
+        assertTrue(settled.notice!!.contains("arrière-plan"))
+    }
+
+    @Test
+    fun `clearNotice efface l information`() {
+        val vm = viewModel(FakeGateway(), FakeEventSource())
+        vm.backgroundTools()
+        awaitValue(vm.state) { it.notice != null }
+
+        vm.clearNotice()
+
+        assertEquals(null, vm.state.value.notice)
     }
 
 }

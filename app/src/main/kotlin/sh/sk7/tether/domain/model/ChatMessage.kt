@@ -28,7 +28,29 @@ data class ChatMessage(
     val tools: List<ToolCall> = emptyList(),
     /** Charge d'un contenu de forme inconnue : affichee, jamais jetee (Review Focus n°4). */
     val rawFallback: String? = null,
-)
+    /**
+     * **Mode de livraison tant que ce message est ENCORE dans la file**, `null` sinon.
+     *
+     * ⚠️ C'est une mesure, pas une deduction : `Session.Inbox.Delivery` vaut **`steer`** (corrige
+     * le tour en cours) ou **`queue`** (attend son tour). La capture du 2026-09-25 sur
+     * `session.inbox.enqueued` donne exactement `"delivery":"queue"` / `"steer"`.
+     *
+     * ⚠️ La distinction est ce que les utilisateurs d'opencode reclamaient (issue #32157, 84 👍) et
+     * que l'app jetait : « en file » sans le mode ne dit pas si le message va interrompre le tour
+     * ou patienter.
+     *
+     * ⚠️ Le champ est **remis a `null` des que le message est livre** (`session.inbox.delivered`) :
+     * il redevient un message utilisateur ordinaire. Le garder ferait afficher « en file » sur un
+     * message deja remis a l'agent — c'est-a-dire l'inverse de la verite.
+     */
+    val delivery: String? = null,
+) {
+    /** Vrai tant que ce message attend encore dans la file (mode connu, non livre). */
+    val isQueued: Boolean get() = delivery != null
+
+    /** Vrai si ce message **corrige** le tour en cours plutot que d'attendre son tour. */
+    val isSteering: Boolean get() = delivery == "steer"
+}
 
 enum class Role { User, Assistant }
 

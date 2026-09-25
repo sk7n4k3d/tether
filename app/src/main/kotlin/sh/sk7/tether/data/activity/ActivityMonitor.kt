@@ -120,6 +120,55 @@ class ActivityMonitor @Inject constructor(
         )
     }
 
+    /**
+     * **Signale combien de messages attendent leur tour** dans une session, sans attendre le
+     * prochain cycle.
+     *
+     * ⚠️ Pourquoi ce chemin existe — et pourquoi le cycle périodique ne peut pas le remplacer :
+     * `GET /api/session/{id}/inbox` est une route **par session**. L'interroger pour les 200
+     * sessions chargées coûterait 200 requêtes par cycle de 12 s, ce qui est hors de question.
+     * Or l'écran de chat charge déjà l'inbox de la session affichée : il **pousse** donc le
+     * compte ici, comme il pousse déjà les sessions et le marquage vu.
+     *
+     * ⚠️ Conséquence assumée : la priorité « en file » de l'état global ne s'applique qu'aux
+     * sessions dont l'inbox a été lue. Une session en file qu'on n'a jamais ouverte ne remonte
+     * pas dans l'en-tête — on ne l'affirme pas, et on ne l'invente pas non plus. Sans ce
+     * mécanisme, `queuedCount` restait à **zéro pour toujours** : la priorité que le plan décrit
+     * ne s'exécutait jamais.
+     */
+    fun publishQueue(sessionID: String, count: Int) {
+        val current = _state.value.bySession[sessionID] ?: return
+        if (current.queuedCount == count) return
+        _state.value = _state.value.copy(
+            bySession = _state.value.bySession + (
+                sessionID to current.copy(
+                    queuedCount = count,
+                    // ⚠️ On rejoue la **même** precedence que [toActivity] sur les seuls etats
+                    // que la file peut faire bouger : `Waiting > Unseen > Running` restent
+                    // au-dessus (ils bloquent ou informent plus), `Queued` passe devant `Failed`
+                    // et `Idle`. Sans cette reevaluation, un message pousse en file n'apparaitrait
+                    // qu'au cycle suivant (12 s) — visiblement en retard.
+                    activity = requeuedActivity(current.activity, count),
+                )
+                ),
+        )
+    }
+
+    /**
+     * L'activite telle qu'elle doit etre apres un changement de **file d'attente**.
+     *
+     * ⚠️ Miroir partiel de [Session.toActivity] : les etats superieurs a `Queued` dans l'ordre
+     * (`Waiting`, `Unseen`, `Running`) sont **conserves** ; sinon la file prend la main. Volontairement
+     * limite a ce que la file peut changer : deviner davantage demanderait de re-interroger le
+     * serveur, et c'est le cycle suivant qui fait foi.
+     */
+    private fun requeuedActivity(current: Activity, count: Int): Activity = when {
+        current == Activity.Waiting || current == Activity.Unseen || current == Activity.Running -> current
+        count > 0 -> Activity.Queued
+        current == Activity.Queued -> Activity.Idle
+        else -> current
+    }
+
     fun publishSessions(sessions: List<Session>) {
         knownSessions = sessions
         lastSessionScan = System.currentTimeMillis()
@@ -210,10 +259,17 @@ class ActivityMonitor @Inject constructor(
 
                 // ⚠️ On croise les sessions **connues** avec ce qu'on vient d'interroger. Aucune
                 // requete lourde n'est refaite : c'est le principe du detenteur unique.
+                //
+                // ⚠️ Le compte de file est **reporte** depuis l'etat precedent : il vient de
+                // l'inbox, que ce cycle ne lit pas (une requete par session, hors de prix). Sans
+                // ce report, un compte pousse par l'ecran de chat serait remis a zero toutes les
+                // 12 s, et l'en-tete « en file » clignoterait.
+                val previous = _state.value.bySession
                 val activities = knownSessions.associate { session ->
                     session.id to session.toActivity(
                         activeIDs,
                         pendingPermissions.count { it.sessionID == session.id },
+                        queued = previous[session.id]?.queuedCount ?: 0,
                     )
                 }
 
@@ -258,8 +314,16 @@ class ActivityMonitor @Inject constructor(
      * ⚠️ **L'ordre des tests est le sens même de la fonction** : ce qui bloque prime sur ce qui
      * tourne, qui prime sur ce qui est fini. Une autorisation en attente immobilise la session ;
      * afficher « en cours » à ce moment-là ferait regarder l'écran sans agir.
+     *
+     * ⚠️ `queued` est **passé**, et non déduit de `Session` : le nombre de messages en file vient
+     * de l'inbox, une route par session que seul l'écran de chat lit. Voir
+     * [publishQueue].
      */
-    private fun Session.toActivity(activeIDs: Set<String>, pendingCount: Int): SessionActivity {
+    private fun Session.toActivity(
+        activeIDs: Set<String>,
+        pendingCount: Int,
+        queued: Int,
+    ): SessionActivity {
         val idle = time?.idle
         val viewed = time?.viewed
 
@@ -273,7 +337,11 @@ class ActivityMonitor @Inject constructor(
             // 3. Terminé mais jamais vu — deux horodatages DU SERVEUR, jamais l'horloge locale.
             idle != null && (viewed == null || idle > viewed) -> Activity.Unseen
 
-            // 4. Terminé, vu, mais en échec.
+            // 4. Un message attend son tour (`delivery: queue`). Il avancera tout seul : c'est
+            //    une information, pas une demande d'action — donc après `Unseen`, avant `Failed`.
+            queued > 0 -> Activity.Queued
+
+            // 5. Terminé, vu, mais en échec.
             outcome == "failed" || outcome == "interrupted" -> Activity.Failed
 
             else -> Activity.Idle
@@ -282,10 +350,12 @@ class ActivityMonitor @Inject constructor(
         return SessionActivity(
             sessionID = id,
             activity = activity,
+            queuedCount = queued,
             waitingCount = pendingCount,
             idleAt = idle,
             viewedAt = viewed,
             outcome = outcome,
+            parentID = parentID,
         )
     }
 

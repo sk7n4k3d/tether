@@ -2,14 +2,8 @@ package sh.sk7.tether.push
 
 import java.net.HttpURLConnection
 import java.net.URL
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.PushService
 import org.unifiedpush.android.connector.UnifiedPush
@@ -64,6 +58,10 @@ class TetherPushService : PushService() {
     override fun onMessage(message: PushMessage, instance: String) {
         val text = message.content?.toString(Charsets.UTF_8).orEmpty()
         Log.i(TAG, "message recu (${text.length} octets)")
+        // ⚠️ Le contenu est **du texte non fiable** : le topic accepte les publications anonymes.
+        // On l'affiche (c'est ce qu'un humain attend d'une notification), mais on ne l'interprete
+        // jamais, et on ne lui fait pas porter d'identifiant de session exploitable : c'est la
+        // relecture de l'etat reel par l'app qui decide, pas le message.
         notify(applicationContext, text.ifBlank { "Nouvelle activité sur opencode" })
     }
 
@@ -80,72 +78,16 @@ class TetherPushService : PushService() {
     companion object {
         private const val TAG = "TetherPush"
 
-        /** Canal de notification. Un seul : les alertes opencode sont de meme nature. */
-        const val CHANNEL_ID = "opencode"
-
         /**
-         * Cree le canal puis affiche la notification.
+         * Délègue à [TetherNotifier], qui porte la règle de notification.
          *
-         * ⚠️ Sur Android 13+, `POST_NOTIFICATIONS` est obligatoire : sans elle,
-         * `NotificationManagerCompat.notify` **ne leve pas**, il ne se passe simplement rien.
-         * On verifie donc explicitement, et on trace — un silence inexplique coute des heures.
+         * ⚠️ Cette méthode n'était qu'un « affiche et oublie ». Elle ne savait ni si l'app était
+         * au premier plan (tâche 2.2), ni si une décision attendait (tâche 2.4), ni où mener le
+         * tap (tâche 2.5). La logique vit désormais dans [TetherNotifier], et la **décision** dans
+         * [decideNotification], testable sans Android.
          */
         fun notify(context: Context, text: String) {
-            val manager = NotificationManagerCompat.from(context)
-            if (!manager.areNotificationsEnabled()) {
-                Log.w(TAG, "notifications desactivees : rien ne s'affichera")
-                return
-            }
-
-            ensureChannel(context)
-
-            // Le tap ouvre l'app. Aucune donnee n'est transportee : l'app relira l'etat.
-            val intent = Intent(context, sh.sk7.tether.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pending = PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
-                .setContentTitle("opencode")
-                .setContentText(text)
-                // Texte long replie : une notification tronquee perd l'information utile.
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setContentIntent(pending)
-                .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .build()
-
-            try {
-                manager.notify(NOTIFICATION_ID, notification)
-            } catch (e: SecurityException) {
-                // Cas reel : permission refusee entre-temps par l'utilisateur.
-                Log.w(TAG, "notification refusee par le systeme", e)
-            }
-        }
-
-        private const val NOTIFICATION_ID = 1001
-
-        private fun ensureChannel(context: Context) {
-            val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "opencode",
-                    // IMPORTANCE_DEFAULT et non HIGH : une alerte opencode informe, elle
-                    // n'exige pas de reaction immediate. Le canal reste modifiable par
-                    // l'utilisateur, qui peut le monter s'il le veut.
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                ).apply {
-                    description = "Alertes des sessions opencode"
-                },
-            )
+            TetherNotifier.show(context, text)
         }
     }
 }
