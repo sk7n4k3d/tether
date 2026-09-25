@@ -1,5 +1,6 @@
 package sh.sk7.tether.ui.chat
 
+import kotlinx.serialization.json.JsonObject
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import sh.sk7.tether.data.api.PermissionRequest
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.Model
@@ -42,6 +44,7 @@ import sh.sk7.tether.di.AwaitingGraceMillis
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.domain.model.Activity
 import sh.sk7.tether.domain.model.ChatMessage
+import sh.sk7.tether.domain.model.FormRequest
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.domain.model.SessionUiState
@@ -718,6 +721,59 @@ class ChatViewModel @Inject constructor(
                 val inbox = runCatching { gateway.sessionInbox(current, sessionID) }
                     .getOrDefault(emptyList())
                 val queued = ChatMessageMapper.fromInboxItems(inbox)
+
+                // ⚠️ **On relit aussi ce qui ATTEND** (permissions, formulaires).
+                //
+                // ### Pourquoi c'est indispensable
+                // Le flux SSE est *« volatile by contract »* — l'OpenAPI le dit lui-meme :
+                // « events during disconnection are missed ». Il n'existe **ni `Last-Event-ID` ni
+                // `since`** sur `GET /api/event` (mesure : `/session/{id}/history?after=` et
+                // `/event?after=` rendent **404** sur notre 2.0.x).
+                //
+                // Consequence : une `permission.asked` ou un `form.created` tombe pendant une
+                // coupure etait **invisible pour toujours** — l'agent restait bloque sans que rien
+                // ne l'indique. La resync ne relisait que les messages et la file.
+                //
+                // ⚠️ Route **globale** (`/api/permission/request`, `/api/form`) : ce sont les
+                // seules qui voient tout. Mesure du 2026-09-26 : une permission demandee par un
+                // **sous-agent** appartient a la session **enfant**, et
+                // `GET /api/session/<RACINE>/permission` rend `{"data":[]}`. On filtre donc sur
+                // notre session, mais on ne s'appuie pas sur la route par session.
+                //
+                // ⚠️ Les lectures sont **isolees** (`runCatching`) : ne pas pouvoir lire les
+                // demandes ne doit pas empecher d'afficher la conversation. C'est un indicateur,
+                // pas une fonction critique.
+                // ⚠️ **Deux types portent le meme nom, et il faut le savoir.**
+                //
+                // `gateway.pendingPermissions` rend le type du **domaine**
+                // (`domain.model.PermissionRequest`, fichier `PermissionAsk.kt`) : c'est ce que
+                // consomment l'ecran Approbations, le badge de la liste et le detenteur d'activite.
+                //
+                // Mais `SessionUiState.pendingPermission` porte le type du **DTO**
+                // (`data.api.PermissionRequest`) : c'est celui que le reducer decode
+                // directement depuis la charge d'un evenement, qui a la meme forme JSON que la
+                // route. On convertit donc ici — explicitement plutot que par un cast.
+                //
+                // ⚠️ **Aucune perte** : le DTO est un sur-ensemble du domaine (`metadata` et
+                // `source` en plus, que la route fournit et que le domaine ignore). Convertir dans
+                // ce sens ne jette rien ; l'inverse, si.
+                val pendingHere = runCatching { gateway.pendingPermissions(current) }
+                    .getOrDefault(emptyList())
+                    .firstOrNull { it.sessionID == sessionID }
+                    ?.let { ask ->
+                        PermissionRequest(
+                            id = ask.id,
+                            sessionID = ask.sessionID,
+                            action = ask.action,
+                            resources = ask.resources,
+                            save = ask.save,
+                            message = ask.message,
+                        )
+                    }
+                val pendingFormsHere = runCatching { gateway.pendingForms(current) }
+                    .getOrDefault(emptyList())
+                    .firstOrNull { it.sessionID == sessionID }
+
                 _state.update { state ->
                     // ⚠️ **Trois groupes, trois places** — et c'est le sens de ce bloc.
                     //
@@ -742,8 +798,25 @@ class ChatViewModel @Inject constructor(
                     // laisserait temporairement les deux a l'ecran.
                     val merged = state.chat.copy(messages = history + fromRest + optimistic)
                     val withInbox = ChatMessageMapper.mergeInbox(merged.messages, queued)
+                    // ⚠️ **Ce qui attend, relu a la source.** Une demande tombee pendant une
+                    // coupure du flux serait autrement invisible pour toujours : le SSE ne rejoue
+                    // rien, et il n'y a pas de `since` (mesure : les routes `?after=` rendent 404
+                    // sur notre 2.0.x). On ECRASE volontairement — le serveur est la verite, donc
+                    // une demande deja reglee ailleurs ne doit pas rester affichee comme si elle
+                    // attendait encore.
+                    val chatWithPending = dedupeOptimistic(merged.copy(messages = withInbox)).copy(
+                        pendingPermission = pendingHere,
+                        pendingForm = pendingFormsHere?.let { info ->
+                            FormRequest(
+                                id = info.id,
+                                sessionID = info.sessionID,
+                                title = info.title,
+                                raw = JsonObject(emptyMap()),
+                            )
+                        },
+                    )
                     state.copy(
-                        chat = dedupeOptimistic(merged.copy(messages = withInbox)),
+                        chat = chatWithPending,
                         // ⚠️ **Une resync ne re-arme jamais l'historique, et n'ecrase pas le
                         // curseur courant.** Elle relit la page la plus recente, dont le curseur
                         // pointe vers la **deuxieme** page : s'en servir aveuglement remettrait le
