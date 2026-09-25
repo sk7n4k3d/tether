@@ -61,16 +61,19 @@ class TetherPushService : PushService() {
      * attend d'une notification), mais il n'est jamais interprete comme un ordre.
      */
     override fun onMessage(message: PushMessage, instance: String) {
-        val text = message.content?.toString(Charsets.UTF_8).orEmpty()
-        Log.i(TAG, "message recu (${text.length} octets)")
-        // ⚠️ On extrait la session AVANT de nettoyer le texte : la ligne de routage ne doit
-        // pas s'afficher dans la notification, elle est un en-tete de transport.
-        val sessionID = SESSION_MARKER.find(text)?.groupValues?.get(1)
-        val visible = text.replace(SESSION_MARKER, "").trim()
+        val raw = message.content?.toString(Charsets.UTF_8).orEmpty()
+        Log.i(TAG, "message recu (${raw.length} octets)")
+        // ⚠️ On decode AVANT d'afficher : le corps porte des lignes de routage (`tether:session=`,
+        // `tether:progress=`) qui sont un en-tete de transport, pas de l'information pour
+        // l'humain. Les afficher serait du bruit, et surtout : c'est `tether:progress=` qui
+        // distingue une etape d'avancement d'une fin de tour. La lire ici est ce qui evite de
+        // faire sonner le telephone a chaque appel d'outil.
+        val payload = parsePush(raw)
         notify(
             applicationContext,
-            visible.ifBlank { "Nouvelle activité sur opencode" },
-            hintSessionID = sessionID,
+            payload.copy(
+                text = payload.text.ifBlank { "Nouvelle activité sur opencode" },
+            ),
         )
     }
 
@@ -88,23 +91,6 @@ class TetherPushService : PushService() {
         private const val TAG = "TetherPush"
 
         /**
-         * Délègue à [TetherNotifier], qui porte la règle de notification.
-         *
-         * ⚠️ Cette méthode n'était qu'un « affiche et oublie ». Elle ne savait ni si l'app était
-         * au premier plan (tâche 2.2), ni si une décision attendait (tâche 2.4), ni où mener le
-         * tap (tâche 2.5). La logique vit désormais dans [TetherNotifier], et la **décision** dans
-         * [decideNotification], testable sans Android.
-         */
-        /**
-         * La ligne que le plugin ajoute au corps du message pour porter la session.
-         *
-         * ⚠️ Elle doit rester **identique** cote plugin (voir `tether:session=` dans
-         * `ntfy-opencode.ts`). C'est le seul canal qui survit jusqu'a l'application : les
-         * en-tetes ntfy n'arrivent pas par UnifiedPush.
-         */
-        private val SESSION_MARKER = Regex("tether:session=(\\S+)")
-
-        /**
          * Delegue a [TetherNotifier], qui porte la regle de notification.
          *
          * ⚠️ Cette methode n'etait qu'un « affiche et oublie ». Elle ne savait ni si l'app etait
@@ -112,8 +98,8 @@ class TetherPushService : PushService() {
          * tap (tache 2.5). La logique vit desormais dans [TetherNotifier], et la **decision** dans
          * [decideNotification], testable sans Android.
          *
-         * ⚠️ `hintSessionID` vient du **corps** du message, et n'est qu'un **indice** : le topic
-         * relais accepte des publications anonymes, donc rien n'empeche un tiers d'y ecrire
+         * ⚠️ `payload.sessionID` vient du **corps** du message, et n'est qu'un **indice** : le
+         * topic relais accepte des publications anonymes, donc rien n'empeche un tiers d'y ecrire
          * `tether:session=<n'importe quoi>`. Il n'est jamais cru sur parole — [TetherNotifier] le
          * confronte aux sessions qu'il connait deja, et ignore un identifiant inconnu.
          *
@@ -121,8 +107,8 @@ class TetherPushService : PushService() {
          * la charge utile). Sans cet indice, taper une notification ouvrait la **derniere session
          * utilisee** au lieu de celle qui avait declenche l'alerte.
          */
-        fun notify(context: Context, text: String, hintSessionID: String? = null) {
-            TetherNotifier.show(context, text, hintSessionID)
+        fun notify(context: Context, payload: PushPayload) {
+            TetherNotifier.show(context, payload)
         }
 
     }
@@ -159,12 +145,21 @@ object PushEndpointRelay {
     /**
      * Delai avant de republier l'endpoint, meme inchange.
      *
-     * ⚠️ 6 h : la moitie du cache ntfy par defaut (12 h). Republier a la moitie garantit qu'un
-     * message **toujours valide** est present, avec une large marge si un envoi echoue.
-     * Republier toutes les heures couterait 24 requetes par jour pour rien ; ne jamais republier
-     * perdait les notifications.
+     * ⚠️ **3 h, et pas 6 h.** Le commentaire d'origine annoncait « la moitie du cache ntfy par
+     * defaut (12 h) » — or la configuration **reelle** de ce serveur est `cache-duration: 6h`
+     * (mesure : `/mnt/pools/apps/ntfy/config/server.yml` sur le TrueNAS, le 2026-09-26). Republier
+     * a 6 h laissait donc une **marge nulle** : le message expirait a l'instant precis ou l'app
+     * republiait, et toute publication en retard (app non rouverte, envoi echoue) vidait le relais.
+     *
+     * ⚠️ Consequence mesuree de ce mode d'echec : le plugin ne retrouve plus l'endpoint et se
+     * replie sur le topic fixe — notif recue par le client ntfy, **pas par Tether**, sans aucune
+     * erreur nulle part. Le telephone semble muet, l'app paraît en panne.
+     *
+     * ⚠️ Republier est un POST de quelques dizaines d'octets : le cout est nul, et tres inferieur
+     * a celui d'une notification perdue en silence. On garde la moitie du cache comme regle, quelle
+     * que soit sa valeur, pour que la marge survive a un changement de configuration du serveur.
      */
-    private const val REPUBLISH_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    const val REPUBLISH_INTERVAL_MS = 3 * 60 * 60 * 1000L
 
     /**
      * Recoit l'endpoint annonce par le distributeur ([TetherPushService.onNewEndpoint]).
@@ -175,26 +170,57 @@ object PushEndpointRelay {
     fun publish(context: Context, endpoint: String) {
         if (endpoint.isBlank()) return
         val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
-
-        // ⚠️ BUG REEL CORRIGE ICI : la condition ne portait que sur l'ENDPOINT, jamais sur la
-        // DATE. Or le topic du relais est un topic ntfy, et ntfy **expire ses messages**
-        // (cache-duration). Consequence : une fois le message expire, le serveur ne retrouvait
-        // plus l'endpoint et se repliait sur le topic fixe — donc **plus aucune notification
-        // sur le telephone**, sans erreur nulle part. La preuve de bout en bout avait ete faite
-        // juste apres la publication, donc dans la fenetre ou ca marchait encore.
-        //
-        // ⚠️ On republie donc periodiquement, a la moitie du cache courant. Republier est un POST
-        // de quelques dizaines d'octets : le cout est nul, et il est tres inferieur a celui d'une
-        // notification perdue en silence.
         val lastEndpoint = prefs.getString("last-endpoint", null)
         val lastAt = prefs.getLong("last-endpoint-at", 0L)
-        val fresh = System.currentTimeMillis() - lastAt < REPUBLISH_INTERVAL_MS
-        if (lastEndpoint == endpoint && fresh) return
-        prefs.edit()
-            .putString("last-endpoint", endpoint)
-            .putLong("last-endpoint-at", System.currentTimeMillis())
-            .apply()
+        val due = endpointNeedsRepublish(
+            lastEndpoint = lastEndpoint,
+            current = endpoint,
+            lastAtMillis = lastAt,
+            nowMillis = System.currentTimeMillis(),
+            intervalMillis = REPUBLISH_INTERVAL_MS,
+        )
+        if (!due) return
+        // ⚠️ On n'ecrit la date QUE si l'envoi part reellement (voir `send`).
+        send(context, prefs, endpoint)
+    }
 
+    /**
+     * **Republie l'endpoint deja connu**, sans en annoncer un nouveau.
+     *
+     * ⚠️ Pourquoi cette methode existe — c'est un mode d'echec **mesure**, pas une precaution :
+     * `onNewEndpoint` n'est appele par le distributeur qu'**au demarrage du processus**. Or le
+     * processus de Tether survit des heures en arriere-plan. Avec une seule publication au boot,
+     * le message du relais expirait (cache ntfy) et l'endpoint disparaissait jusqu'a la prochaine
+     * ouverture **a froid** — le plugin publiait alors sur un topic que Tether n'ecoute pas.
+     *
+     * ⚠️ Appelee quand l'app repasse au premier plan : c'est le seul moment ou l'on est sur que
+     * le processus tourne sans dependre d'un reveil par le reseau. Le cout d'un appel inutile est
+     * nul (la date est verifiee) ; le cout de l'oubli est un telephone muet.
+     */
+    fun refresh(context: Context) {
+        val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
+        val endpoint = prefs.getString("last-endpoint", null) ?: return
+        val lastAt = prefs.getLong("last-endpoint-at", 0L)
+        val due = endpointNeedsRepublish(
+            lastEndpoint = endpoint,
+            current = endpoint,
+            lastAtMillis = lastAt,
+            nowMillis = System.currentTimeMillis(),
+            intervalMillis = REPUBLISH_INTERVAL_MS,
+        )
+        if (!due) return
+        send(context, prefs, endpoint)
+    }
+
+    /**
+     * Envoie l'endpoint, et **date l'envoi uniquement s'il a reussi**.
+     *
+     * ⚠️ C'est le bug que corrige le commentaire d'origine : il annoncait « le `last-endpoint`
+     * n'a pas ete ecrit si l'envoi a echoue » alors que l'ecriture avait lieu **avant** l'envoi,
+     * inconditionnellement. Un echec reseau laissait donc une date recente, et l'endpoint n'etait
+     * pas repreublie avant l'intervalle complet — soit exactement la fenetre ou le relais se vide.
+     */
+    private fun send(context: Context, prefs: android.content.SharedPreferences, endpoint: String) {
         // Envoi en arriere-plan : on ne bloque jamais le thread du distributeur.
         Thread {
             runCatching {
@@ -204,11 +230,18 @@ object PushEndpointRelay {
                 connection.connectTimeout = 10_000
                 connection.readTimeout = 10_000
                 connection.outputStream.use { it.write(endpoint.toByteArray()) }
-                Log.i("TetherPush", "endpoint publie sur le relais (http=${connection.responseCode})")
+                val code = connection.responseCode
+                Log.i("TetherPush", "endpoint publie sur le relais (http=$code)")
                 connection.disconnect()
+                if (code in 200..299) {
+                    prefs.edit()
+                        .putString("last-endpoint", endpoint)
+                        .putLong("last-endpoint-at", System.currentTimeMillis())
+                        .apply()
+                }
             }.onFailure { e ->
                 // Echec reseau : l'endpoint n'est pas perdu, il sera republie au prochain
-                // demarrage (le `last-endpoint` n'a pas ete ecrit si l'envoi a echoue…).
+                // passage au premier plan (la date n'a pas ete ecrite).
                 Log.w("TetherPush", "publication de l'endpoint impossible", e)
             }
         }.start()

@@ -63,6 +63,21 @@ object TetherNotifier {
     /** Canal de notification. Un seul : les alertes opencode sont de même nature. */
     const val CHANNEL_ID = "opencode"
 
+    /**
+     * **Canal dédié à l'avancement**, en importance BASSE.
+     *
+     * ⚠️ Pourquoi un second canal, et pas le canal `opencode` : ce dernier est en
+     * `IMPORTANCE_HIGH` (il porte les autorisations qui immobilisent une session). Y publier
+     * l'avancement ferait **sonner le téléphone à chaque appel d'outil** — c'est exactement le
+     * spam que la demande exclut. Un canal `LOW` s'affiche dans le tiroir **sans son ni vibration
+     * ni heads-up** : l'information est là quand on regarde, elle ne dérange pas quand on ne
+     * regarde pas.
+     *
+     * ⚠️ C'est l'utilisateur qui garde la main : il peut couper le canal `opencode-avancement`
+     * dans les réglages Android sans perdre les fins de tour ni les autorisations.
+     */
+    const val CHANNEL_ID_PROGRESS = "opencode-avancement"
+
     /** Notification ordinaire (fin de tour). */
     private const val TRANSIENT_ID = 1001
 
@@ -72,17 +87,6 @@ object TetherNotifier {
      */
     private const val ONGOING_ID = 1002
 
-    /**
-     * @param hintSessionID session **suggeree** par le publieur, ou `null`.
-     *
-     * ⚠️ C'est un **indice**, jamais une autorite : le topic relais accepte des publications
-     * anonymes, donc l'identifiant peut venir de n'importe qui. On ne l'utilise que s'il designe
-     * une session que l'app **connait deja** (voir [knownSessionIDs]).
-     *
-     * ⚠️ Sans cette validation, un tiers pourrait faire ouvrir une conversation arbitraire en
-     * publiant sur le topic. L'enjeu est faible (ouvrir une session ne fait rien), mais la regle
-     * du projet est de ne jamais faire confiance a une entree externe.
-     */
     /**
      * **Les sessions que l'app connait deja**, pour valider un indice de notification.
      *
@@ -96,7 +100,7 @@ object TetherNotifier {
     private fun knownSessionIDs(entry: PushEntryPoint): Set<String> =
         runCatching { entry.activityMonitor().state.value.bySession.keys }.getOrDefault(emptySet())
 
-    fun show(context: Context, text: String, hintSessionID: String? = null) {
+    fun show(context: Context, payload: PushPayload) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) {
             // ⚠️ Sur Android 13+, sans `POST_NOTIFICATIONS`, `notify()` **ne lève pas** : il ne se
@@ -106,10 +110,23 @@ object TetherNotifier {
         }
 
         val entry = EntryPointAccessors.fromApplication(context, PushEntryPoint::class.java)
+
+        // ⚠️ Le nettoyage de l'avancement a lieu **ici, avant le test de premier plan**, et c'est
+        // le sujet d'un bug mesure : place apres le `return` de `Skip`, il ne s'executerait jamais
+        // quand l'app est ouverte. Scenario reel : l'agent travaille, l'etape s'affiche, Bastien
+        // ouvre l'app, le tour se termine — la fin de tour est ignoree (il regarde l'ecran) ET
+        // l'etape resterait affichee **pour toujours**, a dire « shell : npm install » d'un travail
+        // fini. C'est un mensonge, et il est permanent.
+        if (shouldClearProgress(payload.kind)) clearProgress(context, payload.sessionID)
+
         val foreground = entry.foregroundState().isForeground
         val pending = pendingDecisions(entry)
 
-        val decision = decideNotification(appForeground = foreground, pendingDecisions = pending)
+        val decision = decideNotification(
+            appForeground = foreground,
+            pendingDecisions = pending,
+            kind = payload.kind,
+        )
         if (decision == PushDecision.Skip) {
             Log.i(TAG, "notification ignoree : app au premier plan")
             return
@@ -120,39 +137,50 @@ object TetherNotifier {
         // transmet que le corps du message. On ne peut donc pas réafficher « approbation : shell ».
         // On recompose un titre à partir de ce qu'on sait **nous-mêmes** (une décision attend),
         // et on garde le corps reçu tel quel — il reste la seule information du publieur.
-        val title = if (decision == PushDecision.Ongoing) {
-            "Autorisation requise"
-        } else {
-            "opencode"
+        val title = when (decision) {
+            PushDecision.Ongoing -> "Autorisation requise"
+            PushDecision.Progress -> "opencode — en cours"
+            else -> "opencode"
         }
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        // ⚠️ Seul l'avancement change de canal. Une fin de tour et une autorisation gardent le
+        // canal `opencode` : leurs reglages, leur son et leur importance ne bougent pas.
+        val channel = if (decision == PushDecision.Progress) CHANNEL_ID_PROGRESS else CHANNEL_ID
+
+        val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
-            .setContentText(text)
+            .setContentText(payload.text)
             // Texte long replié : une notification tronquée perd l'information utile.
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(payload.text))
             .setContentIntent(
                 pendingIntent(
                     context,
                     // ⚠️ Une decision en attente prime : c'est l'ecran ou l'on repond. Sinon, on
                     // ouvre la session **si elle est reconnue**, et l'app sinon.
-                    targetFor(decision, hintSessionID?.takeIf { it in knownSessionIDs(entry) }),
+                    targetFor(decision, payload.sessionID?.takeIf { it in knownSessionIDs(entry) }),
                     ONGOING_ID + 1,
                 ),
             )
+            // ⚠️ Une fin de tour se balaie au tap ; une autorisation reste ; un avancement se
+            // laisse balayer (il n'attend rien de l'utilisateur) et **ne vibre pas**.
             .setAutoCancel(decision != PushDecision.Ongoing)
             .setOngoing(decision == PushDecision.Ongoing)
+            .setSilent(decision == PushDecision.Progress)
             .setPriority(
-                if (decision == PushDecision.Ongoing) {
-                    NotificationCompat.PRIORITY_HIGH
-                } else {
-                    NotificationCompat.PRIORITY_DEFAULT
+                when (decision) {
+                    PushDecision.Ongoing -> NotificationCompat.PRIORITY_HIGH
+                    PushDecision.Progress -> NotificationCompat.PRIORITY_LOW
+                    else -> NotificationCompat.PRIORITY_DEFAULT
                 },
             )
             .build()
 
-        val id = if (decision == PushDecision.Ongoing) ONGOING_ID else TRANSIENT_ID
+        val id = when (decision) {
+            PushDecision.Ongoing -> ONGOING_ID
+            PushDecision.Progress -> progressNotificationId(payload.sessionID)
+            else -> TRANSIENT_ID
+        }
         try {
             manager.notify(id, notification)
         } catch (e: SecurityException) {
@@ -170,6 +198,21 @@ object TetherNotifier {
      */
     fun clearOngoing(context: Context) {
         NotificationManagerCompat.from(context).cancel(ONGOING_ID)
+    }
+
+    /**
+     * **Retire la notification d'avancement** d'une session.
+     *
+     * ⚠️ Sans cet appel, la derniere etape franchie resterait dans le tiroir a cote de la fin de
+     * tour. L'utilisateur lirait « shell : npm install » **et** « termine » en meme temps, deux
+     * messages contradictoires dont l'un est perime — exactement ce que la regle « ne jamais
+     * mentir » interdit.
+     *
+     * ⚠️ On cible l'ID de **cette** session (voir [progressNotificationId]) : un `cancel` global
+     * effacerait l'avancement d'une autre tache encore vivante.
+     */
+    fun clearProgress(context: Context, sessionID: String? = null) {
+        NotificationManagerCompat.from(context).cancel(progressNotificationId(sessionID))
     }
 
     /**
@@ -283,19 +326,36 @@ object TetherNotifier {
 
     private fun ensureChannel(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "opencode",
-                // ⚠️ IMPORTANCE_HIGH et non DEFAULT : le canal porte désormais **aussi** les
-                // décisions en attente, qui immobilisent une session. Un canal muet laisserait
-                // une autorisation attendre des heures. L'utilisateur peut le baisser, mais le
-                // défaut doit servir le cas qui compte.
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Alertes des sessions opencode"
-            },
-        )
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "opencode",
+                    // ⚠️ IMPORTANCE_HIGH et non DEFAULT : le canal porte désormais **aussi** les
+                    // décisions en attente, qui immobilisent une session. Un canal muet laisserait
+                    // une autorisation attendre des heures. L'utilisateur peut le baisser, mais le
+                    // défaut doit servir le cas qui compte.
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Alertes des sessions opencode"
+                },
+            )
+        }
+        if (nm.getNotificationChannel(CHANNEL_ID_PROGRESS) == null) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID_PROGRESS,
+                    "opencode — avancement",
+                    // ⚠️ IMPORTANCE_LOW et non HIGH, et c'est tout l'anti-spam : l'avancement
+                    // s'affiche dans le tiroir **sans son, sans vibration, sans heads-up**. Un
+                    // agent qui enchaîne dix appels d'outil reste alors silencieux tout en laissant
+                    // une trace lisible — ce que la demande veut exactement.
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    description = "Étapes intermédiaires d'une session opencode (silencieux)"
+                    setShowBadge(false)
+                },
+            )
+        }
     }
 }

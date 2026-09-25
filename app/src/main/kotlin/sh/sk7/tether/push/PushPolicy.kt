@@ -24,6 +24,143 @@ enum class PushDecision {
      * du travail.
      */
     Ongoing,
+
+    /**
+     * **Avancement d'un tour** : une étape significative vient d'être franchie (appel d'outil,
+     * début de réflexion). Ce n'est pas une fin de tour.
+     *
+     * ⚠️ Pourquoi un cas à part, et pas un `Transient` comme les autres : une fin de tour doit
+     * **sonner**, un avancement non. Sans cette distinction, l'agent qui enchaîne dix appels
+     * d'outil ferait vibrer le téléphone dix fois — exactement le spam que la demande exclut.
+     * Le contenu, lui, vient du flux SSE (`session.tool.called`), donc il dit ce qui se passe
+     * vraiment ; c'est seulement l'**alerte** qui est réduite au silence.
+     */
+    Progress,
+}
+
+/**
+ * **De quelle nature est le message recu par le distributeur ?**
+ *
+ * ⚠️ Le publieur (plugin opencode) ajoute une **ligne de routage** au corps du message, parce que
+ * les en-tetes ntfy (`Click`, `Priority`) ne survivent pas au transport UnifiedPush. Cette ligne
+ * dit si le message annonce une **fin de tour** ou une **etape d'avancement**. Sans elle, l'app
+ * traiterait les deux pareil — et ferait sonner le telephone a chaque appel d'outil.
+ */
+enum class PushKind {
+    /** Fin de tour : la notification doit alerter (son, vibration). */
+    TurnEnd,
+
+    /** Etape d'avancement : la notification remplace la precedente, en silence. */
+    Progress,
+}
+
+/**
+ * **Un message de push, decode.**
+ *
+ * @param kind ce que le message annonce.
+ * @param sessionID la session concernee, telle qu'annoncee par le publieur — un **indice**,
+ *   jamais une autorite (voir [TetherNotifier]).
+ * @param text le texte a afficher, **lignes de routage retirees**.
+ */
+data class PushPayload(
+    val kind: PushKind,
+    val sessionID: String?,
+    val text: String,
+)
+
+/** Ligne ajoutee par le plugin pour annoncer une etape d'avancement. */
+private val PROGRESS_MARKER = Regex("""tether:progress=(?:\S+)""")
+
+/** Ligne ajoutee par le plugin pour porter la session (voir `ntfy-opencode.ts`). */
+private val SESSION_MARKER = Regex("""tether:session=(\S+)""")
+
+/**
+ * **Faut-il republier l'endpoint sur le relais ?**
+ *
+ * ⚠️ Fonction **pure**, et pas un `if` en ligne : la regle decide si le telephone peut encore
+ * recevoir une notification, et une erreur ici ne se voit **nulle part** (le relais se vide en
+ * silence, le plugin se replie sur un topic fixe). Un test la verrouille sans Android.
+ *
+ * ⚠️ On republie quand l'endpoint **change** (reinstallation, renouvellement du distributeur) ou
+ * quand la precedente publication est **perimee**. Les deux cas ont la meme consequence s'ils sont
+ * rates : le serveur ne retrouve plus l'endpoint et publie ailleurs.
+ *
+ * @param lastEndpoint l'endpoint de la derniere publication reussie, ou `null`.
+ * @param current l'endpoint que le distributeur vient d'annoncer.
+ * @param lastAtMillis date de la derniere publication, en millisecondes epoch.
+ * @param nowMillis maintenant, en millisecondes epoch.
+ * @param intervalMillis duree au-dela de laquelle une publication est consideree perimee.
+ */
+fun endpointNeedsRepublish(
+    lastEndpoint: String?,
+    current: String,
+    lastAtMillis: Long,
+    nowMillis: Long,
+    intervalMillis: Long,
+): Boolean {
+    if (lastEndpoint != current) return true
+    return nowMillis - lastAtMillis >= intervalMillis
+}
+
+/**
+ * **Une fin de tour doit-elle retirer l'etape d'avancement ?**
+ *
+ * ⚠️ Fonction pure pour une raison precise : ce nettoyage a lieu **avant** le test de premier
+ * plan, et cette position est le sujet. Place apres, il ne s'executerait jamais quand l'app est
+ * ouverte — et l'etape resterait affichee alors que le travail est fini.
+ */
+fun shouldClearProgress(kind: PushKind): Boolean = kind == PushKind.TurnEnd
+
+/**
+ * **Decode le corps d'un message de push.**
+ *
+ * ⚠️ Fonction **pure**, et c'est deliberé : c'est ici que se joue la distinction entre une alerte
+ * qui doit sonner et un avancement qui doit se taire. Un test la verrouille sans Android.
+ *
+ * ⚠️ Les lignes de routage sont **retirees du texte affiche** : ce sont des en-tetes de transport,
+ * pas de l'information pour l'humain. Les laisser a l'ecran serait exactement le contraire de la
+ * regle « ne jamais mentir » — on afficherait `tether:progress=1` a quelqu'un qui veut savoir ce
+ * que fait son agent.
+ *
+ * ⚠️ **Absence de marqueur = fin de tour.** C'est le comportement historique : le plugin publie
+ * une fin de tour sans marqueur, et un publieur tiers (le topic accepte l'ecriture anonyme) ne
+ * doit pas pouvoir changer la nature d'une notification. Le defaut le plus **visible** (alerte)
+ * est donc aussi le plus sur : il n'enterre rien en silence.
+ */
+fun parsePush(raw: String): PushPayload {
+    val kind = if (PROGRESS_MARKER.containsMatchIn(raw)) PushKind.Progress else PushKind.TurnEnd
+    val sessionID = SESSION_MARKER.find(raw)?.groupValues?.get(1)
+    val text = raw
+        .replace(PROGRESS_MARKER, "")
+        .replace(SESSION_MARKER, "")
+        .trim()
+    return PushPayload(kind = kind, sessionID = sessionID, text = text)
+}
+
+/** Plage d'ID reservee a l'avancement, hors des ID fixes du notifier (1001..1004). */
+private const val PROGRESS_ID_BASE = 2000
+private const val PROGRESS_ID_RANGE = 500
+
+/**
+ * **L'ID de la notification d'avancement, pour une session donnee.**
+ *
+ * ⚠️ **Un ID par session, pas un ID global.** Mesure du projet : deux sessions principales
+ * tournent en parallele (un sous-agent delegue est ignore par le publieur, mais deux sessions
+ * ouvertes par l'utilisateur, non). Avec un ID unique, l'etape de la session B **ecraserait**
+ * celle de la session A : l'ecran afficherait `shell : npm install` a propos d'une tache qui n'a
+ * jamais lance cette commande. C'est inoffensif en apparence et faux sur le fond — exactement le
+ * mensonge que le projet s'interdit.
+ *
+ * ⚠️ **Et un seul ID par session** : les etapes successives **remplacent** la meme ligne, ce qui
+ * fait l'anti-spam (dix appels d'outil = une notification, pas dix).
+ *
+ * ⚠️ Fonction **pure** : le calcul est deterministe et testable, sans Android. Un identifiant de
+ * session absent retombe sur un ID neutre, jamais sur un ID au hasard.
+ */
+fun progressNotificationId(sessionID: String?): Int {
+    if (sessionID.isNullOrBlank()) return PROGRESS_ID_BASE
+    val hash = sessionID.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }
+    return PROGRESS_ID_BASE + 1 + (hash % PROGRESS_ID_RANGE)
 }
 
 /** Cible du tap sur une notification. */
@@ -43,8 +180,21 @@ sealed interface PushTarget {
  *
  * @param appForeground l'app est-elle visible à l'écran ?
  * @param pendingDecisions nombre de demandes d'autorisation en attente sur le serveur.
+ * @param kind ce qu'annonce le message (fin de tour, ou etape d'avancement).
  */
-fun decideNotification(appForeground: Boolean, pendingDecisions: Int): PushDecision = when {
+fun decideNotification(
+    appForeground: Boolean,
+    pendingDecisions: Int,
+    kind: PushKind = PushKind.TurnEnd,
+): PushDecision = when {
+    // ⚠️ L'avancement se decide **en premier, et pour lui seul** : c'est une notification
+    // silencieuse et remplacee, elle n'a rien a voir avec une demande d'autorisation. La laisser
+    // tomber dans la branche des decisions la transformerait en alerte persistante « Autorisation
+    // requise » portant le texte d'un appel d'outil — c'est-a-dire un mensonge. La decision en
+    // attente a de toute facon **sa propre** notification (ID distinct), emise sur l'evenement
+    // `permission.asked`, pas sur un tick d'avancement.
+    kind == PushKind.Progress -> if (appForeground) PushDecision.Skip else PushDecision.Progress
+
     // ⚠️ 2.4 — Une décision qui attend ne se balaie pas, et l'emporter sur le test de premier
     // plan est **délibéré** : une autorisation immobilise du travail, ce n'est pas du bruit. Si
     // l'app est ouverte, l'alerte persistante double le badge de l'app sans gêner (elle ne vibre
@@ -77,7 +227,9 @@ fun targetFor(decision: PushDecision, validSessionID: String? = null): PushTarge
 
     // ⚠️ `validSessionID` a DEJA ete confronte aux sessions connues par l'appelant : on ne
     // revalide pas ici, on route. Un identifiant non valide arrive en `null`.
-    PushDecision.Transient -> validSessionID?.let { PushTarget.Session(it) } ?: PushTarget.App
+    PushDecision.Transient, PushDecision.Progress ->
+        validSessionID?.let { PushTarget.Session(it) } ?: PushTarget.App
+
     PushDecision.Skip -> PushTarget.App
 }
 

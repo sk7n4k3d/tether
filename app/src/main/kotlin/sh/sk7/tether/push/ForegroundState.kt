@@ -2,6 +2,7 @@ package sh.sk7.tether.push
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,16 +33,29 @@ class ForegroundState @Inject constructor() : Application.ActivityLifecycleCallb
     @Volatile
     private var startedActivities = 0
 
+    @Volatile
+    private var appContext: Context? = null
+
     /** Vrai si au moins un écran de Tether est visible. */
     val isForeground: Boolean get() = startedActivities > 0
 
     /** Enregistre le suivi sur le processus. Appelé une fois, au démarrage de l'app. */
     fun register(app: Application) {
+        appContext = app
         app.registerActivityLifecycleCallbacks(this)
     }
 
     override fun onActivityStarted(activity: Activity) {
         startedActivities++
+        // ⚠️ Au PREMIER ecran visible (0 -> 1), on rafraichit l'endpoint sur le relais. Ce n'est
+        // pas un detail : le distributeur ne re-annonce l'endpoint qu'au demarrage du PROCESSUS,
+        // or le processus survit des heures en arriere-plan. Le message du relais, lui, expire
+        // (cache-duration ntfy). Sans ce rafraichissement, un endpoint reste perime jusqu'a la
+        // prochaine ouverture a froid — et le plugin se replie alors sur un topic que Tether
+        // n'ecoute pas : notifications muettes, sans erreur nulle part.
+        if (startedActivities == 1) {
+            appContext?.let { PushEndpointRelay.refresh(it) }
+        }
     }
 
     override fun onActivityStopped(activity: Activity) {
