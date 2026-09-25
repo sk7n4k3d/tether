@@ -240,7 +240,13 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl/api/experimental/session/stats") {
             auth(credentials)
-            parameter("directory", location)
+            // ⚠️ Cette route n'accepte **pas** `location` : ses parametres sont
+            // `from, to, project, timezone, tools` (releve sur /openapi.json). Un
+            // `location[directory]` y serait ignore.
+            //
+            // ⚠️ On envoie `directory` quand meme ? NON : on ne l'envoie pas, parce que le serveur
+            // ne le declare pas. Les stats restent donc **celles de tout le serveur**, ce qui est
+            // correct pour un tableau de bord d'usage et vaut mieux qu'un filtre fantome.
             fromMillis?.let { parameter("from", it) }
         }.body<StatsEnvelope>().data
     }
@@ -255,7 +261,7 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl$path") {
             auth(credentials)
-            parameter("directory", location)
+            at(location)
         }.body<LocatedEnvelope<T>>().data
     }
 
@@ -274,7 +280,7 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl/api/permission/saved") {
             auth(credentials)
-            parameter("directory", location)
+            at(location)
         }.body<ListEnvelope<SavedPermissionDto>>().data
     }
 
@@ -311,7 +317,7 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl/api/permission/request") {
             auth(credentials)
-            parameter("directory", location)
+            at(location)
         }.body<LocatedEnvelope<PermissionAskDto>>().data
     }
 
@@ -342,6 +348,241 @@ class OpenCodeClient(
             setBody(PermissionReplyBody(decision = decision, message = message))
         }
         return response.status.isSuccess()
+    }
+
+
+    // ------------------------------------------------------------------
+    // Diffs, contexte, worktrees, revert
+    // ------------------------------------------------------------------
+
+    /**
+     * `GET /api/session/{id}/diff` : les fichiers modifies par la session, **patch inclus**.
+     *
+     * ⚠️ `from` / `to` sont des identifiants de MESSAGE : sans eux, le serveur compare l'etat
+     * initial a l'etat courant. C'est ce qu'on veut pour une vue d'ensemble.
+     */
+    suspend fun sessionDiff(sessionID: String): List<FileDiffDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/diff") {
+            auth(credentials)
+        }.body<VcsEnvelope<FileDiffDto>>().data
+    }
+
+    /**
+     * `GET /api/vcs/diff` : le diff du depot, hors d'une session.
+     *
+     * ⚠️ **`mode` est REQUIS** (mesure : sans lui, `400 Missing key at ["mode"]`). Trois valeurs :
+     * `working` (modifications non commitees), `branch` (depuis la base de la branche),
+     * `committed` (les derniers commits). Il n'y a pas de defaut cote serveur — on l'expose donc
+     * en parametre obligatoire plutot que d'en inventer un.
+     */
+    suspend fun vcsDiff(location: String, mode: String): List<FileDiffDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/vcs/diff") {
+            auth(credentials)
+            at(location)
+            parameter("mode", mode)
+        }.body<VcsEnvelope<FileDiffDto>>().data
+    }
+
+    /** `GET /api/vcs/status` : les fichiers touches, sans les patches (plus leger). */
+    suspend fun vcsStatus(location: String): List<VcsFileStatusDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/vcs/status") {
+            auth(credentials)
+            at(location)
+        }.body<VcsEnvelope<VcsFileStatusDto>>().data
+    }
+
+    /**
+     * `GET /api/session/{id}/context` : **ce qui occupe la fenetre de contexte**.
+     *
+     * ⚠️ Enveloppe `{data}` simple ici — pas de `location`. La liste renvoyee n'est **pas**
+     * l'historique : c'est ce qui sera envoye au modele au prochain tour.
+     */
+    suspend fun sessionContext(sessionID: String): List<ContextMessageDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/context") {
+            auth(credentials)
+        }.body<ContextEnvelope>().data
+    }
+
+    /**
+     * `POST /api/session/{id}/revert/stage` : **prepare** un retour en arriere.
+     *
+     * ⚠️ En deux temps (`stage` puis `commit`) et pas en un : c'est ce qui permet de **montrer**
+     * les fichiers qui seraient touches avant de le faire. Un revert en un seul appel
+     * modifierait le depot sans confirmation — inacceptable pour une action destructive.
+     */
+    suspend fun revertStage(sessionID: String, messageID: String): RevertResultDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.post("$baseUrl/api/session/$sessionID/revert/stage") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(RevertStageBody(messageID = messageID))
+        }.body<RevertEnvelope>().data
+    }
+
+    /** `POST /api/session/{id}/revert/commit` : applique le retour prepare par [revertStage]. */
+    suspend fun revertCommit(sessionID: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/revert/commit") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(EmptyBody())
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `DELETE /api/session/{id}/revert` : **annule** le retour prepare (sans avoir committe).
+     *
+     * ⚠️ C'est le seul chemin de sortie d'un revert prepare : sans lui, un `stage` laisse la
+     * session dans un etat intermediaire sans moyen d'en sortir depuis l'app.
+     */
+    suspend fun revertDiscard(sessionID: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.delete("$baseUrl/api/session/$sessionID/revert") {
+            auth(credentials)
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `GET /api/worktree` : les arbres de travail connus.
+     *
+     * ⚠️ **`projectID`, pas un chemin.** Mesure : `directory=/home/utilisateur` rend
+     * `400 InvalidRequestError Missing key at ["projectID"]`. Le hash se recupere par
+     * [location]. L'appelant le fournit donc, et c'est pour ca que la signature prend un
+     * `projectID` et non un `directory`.
+     */
+    suspend fun worktrees(projectID: String): List<WorktreeDirDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/worktree") {
+            auth(credentials)
+            parameter("projectID", projectID)
+        }.body<List<WorktreeDirDto>>()
+    }
+
+    /** `POST /api/worktree` : cree un arbre de travail isole. */
+    suspend fun createWorktree(projectID: String, branch: String?): WorktreeInfoDto {
+        val credentials = credentialsProvider.credentials()
+        return http.post("$baseUrl/api/worktree") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            parameter("projectID", projectID)
+            setBody(WorktreeCreateBody(branch = branch))
+        }.body<WorktreeInfoDto>()
+    }
+
+    /** `DELETE /api/worktree` : retire un arbre de travail. */
+    suspend fun removeWorktree(projectID: String, directory: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.delete("$baseUrl/api/worktree") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            parameter("projectID", projectID)
+            setBody(WorktreeRemoveBody(directory = directory))
+        }
+        return response.status.isSuccess()
+    }
+
+    /** `POST /api/session/{id}/model` : change le modele **de cette session**. */
+    suspend fun setSessionModel(sessionID: String, model: ModelRef): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/model") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(SetModelBody(model = model))
+        }
+        return response.status.isSuccess()
+    }
+
+    /** `POST /api/session/{id}/agent` : change l'agent **de cette session**. */
+    suspend fun setSessionAgent(sessionID: String, agent: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/agent") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(SetAgentBody(agent = agent))
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `POST /api/session/{id}/command` : lance une **commande slash**.
+     *
+     * ⚠️ La commande n'est pas un simple texte prefixe : elle a un **nom** que le serveur valide
+     * contre sa liste. Envoyer `/review` comme texte de prompt ne declencherait rien.
+     */
+    suspend fun runCommand(sessionID: String, name: String, text: String = ""): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/command") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(SlashCommandBody(name = name, text = text))
+        }
+        return response.status.isSuccess()
+    }
+
+    /** `GET /api/session/{id}/inbox` : les messages **en file** d'attente. */
+    suspend fun sessionInbox(sessionID: String): List<InboxItemDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/inbox") {
+            auth(credentials)
+        }.body<ListEnvelope<InboxItemDto>>().data
+    }
+
+    /**
+     * `DELETE /api/session/{id}/inbox/{inboxID}` : **annule un message en file**.
+     *
+     * ⚠️ C'est la reponse directe a l'issue #4821 (126 👍) : un message soumis pendant que
+     * l'agent tourne part en file et, sans cette route, **ne peut plus etre annule**.
+     */
+    suspend fun dismissInbox(sessionID: String, inboxID: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.delete("$baseUrl/api/session/$sessionID/inbox/$inboxID") {
+            auth(credentials)
+        }
+        return response.status.isSuccess()
+    }
+
+
+    /**
+     * **Le repertoire, nomme une seule fois pour toutes les routes `deepObject`.**
+     *
+     * ⚠️ Bug reel corrige ici, et il etait **silencieux** : les routes d'inventaire
+     * (`/api/command`, `/api/skill`, `/api/mcp`, `/api/model`, `/api/agent`, `/api/provider`,
+     * `/api/form`) declarent leur parametre `location` en **`style: deepObject`** — donc
+     * `location[directory]=...`. Passer simplement `directory=...` est **ignore sans erreur** et
+     * le serveur retombe sur son repertoire de travail courant.
+     *
+     * Mesure du 2026-09-25 : avec `directory=/tmp`, `/api/command` repond `location=/home/utilisateur`
+     * (le cwd) ; avec `location[directory]=/tmp`, il repond `location=/tmp`. Les sept routes
+     * marchaient **par accident**, parce que le cwd du serveur se trouvait etre le repertoire
+     * configure. Des que les deux different, l'app afficherait les donnees du mauvais projet sans
+     * que rien ne le signale — le pire des modes d'echec.
+     *
+     * ⚠️ Exception : `GET /api/session` (`sessionsPage`) attend bien `directory` **simple**
+     * (`style: None`). C'est la seule, et c'est pour ca qu'elle ne passe pas par ici.
+     */
+    private fun HttpRequestBuilder.at(location: String) {
+        parameter("location[directory]", location)
+    }
+
+    /**
+     * `GET /api/location` : le repertoire **tel que le serveur le voit**, avec son `project.id`.
+     *
+     * ⚠️ Indispensable pour `/api/worktree`, qui n'accepte pas un chemin mais un **`projectID`**
+     * (mesure : `directory=` y rend `400 Missing key at ["projectID"]`). Le projectID est un hash
+     * qu'on ne peut pas fabriquer — il faut le demander.
+     */
+    suspend fun location(directory: String): LocationInfo {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/location") {
+            auth(credentials)
+            at(directory)
+        }.body()
     }
 
     private fun HttpRequestBuilder.auth(credentials: BasicAuthCredentials?) {

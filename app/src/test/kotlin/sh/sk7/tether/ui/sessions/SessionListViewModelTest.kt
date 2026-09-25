@@ -1,5 +1,7 @@
 package sh.sk7.tether.ui.sessions
 
+import sh.sk7.tether.testing.NeutralGateway
+
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -72,7 +74,7 @@ class SessionListViewModelTest {
         private val agents: List<Agent> = listOf(Agent(id = "general", name = "General")),
         private val failure: Throwable? = null,
         private val created: Session = Session(id = "ses_new", title = "Nouvelle"),
-    ) : OpenCodeGateway {
+    ) : NeutralGateway() {
         var sessionsCalls = 0
         var lastCreateAgent: String? = null
         var lastCreateTitle: String? = null
@@ -161,41 +163,6 @@ class SessionListViewModelTest {
             return true
         }
 
-        // Les fakes n'implementent que ce que les tests exercent : les nouvelles routes
-        // renvoient du vide, ce qui suffit puisque aucun test ne les couvre encore.
-        override suspend fun stats(settings: ConnectionSettings, fromMillis: Long?) = UsageStats()
-
-        override suspend fun commands(settings: ConnectionSettings) = emptyList<CommandDto>()
-
-        override suspend fun skills(settings: ConnectionSettings) = emptyList<SkillDto>()
-
-        override suspend fun mcpServers(settings: ConnectionSettings) = emptyList<McpServerDto>()
-
-        override suspend fun plugins(settings: ConnectionSettings) = emptyList<PluginDto>()
-
-        override suspend fun providers(settings: ConnectionSettings) = emptyList<ProviderDto>()
-
-        override suspend fun savedPermissions(settings: ConnectionSettings) =
-            emptyList<SavedPermissionDto>()
-
-        override suspend fun revokePermission(settings: ConnectionSettings, permissionID: String) =
-            true
-
-        override suspend fun projects(settings: ConnectionSettings) = emptyList<ProjectDto>()
-
-        override suspend fun pendingPermissions(settings: ConnectionSettings) =
-            emptyList<PermissionRequest>()
-
-        override suspend fun sessionPermissions(settings: ConnectionSettings, sessionID: String) =
-            emptyList<PermissionRequest>()
-
-        override suspend fun replyPermission(
-            settings: ConnectionSettings,
-            sessionID: String,
-            requestID: String,
-            decision: PermissionDecision,
-            message: String?,
-        ): Boolean = true
 
         override suspend fun renameSession(
             settings: ConnectionSettings,

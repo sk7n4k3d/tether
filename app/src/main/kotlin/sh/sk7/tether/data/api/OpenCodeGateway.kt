@@ -244,6 +244,87 @@ interface OpenCodeGateway {
         message: String? = null,
     ): Boolean
 
+    // ------------------------------------------------------------------
+    // Diffs, contexte, worktrees, revert, commandes
+    // ------------------------------------------------------------------
+
+    /** Les fichiers modifies par une session, **patch inclus** (`GET /session/{id}/diff`). */
+    suspend fun sessionDiff(settings: ConnectionSettings, sessionID: String): List<FileDiffDto>
+
+    /**
+     * Le diff du depot, hors session (`GET /api/vcs/diff`).
+     *
+     * ⚠️ `mode` est **requis** par le serveur (`working`, `branch`, `committed`) : sans lui, la
+     * route rend `400`. Pas de defaut invente cote app.
+     */
+    suspend fun vcsDiff(settings: ConnectionSettings, mode: String): List<FileDiffDto>
+
+    /**
+     * Le `projectID` du repertoire configure, tel que le serveur le calcule.
+     *
+     * ⚠️ Necessaire a `/api/worktree`, qui n'accepte qu'un `projectID` et pas un chemin.
+     */
+    suspend fun projectID(settings: ConnectionSettings): String?
+
+    /** Les fichiers touches, sans patch (`GET /api/vcs/status`). */
+    suspend fun vcsStatus(settings: ConnectionSettings): List<VcsFileStatusDto>
+
+    /**
+     * **Ce qui occupe la fenetre de contexte** (`GET /session/{id}/context`).
+     *
+     * ⚠️ Ce n'est pas l'historique : c'est ce qui sera envoye au prochain tour. La distinction
+     * est tout l'interet de la fonction — elle repond a « pourquoi ma session oublie des choses ».
+     */
+    suspend fun sessionContext(settings: ConnectionSettings, sessionID: String): List<ContextMessageDto>
+
+    /**
+     * Prepare un retour en arriere (`POST /session/{id}/revert/stage`).
+     *
+     * ⚠️ **Ne modifie rien** : renvoie ce qui serait touche. Le changement n'a lieu qu'au
+     * [commitRevert] — c'est ce qui rend l'operation confirmable.
+     */
+    suspend fun stageRevert(
+        settings: ConnectionSettings,
+        sessionID: String,
+        messageID: String,
+    ): RevertResultDto?
+
+    /** Applique le retour prepare. */
+    suspend fun commitRevert(settings: ConnectionSettings, sessionID: String): Boolean
+
+    /** Abandonne un retour prepare, sans rien modifier. */
+    suspend fun discardRevert(settings: ConnectionSettings, sessionID: String): Boolean
+
+    /** Les arbres de travail isoles (`GET /api/worktree`). */
+    suspend fun worktrees(settings: ConnectionSettings): List<WorktreeDirDto>
+
+    /** Cree un arbre de travail isole. */
+    suspend fun createWorktree(settings: ConnectionSettings, branch: String?): WorktreeInfoDto
+
+    /** Retire un arbre de travail. */
+    suspend fun removeWorktree(settings: ConnectionSettings, directory: String): Boolean
+
+    /** Change le modele d'une session. */
+    suspend fun setSessionModel(settings: ConnectionSettings, sessionID: String, model: ModelRef): Boolean
+
+    /** Change l'agent d'une session. */
+    suspend fun setSessionAgent(settings: ConnectionSettings, sessionID: String, agent: String): Boolean
+
+    /** Lance une commande slash (`POST /session/{id}/command`). */
+    suspend fun runCommand(
+        settings: ConnectionSettings,
+        sessionID: String,
+        name: String,
+        text: String = "",
+    ): Boolean
+
+    /** Les messages **en file** d'attente sur une session. */
+    suspend fun sessionInbox(settings: ConnectionSettings, sessionID: String): List<InboxItemDto>
+
+    /** Annule un message en file. */
+    suspend fun dismissInbox(settings: ConnectionSettings, sessionID: String, inboxID: String): Boolean
+
+
     companion object {
         /** 200 tient en 4 pages pour 428 sessions (mesure 2026-09-25), sans charger d'un bloc. */
         const val DEFAULT_PAGE_SIZE: Int = 200
@@ -434,6 +515,97 @@ class KtorOpenCodeGateway @Inject constructor(
         decision: PermissionDecision,
         message: String?,
     ): Boolean = client(settings).replyPermission(sessionID, requestID, decision.wire, message)
+
+    // ------------------------------------------------------------------
+    // Diffs, contexte, worktrees, revert
+    // ------------------------------------------------------------------
+
+    override suspend fun sessionDiff(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<FileDiffDto> = client(settings).sessionDiff(sessionID)
+
+    override suspend fun vcsDiff(
+        settings: ConnectionSettings,
+        mode: String,
+    ): List<FileDiffDto> = client(settings).vcsDiff(settings.directory, mode)
+
+    /**
+     * ⚠️ On renvoie `null` si le serveur ne donne pas de projet : ce n'est **pas** une erreur
+     * (le repertoire peut ne pas etre un depot connu), et fabriquer un identifiant serait pire que
+     * l'absence — un projectID invente ferait echouer `/api/worktree` avec un message obscur.
+     */
+    override suspend fun projectID(settings: ConnectionSettings): String? =
+        runCatching { client(settings).location(settings.directory).project?.id }.getOrNull()
+
+    override suspend fun vcsStatus(settings: ConnectionSettings): List<VcsFileStatusDto> =
+        client(settings).vcsStatus(settings.directory)
+
+    override suspend fun sessionContext(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<ContextMessageDto> = client(settings).sessionContext(sessionID)
+
+    override suspend fun stageRevert(
+        settings: ConnectionSettings,
+        sessionID: String,
+        messageID: String,
+    ): RevertResultDto? = client(settings).revertStage(sessionID, messageID)
+
+    override suspend fun commitRevert(settings: ConnectionSettings, sessionID: String): Boolean =
+        client(settings).revertCommit(sessionID)
+
+    override suspend fun discardRevert(settings: ConnectionSettings, sessionID: String): Boolean =
+        client(settings).revertDiscard(sessionID)
+
+    override suspend fun worktrees(settings: ConnectionSettings): List<WorktreeDirDto> {
+        val id = projectID(settings) ?: return emptyList()
+        return client(settings).worktrees(id)
+    }
+
+    override suspend fun createWorktree(
+        settings: ConnectionSettings,
+        branch: String?,
+    ): WorktreeInfoDto {
+        val id = projectID(settings) ?: error("Aucun projet identifie pour ce repertoire")
+        return client(settings).createWorktree(id, branch)
+    }
+
+    override suspend fun removeWorktree(settings: ConnectionSettings, directory: String): Boolean {
+        val id = projectID(settings) ?: return false
+        return client(settings).removeWorktree(id, directory)
+    }
+
+    override suspend fun setSessionModel(
+        settings: ConnectionSettings,
+        sessionID: String,
+        model: ModelRef,
+    ): Boolean = client(settings).setSessionModel(sessionID, model)
+
+    override suspend fun setSessionAgent(
+        settings: ConnectionSettings,
+        sessionID: String,
+        agent: String,
+    ): Boolean = client(settings).setSessionAgent(sessionID, agent)
+
+    override suspend fun runCommand(
+        settings: ConnectionSettings,
+        sessionID: String,
+        name: String,
+        text: String,
+    ): Boolean = client(settings).runCommand(sessionID, name, text)
+
+    override suspend fun sessionInbox(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<InboxItemDto> = client(settings).sessionInbox(sessionID)
+
+    override suspend fun dismissInbox(
+        settings: ConnectionSettings,
+        sessionID: String,
+        inboxID: String,
+    ): Boolean = client(settings).dismissInbox(sessionID, inboxID)
+
 
 }
 
