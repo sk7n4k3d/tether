@@ -8,6 +8,8 @@ import sh.sk7.tether.domain.model.ModelUsage
 import sh.sk7.tether.domain.model.UsageStats
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Point d'acces unique aux operations de l'API V2 utilisees par l'UI.
@@ -29,16 +31,21 @@ interface OpenCodeGateway {
      * ⚠️ `GET /api/session` pagine par defaut a 50 et le serveur en compte **428** : s'arreter
      * a la premiere page tronque la liste en silence (defaut connu de la Task 1.5). On boucle
      * sur `cursor.next` en demandant [pageSize] elements par page.
+     *
+     * @param parent filtre optionnel : enfants directs d'une session, ou racines seulement.
+     *   Voir [SessionParent] — la mesure du 2026-09-26 montre que `parentID=null` renvoie
+     *   uniquement les racines (159 sur 468), et `parentID=<ses>` uniquement ses enfants.
      */
     suspend fun allSessions(
         settings: ConnectionSettings,
         pageSize: Int = DEFAULT_PAGE_SIZE,
+        parent: SessionParent? = null,
     ): List<Session> {
         val all = mutableListOf<Session>()
         var cursor: String? = null
         var pages = 0
         do {
-            val page = sessionsPage(settings, pageSize, cursor)
+            val page = sessionsPage(settings, pageSize, cursor, parent)
             all += page.data
             cursor = page.next
             pages++
@@ -52,11 +59,16 @@ interface OpenCodeGateway {
      * ⚠️ Il n'existe **pas** de `sessions()` non pagine : une telle methode renverrait 50
      * elements par defaut et tronquerait la liste en silence. Toujours passer par
      * [allSessions] ou par cette page explicite.
+     *
+     * ⚠️ Le filtre `parentID` est celui de l'API : [SessionParent.Of] pour les enfants directs,
+     * [SessionParent.Roots] pour les seules racines. Mesure du 2026-09-26 : `parentID=null`
+     * (chaine litterale) rend bien **uniquement** les racines, et non « pas de filtre ».
      */
     suspend fun sessionsPage(
         settings: ConnectionSettings,
         limit: Int?,
         cursor: String?,
+        parent: SessionParent? = null,
     ): CursorPage<Session>
 
     suspend fun models(settings: ConnectionSettings): List<Model>
@@ -433,6 +445,106 @@ interface OpenCodeGateway {
     /** Annule un message en file. */
     suspend fun dismissInbox(settings: ConnectionSettings, sessionID: String, inboxID: String): Boolean
 
+    /**
+     * **Change le mode de livraison** d'un message en file (`steer` | `queue`).
+     *
+     * ⚠️ Mesure du 2026-09-26 : la route rend **204 sans corps** et l'effet est immediat ; une
+     * valeur hors enum rend **400**, un id inconnu ou deja livre **409**. La signature prend la
+     * chaine brute ([InboxDelivery.STEER] / [InboxDelivery.QUEUE]) pour ne pas figer un enum cote
+     * appelant sans que le serveur l'ait exprime autrement.
+     *
+     * ⚠️ Le serveur est la verite : apres un `true`, l'appelant **relit la file** — un `204` ne
+     * prouve pas que le mode voulu est celui qui a ete retenu si l'item a ete livre entre-temps.
+     */
+    suspend fun updateInboxDelivery(
+        settings: ConnectionSettings,
+        sessionID: String,
+        inboxID: String,
+        delivery: String,
+    ): Boolean
+
+    // ------------------------------------------------------------------
+    // Formulaires — l'agent pose une question et attend, comme une permission
+    // ------------------------------------------------------------------
+
+    /**
+     * Les formulaires **pendants du repertoire** (`GET /api/form`).
+     *
+     * ⚠️ C'est la route de **resynchronisation** : le flux SSE est « volatile by contract », un
+     * `form.created` emis pendant une coupure est invisible pour toujours. Sans cette lecture,
+     * l'agent reste bloque sans que rien ne l'indique.
+     */
+    suspend fun pendingForms(settings: ConnectionSettings): List<FormInfoDto>
+
+    /**
+     * Les formulaires pendants **d'une session** (`GET /api/session/{id}/form`).
+     *
+     * ⚠️ Le `sessionID` peut valoir `"global"` (elicitation MCP, mesure 2026-09-26) : ce n'est pas
+     * une session, mais la route repond pour cette pseudo-session. Un vrai id inconnu rend `404`.
+     */
+    suspend fun sessionForms(settings: ConnectionSettings, sessionID: String): List<FormInfoDto>
+
+    /** Un formulaire **avec son etat** (`GET /api/session/{id}/form/{formID}`). */
+    suspend fun sessionForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+    ): FormDetailDto?
+
+    /**
+     * Repond a un formulaire (`POST /api/session/{id}/form/{formID}/reply`).
+     *
+     * ⚠️ Un formulaire bloque l'agent **au meme titre qu'une permission**. On n'envoie **jamais**
+     * une valeur inventee pour « que ca passe » : le serveur valide finement (type attendu,
+     * `pattern`, bornes, options, champs `when` inactifs, externes non acquittes) et rend `400`
+     * avec une raison precise. Un formulaire mal repondu debloque l'agent sur une intention qui
+     * n'est pas celle de l'utilisateur — c'est pire qu'un blocage visible.
+     *
+     * @return `true` sur `204` (accepte). Les echecs remontent comme exceptions HTTP (400/404/409)
+     *   pour que l'appelant distingue « formulaire deja regle » d'une erreur reseau.
+     */
+    suspend fun replyForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+        answer: Map<String, FormAnswerValue>,
+    ): Boolean
+
+    // ------------------------------------------------------------------
+    // Divers (routes utilisees mais jusqu'ici derivees cote client)
+    // ------------------------------------------------------------------
+
+    /**
+     * **Le modele par defaut du serveur** (`GET /api/model/default`).
+     *
+     * ⚠️ L'app derivait jusqu'ici le defaut cote client (premier modele du catalogue, ou celui
+     * d'une session recente). Mesure du 2026-09-26 : le serveur repond `glm-5.3-flash`, qui peut
+     * differer du premier du catalogue. Demander au serveur est la seule facon de ne pas mentir.
+     */
+    suspend fun defaultModel(settings: ConnectionSettings): Model?
+
+    /** La **base de revision** deduite par le serveur (`GET /api/vcs/base`), ou `null`. */
+    suspend fun vcsBase(settings: ConnectionSettings): VcsBaseDto?
+
+    /**
+     * **Attend que la boucle d'agent devienne idle** (`POST /api/experimental/session/{id}/wait`).
+     *
+     * ⚠️ Mesure du 2026-09-26 : sur une session **idle**, rend **204 immediatement** (8 ms) ; sur
+     * une session **en cours**, la requete **bloque** jusqu'a la fin de la boucle (9,1 s mesures).
+     * Sur un id inconnu, `404 SessionNotFoundError`.
+     *
+     * ⚠️ C'est le remplacant naturel du sondage `activeSessions` pour « le travail de fond est-il
+     * fini » : au lieu de redemander toutes les 6 s, on **attend la fin** en une requete. La
+     * signature prend un `timeoutMillis` : le client ne doit pas rester suspendu indefiniment, et
+     * un appelant qui abandonne doit pouvoir le faire — d'ou le `false` (non confirme) plutot
+     * qu'une exception, distinct d'un vrai echec.
+     */
+    suspend fun waitForIdle(
+        settings: ConnectionSettings,
+        sessionID: String,
+        timeoutMillis: Long = DEFAULT_WAIT_TIMEOUT_MS,
+    ): Boolean
+
 
     companion object {
         /** 200 tient en 4 pages pour 428 sessions (mesure 2026-09-25), sans charger d'un bloc. */
@@ -441,6 +553,15 @@ interface OpenCodeGateway {
         /** Garde-fou : jamais de boucle de pagination non bornee. */
         const val MAX_SESSION_PAGES: Int = 40
         const val MAX_MESSAGE_PAGES: Int = 40
+
+        /**
+         * Plafond par defaut d'un [waitForIdle].
+         *
+         * ⚠️ On ne laisse **jamais** une attente sans borne : un agent bloque (sur une permission
+         * ou un formulaire) ne devient jamais idle, et l'appel resterait suspendu pour toujours.
+         * 10 minutes couvrent un long tour d'outil sans immobiliser l'app au-dela.
+         */
+        const val DEFAULT_WAIT_TIMEOUT_MS: Long = 10 * 60 * 1000L
     }
 }
 
@@ -460,7 +581,8 @@ class KtorOpenCodeGateway @Inject constructor(
         settings: ConnectionSettings,
         limit: Int?,
         cursor: String?,
-    ): CursorPage<Session> = client(settings).sessionsPage(settings.directory, limit, cursor)
+        parent: SessionParent?,
+    ): CursorPage<Session> = client(settings).sessionsPage(settings.directory, limit, cursor, parent)
 
     override suspend fun models(settings: ConnectionSettings): List<Model> =
         client(settings).models(settings.directory)
@@ -789,6 +911,68 @@ class KtorOpenCodeGateway @Inject constructor(
         sessionID: String,
         inboxID: String,
     ): Boolean = client(settings).dismissInbox(sessionID, inboxID)
+
+    override suspend fun updateInboxDelivery(
+        settings: ConnectionSettings,
+        sessionID: String,
+        inboxID: String,
+        delivery: String,
+    ): Boolean = client(settings).updateInboxDelivery(sessionID, inboxID, delivery)
+
+    // ------------------------------------------------------------------
+    // Formulaires
+    // ------------------------------------------------------------------
+
+    override suspend fun pendingForms(settings: ConnectionSettings): List<FormInfoDto> =
+        client(settings).forms(settings.directory)
+
+    override suspend fun sessionForms(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<FormInfoDto> = client(settings).sessionForms(sessionID)
+
+    override suspend fun sessionForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+    ): FormDetailDto? = client(settings).sessionForm(sessionID, formID)
+
+    /**
+     * ⚠️ La traduction `Map<String, FormAnswerValue>` -> `JsonObject` vit sur le **type de
+     * valeur** ([FormAnswerValue.toJson]), pas ici : un entier part en entier et une chaine en
+     * chaine. C'est exactement le point ou le serveur refuse une forme approchee
+     * (`400 Expected integer`, mesure du 2026-09-26).
+     */
+    override suspend fun replyForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+        answer: Map<String, FormAnswerValue>,
+    ): Boolean = client(settings).replyForm(
+        sessionID = sessionID,
+        formID = formID,
+        answer = JsonObject(answer.mapValues { (_, value) -> value.toJson() }),
+    )
+
+    override suspend fun defaultModel(settings: ConnectionSettings): Model? =
+        client(settings).defaultModel(settings.directory)
+
+    override suspend fun vcsBase(settings: ConnectionSettings): VcsBaseDto? =
+        client(settings).vcsBase(settings.directory)
+
+    /**
+     * ⚠️ Le timeout est **a la charge de l'appelant**, pas du client : `waitForIdle` bloque jusqu'a
+     * ce que le serveur reponde ou que le moteur HTTP abandonne. On remonte `false` quand la reponse
+     * n'est pas un succes (y compris un abandon), et on laisse les erreurs reseau remonter — un
+     * serveur injoignable n'est pas « toujours en cours ».
+     */
+    override suspend fun waitForIdle(
+        settings: ConnectionSettings,
+        sessionID: String,
+        timeoutMillis: Long,
+    ): Boolean = withTimeoutOrNull(timeoutMillis) {
+        client(settings).waitForIdle(sessionID, timeoutMillis)
+    } ?: false
 
 
 }

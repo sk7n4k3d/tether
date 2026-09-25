@@ -23,6 +23,7 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.PromptAcceptance
 import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.api.SessionParent
 import sh.sk7.tether.data.api.TimeInfo
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.McpServerDto
@@ -113,6 +114,7 @@ class SessionListViewModelTest {
             settings: ConnectionSettings,
             limit: Int?,
             cursor: String?,
+            parent: SessionParent?,
         ): CursorPage<Session> {
             sessionsCalls++
             failure?.let { throw it }

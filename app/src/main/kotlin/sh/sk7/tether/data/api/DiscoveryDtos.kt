@@ -215,6 +215,29 @@ data class VcsBranchInfoDto(
 data class VcsBranchEnvelope(val location: LocationInfo? = null, val data: List<String> = emptyList())
 
 /**
+ * `GET /api/model/default` : `{location, data: <Model.Info>|null}`.
+ *
+ * ⚠️ Enveloppe `{location, data}` avec `data` **objet ou null** — une quatrieme forme apres
+ * `{data:[…]}`, `{location,data:[…]}` et `{location,data:{…}}`. On reutilise [VcsObjectEnvelope],
+ * dont la forme est identique (`location` + `data` nullable) : deux classes pour le meme contrat
+ * finiraient par diverger.
+ */
+typealias DefaultModelEnvelope = VcsObjectEnvelope<Model>
+
+/** `Vcs.Base` : la base de revision deduite par le serveur (`name`, `ref`, `source`). */
+@Serializable
+data class VcsBaseDto(
+    val name: String = "",
+    val ref: String = "",
+    /** `reflog` (deduit de l'historique de creation de branche) ou `default`. */
+    val source: String = "",
+)
+
+/** `GET /api/vcs/base` : `{location, data: <Vcs.Base>|null}`. */
+@Serializable
+data class VcsBaseEnvelope(val location: LocationInfo? = null, val data: VcsBaseDto? = null)
+
+/**
  * Une entree de la **fenetre de contexte** (`GET /api/session/{id}/context`).
  *
  * ### Formes RELEVEES sur 98 entrees reelles (2026-09-25), pas devinees

@@ -182,6 +182,118 @@ class DtosTest {
         assertEquals(3L, env.data.first().time?.archived)
     }
 
+    // ------------------------------------------------------------------
+    // Formulaires : les six types de champ, la condition when, la pseudo-session globale
+    // ------------------------------------------------------------------
+
+    /**
+     * ⚠️ **Forme mesuree sur le serveur 2.0.x le 2026-09-26**, pas deduite du schema. On decode
+     * les six types d'un coup, avec les champs *specifiques* de chacun (`format`, `options`,
+     * `minItems`, `url`) pour prouver qu'un seul DTO plat les porte tous.
+     */
+    @Test
+    fun `les six types de champ d un formulaire se decodent`() {
+        val raw = """
+        {"data":{"id":"frm_1","sessionID":"ses_1","title":"probe","fields":[
+          {"key":"s","type":"string","format":"email","minLength":3,"maxLength":50,"pattern":"^.+@.+$",
+           "placeholder":"a@b.c","default":"x@y.z","options":[{"value":"a","label":"A"}]},
+          {"key":"n","type":"number","minimum":0,"maximum":10,"default":1.5},
+          {"key":"i","type":"integer","minimum":1,"maximum":5,"default":2},
+          {"key":"b","type":"boolean","default":true},
+          {"key":"m","type":"multiselect","options":[{"value":"x","label":"X","description":"dx"}],
+           "minItems":1,"maxItems":2,"default":["x"],"custom":true},
+          {"key":"e","type":"external","url":"https://example.com"}
+        ]}}
+        """.trimIndent()
+        val detail = json.decodeFromString<FormDetailEnvelope>(raw).data!!
+        val byKey = detail.fields.associateBy { it.key }
+
+        assertEquals("email", byKey["s"]!!.format)
+        assertEquals(3, byKey["s"]!!.minLength)
+        assertEquals("^.+@.+$", byKey["s"]!!.pattern)
+        assertEquals("a@b.c", byKey["s"]!!.placeholder)
+        assertEquals(1, byKey["m"]!!.minItems)
+        assertTrue(byKey["m"]!!.custom)
+        assertEquals("dx", byKey["m"]!!.options.first().description)
+        assertEquals("https://example.com", byKey["e"]!!.url)
+    }
+
+    /**
+     * ⚠️ `minimum`/`default` sont des `JsonElement` et **pas** des nombres : le schema autorise les
+     * chaines `"Infinity"`/`"NaN"` pour les bornes. Les typer en `Double?` rendrait un formulaire
+     * entier indecodable des qu'une de ces formes apparait.
+     */
+    @Test
+    fun `une borne Infinity en chaine ne casse pas le decodage`() {
+        val raw = """{"key":"n","type":"number","maximum":"Infinity","minimum":"-Infinity"}"""
+        val f = json.decodeFromString<FormFieldDto>(raw)
+        assertEquals("Infinity", f.maximum!!.toString().trim('"'))
+        assertEquals("-Infinity", f.minimum!!.toString().trim('"'))
+    }
+
+    /** Le discriminant de l'union (`type`) est porte a plat dans le DTO. */
+    @Test
+    fun `le type de champ est porte a plat dans le DTO`() {
+        val raw = """{"key":"s","type":"string"}"""
+        assertEquals("string", json.decodeFromString<FormFieldDto>(raw).type)
+    }
+
+    /** Les conditions `when` (eq/neq sur un champ precedent) se decodent en liste. */
+    @Test
+    fun `les conditions when se decodent`() {
+        val raw = """
+        {"key":"d","type":"string","when":[
+          {"key":"m","op":"eq","value":"a"},
+          {"key":"b","op":"neq","value":true}
+        ]}
+        """.trimIndent()
+        val f = json.decodeFromString<FormFieldDto>(raw)
+        assertEquals(2, f.`when`.size)
+        assertEquals("m", f.`when`[0].key)
+        assertEquals("eq", f.`when`[0].op)
+        assertEquals("neq", f.`when`[1].op)
+        assertEquals("true", f.`when`[1].value!!.toString())
+    }
+
+    /**
+     * ⚠️ **`sessionID` peut valoir `"global"`** (elicitation MCP, mesure 2026-09-26) : ce n'est
+     * pas une session. [FormInfoDto.isGlobal] le rend explicite pour que le code ne suppose jamais
+     * qu'une session se trouve derriere.
+     */
+    @Test
+    fun `un formulaire global est reconnu comme tel`() {
+        val raw = """
+        {"data":[{"id":"frm_1","sessionID":"global","title":"mcp","fields":[{"key":"k","type":"string"}]}]}
+        """.trimIndent()
+        val env = json.decodeFromString<ListEnvelope<FormInfoDto>>(raw)
+        assertTrue(env.data.first().isGlobal)
+        assertEquals(FormInfoDto.GLOBAL_SESSION_ID, env.data.first().sessionID)
+    }
+
+    /** L'etat d'un formulaire (`pending` / `answered`) se lit, avec ses reponses. */
+    @Test
+    fun `l etat d un formulaire se decode`() {
+        val raw = """
+        {"data":{"id":"frm_1","sessionID":"ses_1","title":"t","fields":[{"key":"q","type":"string"}],
+         "state":{"status":"answered","answer":{"q":"hi"}}}}
+        """.trimIndent()
+        val detail = json.decodeFromString<FormDetailEnvelope>(raw).data!!
+        assertFalse(detail.state!!.isPending)
+        assertEquals("hi", detail.state.answer!!["q"]!!.toString().trim('"'))
+    }
+
+    /** Une reponse de formulaire se decode en `{"answer":{"<cle>":<valeur>}}`. */
+    @Test
+    fun `une reponse de formulaire se decode`() {
+        val raw = """{"answer":{"s":"x","n":3,"b":true,"m":["a","b"]}}"""
+        val body = json.decodeFromString<FormReplyBody>(raw)
+        assertEquals(4, body.answer.size)
+        assertEquals("x", body.answer["s"]!!.toString().trim('"'))
+        assertEquals("3", body.answer["n"]!!.toString())
+        assertEquals("true", body.answer["b"]!!.toString())
+        assertEquals("""["a","b"]""", body.answer["m"]!!.toString())
+    }
+
     @Test
     fun `l enveloppe objet de creation de session se decode`() {
         val raw = """{"data":{"id":"ses_new","projectID":"p1","title":"t",

@@ -34,6 +34,7 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.PromptAcceptance
 import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.api.SessionParent
 import sh.sk7.tether.data.api.TimeInfo
 import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
@@ -128,6 +129,7 @@ class ChatViewModelTest {
             settings: ConnectionSettings,
             limit: Int?,
             cursor: String?,
+            parent: SessionParent?,
         ): CursorPage<Session> = CursorPage(emptyList())
 
         override suspend fun models(settings: ConnectionSettings): List<Model> = emptyList()

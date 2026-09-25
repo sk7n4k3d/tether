@@ -6,6 +6,9 @@ import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.ContextMessageDto
 import sh.sk7.tether.data.api.CursorPage
 import sh.sk7.tether.data.api.FileDiffDto
+import sh.sk7.tether.data.api.FormAnswerValue
+import sh.sk7.tether.data.api.FormDetailDto
+import sh.sk7.tether.data.api.FormInfoDto
 import sh.sk7.tether.data.api.FsEntryDto
 import sh.sk7.tether.data.api.InboxItemDto
 import sh.sk7.tether.data.api.McpServerDto
@@ -25,9 +28,11 @@ import sh.sk7.tether.data.api.RevertResultDto
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.data.api.ServerInfo
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.api.SessionParent
 import sh.sk7.tether.data.api.ShellInfoDto
 import sh.sk7.tether.data.api.ShellOutputDto
 import sh.sk7.tether.data.api.SkillDto
+import sh.sk7.tether.data.api.VcsBaseDto
 import sh.sk7.tether.data.api.VcsFileStatusDto
 import sh.sk7.tether.data.api.VcsInfoDto
 import sh.sk7.tether.data.api.WorktreeDirDto
@@ -64,6 +69,7 @@ open class NeutralGateway : OpenCodeGateway {
         settings: ConnectionSettings,
         limit: Int?,
         cursor: String?,
+        parent: SessionParent?,
     ): CursorPage<Session> = CursorPage(data = emptyList())
 
     override suspend fun models(settings: ConnectionSettings): List<Model> = emptyList()
@@ -287,5 +293,42 @@ open class NeutralGateway : OpenCodeGateway {
         settings: ConnectionSettings,
         sessionID: String,
         inboxID: String,
+    ): Boolean = true
+
+    override suspend fun updateInboxDelivery(
+        settings: ConnectionSettings,
+        sessionID: String,
+        inboxID: String,
+        delivery: String,
+    ): Boolean = true
+
+    override suspend fun pendingForms(settings: ConnectionSettings): List<FormInfoDto> = emptyList()
+
+    override suspend fun sessionForms(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<FormInfoDto> = emptyList()
+
+    override suspend fun sessionForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+    ): FormDetailDto? = null
+
+    override suspend fun replyForm(
+        settings: ConnectionSettings,
+        sessionID: String,
+        formID: String,
+        answer: Map<String, FormAnswerValue>,
+    ): Boolean = true
+
+    override suspend fun defaultModel(settings: ConnectionSettings): Model? = null
+
+    override suspend fun vcsBase(settings: ConnectionSettings): VcsBaseDto? = null
+
+    override suspend fun waitForIdle(
+        settings: ConnectionSettings,
+        sessionID: String,
+        timeoutMillis: Long,
     ): Boolean = true
 }

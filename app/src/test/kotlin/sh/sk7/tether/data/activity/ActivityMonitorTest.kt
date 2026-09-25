@@ -62,6 +62,7 @@ class ActivityMonitorTest {
         override suspend fun allSessions(
             settings: ConnectionSettings,
             pageSize: Int,
+            parent: sh.sk7.tether.data.api.SessionParent?,
         ): List<Session> = sessions
 
         override suspend fun activeSessions(settings: ConnectionSettings): Set<String> = active
@@ -148,6 +149,7 @@ class ActivityMonitorTest {
             override suspend fun allSessions(
                 settings: ConnectionSettings,
                 pageSize: Int,
+                parent: sh.sk7.tether.data.api.SessionParent?,
             ): List<Session> = emptyList()
 
             override suspend fun shells(

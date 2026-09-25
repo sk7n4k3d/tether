@@ -1,7 +1,10 @@
 package sh.sk7.tether.data.api
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /*
  * DTOs du contrat API opencode V2, formes verifiees contre les fixtures reelles
@@ -344,3 +347,244 @@ data class PermissionReplyBody(
     val decision: String,
     val message: String? = null,
 )
+
+// ------------------------------------------------------------------
+// Formulaires : l'agent pose une question et attend la reponse
+// ------------------------------------------------------------------
+
+/**
+ * `Form.Info` — un formulaire **en attente**, tel que `GET /api/form` ou
+ * `GET /api/session/{id}/form` le renvoie.
+ *
+ * ⚠️ **Formes mesurees sur le serveur 2.0.x le 2026-09-26**, pas deduites du schema :
+ *
+ * ```
+ * POST /api/session/ses_…/form {"title":"probe","fields":[…]}
+ * -> {"data":{"id":"frm_…","sessionID":"ses_…","title":"probe","fields":[…]}}
+ * GET  /api/form?location[directory]=/tmp -> {"location":{…},"data":[Form.Info,…]}
+ * ```
+ *
+ * ⚠️ **`sessionID` peut valoir `"global"`** (mesure : formulaire cree par
+ * `POST /api/session/global/form`, rendu par `GET /api/form` et `GET /api/session/global/form`).
+ * Ce n'est **pas** une session : aucun `GET /api/session/global` ni `/message` n'existe. Le code
+ * ne doit donc jamais supposer qu'une session se trouve derriere cet identifiant.
+ */
+@Serializable
+data class FormInfoDto(
+    val id: String,
+    val sessionID: String = "",
+    val title: String = "",
+    val metadata: JsonObject? = null,
+    val fields: List<FormFieldDto> = emptyList(),
+) {
+    /** Vrai pour une elicitation MCP : `sessionID == "global"`, donc aucune session derriere. */
+    val isGlobal: Boolean get() = sessionID == GLOBAL_SESSION_ID
+
+    companion object {
+        /** Identifiant de pseudo-session des elicitations MCP (mesure 2026-09-26). */
+        const val GLOBAL_SESSION_ID: String = "global"
+    }
+}
+
+/**
+ * `Form.Detail` — un formulaire avec son **etat**. Renvoye par
+ * `GET /api/session/{sessionID}/form/{formID}` (mesure : `{"data":{…,"state":{…}}}`).
+ */
+@Serializable
+data class FormDetailDto(
+    val id: String,
+    val sessionID: String = "",
+    val title: String = "",
+    val metadata: JsonObject? = null,
+    val fields: List<FormFieldDto> = emptyList(),
+    val state: FormStateDto? = null,
+)
+
+/** `Form.State` : `pending` | `answered` (avec `answer`) | `cancelled`. */
+@Serializable
+data class FormStateDto(
+    val status: String = "",
+    /** Reponses deja donnees, quand `status == "answered"`. */
+    val answer: JsonObject? = null,
+) {
+    val isPending: Boolean get() = status == "pending"
+}
+
+/** `Form.Option` : une valeur proposee, avec son libelle affichable. */
+@Serializable
+data class FormOptionDto(
+    val value: String,
+    val label: String = "",
+    val description: String? = null,
+)
+
+/**
+ * `Form.When` : une **condition d'affichage** portant sur un champ precedent.
+ *
+ * ⚠️ Mesure du 2026-09-26 : `value` est valide par le serveur contre les **options** du champ
+ * vise (`"Form field condition value must be one of the field's options"` sinon). Il est donc
+ * toujours d'un type simple — chaine, nombre ou booleen — ce que porte [JsonElement].
+ */
+@Serializable
+data class FormWhenDto(
+    val key: String,
+    /** `eq` ou `neq` (`Form.When.op`). */
+    val op: String = "eq",
+    val value: JsonElement? = null,
+)
+
+/**
+ * `Form.Field` — **union discriminee par [type]**, decodee a plat.
+ *
+ * ### Pourquoi une seule classe plate et non six types separes
+ * Le discriminant est un **champ** (`type`) et non une propriete de schema : la reponse reelle
+ * porte `"type":"string"` dans le meme objet que `minLength`. On decode donc tout ce qui peut
+ * apparaitre, chaque sous-type remplissant seulement ses champs ; la projection **typee** se fait
+ * ensuite dans `sh.sk7.tether.ui.forms.FormField.from(dto)`, ce qui rend l'union explicite cote
+ * UI sans dependre de la configuration polymorphe globale du `Json`.
+ *
+ * ⚠️ `minimum`, `maximum` et `default` sont des [JsonElement] et **pas** des nombres : le schema
+ * `Form.NumberField` autorise explicitement les chaines `"Infinity"`, `"-Infinity"` et `"NaN"`.
+ * Typer en `Double?` ferait echouer le decodage de tout le formulaire des qu'un de ces cas
+ * apparait — un formulaire entier devient indecodable pour une borne infinie.
+ */
+@Serializable
+data class FormFieldDto(
+    val key: String,
+    val type: String,
+    val title: String? = null,
+    val description: String? = null,
+    val required: Boolean = false,
+    /** Un champ cache n'est jamais affiche ; il reste neanmoins valide par le serveur. */
+    val hidden: Boolean = false,
+    /** Conditions d'affichage (`Form.When`). Toutes doivent etre vraies pour que le champ vive. */
+    val `when`: List<FormWhenDto> = emptyList(),
+
+    // ---- string ----
+    /** `email` | `uri` | `date` | `date-time`. */
+    val format: String? = null,
+    val minLength: Int? = null,
+    val maxLength: Int? = null,
+    val pattern: String? = null,
+    val placeholder: String? = null,
+
+    // ---- number | integer ----
+    val minimum: JsonElement? = null,
+    val maximum: JsonElement? = null,
+
+    // ---- string | multiselect ----
+    val options: List<FormOptionDto> = emptyList(),
+    /** `string`/`multiselect` : accepte une valeur hors `options`. */
+    val custom: Boolean = false,
+
+    // ---- multiselect ----
+    val minItems: Int? = null,
+    val maxItems: Int? = null,
+
+    // ---- external ----
+    val url: String? = null,
+
+    /**
+     * Valeur par defaut, **polymorphe** : chaine, nombre, booleen ou tableau de chaines selon le
+     * type du champ. `null` = pas de defaut.
+     *
+     * ⚠️ Mesure du 2026-09-26 : le serveur **n'applique pas** les defauts. Repondre `{}` a un
+     * champ `{"type":"integer","default":7}` rend `204` avec `answer: {}` — le defaut n'est pas
+     * inscrit. Une reponse pour un champ **requis** avec defaut rend `400 Missing required`. C'est
+     * donc a l'app de pre-remplir et d'envoyer le defaut.
+     */
+    val default: JsonElement? = null,
+)
+
+/**
+ * Corps de `POST /api/session/{sessionID}/form/{formID}/reply`.
+ *
+ * ⚠️ `Form.Answer` est un objet a **proprietes libres** (`additionalProperties: Form.Value`), et
+ * non un tableau. On le porte comme [JsonObject] brut : c'est la forme exacte que le serveur
+ * valide (cles = `key` des champs, valeurs = `Form.Value` = string | number | boolean | string[]).
+ */
+@Serializable
+data class FormReplyBody(val answer: JsonObject)
+
+/**
+ * Filtre `parentID` de `GET /api/session`.
+ *
+ * ⚠️ L'OpenAPI declare `pattern: ^ses` **ou** `enum: ["null"]` : la valeur « racines seulement »
+ * est donc la **chaine** `"null"`. Un `null` Kotlin (parametre omis) ne filtre rien du tout.
+ * [SessionParent] rend cette distinction impossible a confondre.
+ */
+sealed interface SessionParent {
+    /** La chaine reellement transmise. */
+    val wire: String
+
+    /** Enfants directs d'une session (`parentID=ses_…`). */
+    data class Of(val sessionID: String) : SessionParent {
+        override val wire: String get() = sessionID
+    }
+
+    /** Sessions racines uniquement (`parentID=null`, chaine litterale). */
+    data object Roots : SessionParent {
+        override val wire: String get() = "null"
+    }
+}
+
+/** Corps de `PATCH /api/session/{id}/inbox/{inboxID}` : `steer` ou `queue`. */
+@Serializable
+data class InboxDeliveryBody(val delivery: String)
+
+/** Les deux modes de livraison d'un message en file (`Session.Inbox.Delivery`). */
+object InboxDelivery {
+    /** Corrige le tour en cours : le message est injecte tout de suite. */
+    const val STEER: String = "steer"
+
+    /** Attend son tour : le message est remis a la fin de l'execution. */
+    const val QUEUE: String = "queue"
+
+    /** Vrai si la valeur est l'un des deux modes reconnus par le serveur. */
+    fun isValid(value: String?): Boolean = value == STEER || value == QUEUE
+}
+
+/** `GET /api/session/{sessionID}/form/{formID}` : `{data: <Form.Detail>}` (un objet). */
+@Serializable
+data class FormDetailEnvelope(val data: FormDetailDto? = null)
+
+/**
+ * **Une valeur de reponse a un formulaire** (`Form.Value` de l'OpenAPI).
+ *
+ * ⚠️ Quatre formes seulement, et **pas une de plus** : `string`, `number`, `boolean`,
+ * `string[]`. Le type est porte par la classe, jamais par une chaine devinee : c'est ce qui rend
+ * impossible d'envoyer `"3"` (chaine) la ou le serveur attend `3` (nombre) — erreur mesuree le
+ * 2026-09-26 : `400 Expected number for form field: age`.
+ *
+ * ⚠️ **Entiers et nombres sont deux variantes distinctes** : un `3.0` Kotlin serialise en `3.0`
+ * et le serveur repond `400 Expected integer`. Un entier doit donc partir en entier.
+ */
+sealed interface FormAnswerValue {
+    /** Forme JSON exacte envoyee au serveur. */
+    fun toJson(): JsonElement
+
+    /** Une chaine (`Form.StringField`). */
+    data class Text(val value: String) : FormAnswerValue {
+        override fun toJson(): JsonElement = JsonPrimitive(value)
+    }
+
+    /** Un nombre decimal (`Form.NumberField`). */
+    data class Decimal(val value: Double) : FormAnswerValue {
+        override fun toJson(): JsonElement = JsonPrimitive(value)
+    }
+
+    /** Un entier (`Form.IntegerField`). ⚠️ Serialise **sans** partie decimale. */
+    data class Integer(val value: Long) : FormAnswerValue {
+        override fun toJson(): JsonElement = JsonPrimitive(value)
+    }
+
+    /** Un booleen (`Form.BooleanField`, et l'acquittement d'un champ `external`). */
+    data class Flag(val value: Boolean) : FormAnswerValue {
+        override fun toJson(): JsonElement = JsonPrimitive(value)
+    }
+
+    /** Une selection multiple (`Form.MultiselectField`). */
+    data class Items(val value: List<String>) : FormAnswerValue {
+        override fun toJson(): JsonElement = JsonArray(value.map { JsonPrimitive(it) })
+    }
+}

@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.basicAuth
 import io.ktor.client.request.get
@@ -18,6 +19,7 @@ import io.ktor.http.isSuccess
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Client REST du serveur opencode V2.
@@ -57,11 +59,23 @@ class OpenCodeClient(
      * Une page de `GET /api/session`. ⚠️ La route pagine par defaut a **50** : sans suivre
      * `cursor.next`, la liste est tronquee en silence (428 sessions reelles le 2026-09-25).
      * `limit` est honore par le serveur (verifie : 200 par page en 4 pages).
+     *
+     * ⚠️ **`parentID`** (mesure du 2026-09-26, 468 sessions sur le serveur) :
+     *  - absent           -> toutes les sessions (200 sur la 1re page, dont **97 enfants**) ;
+     *  - `parentID=<ses>` -> uniquement les enfants directs de cette session (32 pour
+     *    `ses_f2b4097ecffe8dMdMYfZlf1eiS`, **toutes** verifiees enfants de ce parent) ;
+     *  - `parentID=null`  -> uniquement les sessions **racines** (159, aucune avec `parentID`).
+     *
+     * ⚠️ La valeur litterale est bien la **chaine** `"null"`, pas une absence de parametre :
+     * l'oublier renvoie tout, l'ecrire filtre. C'est le genre de confusion qui produit un ecran
+     * ou les sous-agents se melangent aux conversations — d'ou [SessionParent], qui rend
+     * l'intention explicite au lieu de la laisser a une chaine magique.
      */
     suspend fun sessionsPage(
         directory: String,
         limit: Int? = null,
         cursor: String? = null,
+        parent: SessionParent? = null,
     ): CursorPage<Session> {
         val credentials = credentialsProvider.credentials()
         val envelope = http.get("$baseUrl/api/session") {
@@ -69,12 +83,17 @@ class OpenCodeClient(
             parameter("directory", directory)
             limit?.let { parameter("limit", it) }
             cursor?.let { parameter("cursor", it) }
+            parent?.let { parameter("parentID", it.wire) }
         }.body<DataEnvelope<Session>>()
         return envelope.toPage()
     }
 
-    suspend fun sessions(directory: String, limit: Int? = null, cursor: String? = null): List<Session> =
-        sessionsPage(directory, limit, cursor).data
+    suspend fun sessions(
+        directory: String,
+        limit: Int? = null,
+        cursor: String? = null,
+        parent: SessionParent? = null,
+    ): List<Session> = sessionsPage(directory, limit, cursor, parent).data
 
     /**
      * Une page de `GET /api/session/{id}/message`.
@@ -587,6 +606,183 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         val response = http.delete("$baseUrl/api/session/$sessionID/inbox/$inboxID") {
             auth(credentials)
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `PATCH /api/session/{id}/inbox/{inboxID}` : **change le mode de livraison** d'un message
+     * en file (`{"delivery":"steer"|"queue"}`).
+     *
+     * ⚠️ Mesure du 2026-09-26 sur le serveur 2.0.x :
+     *  - `PATCH {"delivery":"queue"}` sur un item `steer` -> **204 sans corps**, et `GET /inbox`
+     *    rend aussitot `"delivery":"queue"` ;
+     *  - valeur hors enum -> **400** `Expected Session.Inbox.Delivery at ["delivery"]` ;
+     *  - id inconnu (ou deja livre) -> **409** `Pending input cannot change to queue: msg_…`.
+     *
+     * ⚠️ On ne tente **jamais** de decoder la reponse : c'est un 204, exactement comme
+     * `renameSession` dont le decodage forcait `NoTransformationFoundException` sur une operation
+     * pourtant reussie. L'appelant doit ensuite **relire la file** : ce sont l'item et son mode
+     * reels qui font foi, pas l'`isSuccess`.
+     *
+     * ⚠️ `delivery` est une **chaine** (`Session.Inbox.Delivery`), pas un objet — meme piege que
+     * dans [InboxItemDto.delivery].
+     */
+    suspend fun updateInboxDelivery(
+        sessionID: String,
+        inboxID: String,
+        delivery: String,
+    ): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.patch("$baseUrl/api/session/$sessionID/inbox/$inboxID") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(InboxDeliveryBody(delivery = delivery))
+        }
+        return response.status.isSuccess()
+    }
+
+    // ------------------------------------------------------------------
+    // Formulaires
+    // ------------------------------------------------------------------
+
+    /**
+     * `GET /api/form` : les formulaires **pendants du repertoire**.
+     *
+     * ⚠️ Enveloppe `{location, data}` (declaration `style: deepObject` sur `location`) — comme
+     * `/api/permission/request`. Se tromper d'enveloppe rend une liste vide **sans erreur**, donc
+     * un ecran qui affirme « rien a repondre » alors que l'agent est bloque.
+     *
+     * ⚠️ Mesure du 2026-09-26 : `GET /api/form?location[directory]=/home/utilisateur` ne voit **pas**
+     * un formulaire cree a `/tmp/opencode` — le filtre par repertoire est reel. Un formulaire
+     * `sessionID:"global"` (elicitation MCP) suit cette meme regle.
+     */
+    suspend fun forms(location: String): List<FormInfoDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/form") {
+            auth(credentials)
+            at(location)
+        }.body<LocatedEnvelope<FormInfoDto>>().data
+    }
+
+    /**
+     * `GET /api/session/{sessionID}/form` : les formulaires pendants **d'une session**.
+     *
+     * ⚠️ Enveloppe `{data}` **simple** ici, pas `{location, data}` (releve `/openapi.json` et
+     * confirme sur le serveur) : deux formes d'enveloppe pour un meme mot « form », c'est
+     * exactement la confusion qui rend un bug silencieux.
+     *
+     * ⚠️ Un `sessionID` inconnu rend **404** `SessionNotFoundError` (mesure). `"global"` n'est pas
+     * une erreur : la route accepte cette pseudo-session et rend ses formulaires.
+     */
+    suspend fun sessionForms(sessionID: String): List<FormInfoDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/form") {
+            auth(credentials)
+        }.body<ListEnvelope<FormInfoDto>>().data
+    }
+
+    /**
+     * `GET /api/session/{sessionID}/form/{formID}` : le formulaire **avec son etat**
+     * (`pending` | `answered` | `cancelled`), et les reponses deja donnees.
+     *
+     * ⚠️ Enveloppe `{data}` simple, contenant un **objet** ([FormDetailDto]) et non une liste.
+     */
+    suspend fun sessionForm(sessionID: String, formID: String): FormDetailDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/form/$formID") {
+            auth(credentials)
+        }.body<FormDetailEnvelope>().data
+    }
+
+    /**
+     * `POST /api/session/{sessionID}/form/{formID}/reply` : **repond a un formulaire pendant**.
+     *
+     * ⚠️ Mesure du 2026-09-26, les cinq reponses reelles :
+     *  - **204** sans corps, formulaire accepte ;
+     *  - **400** `FormInvalidAnswerError` : champ inconnu, type attendu different, champ requis
+     *    manquant, `pattern`/`minLength`/`maxLength`/`minimum`/`maximum` viole, option hors liste,
+     *    champ `when` inactif (« Form field is not active ») envoyе, externе non acquitte ;
+     *  - **404** `FormNotFoundError` (ou `SessionNotFoundError`) ;
+     *  - **409** `FormAlreadySettledError` : formulaire deja repondu ou annule.
+     *
+     * ⚠️ **L'envoi est un 204 : on ne decode rien.** Tenter de decoder, c'est reproduire le bug
+     * de `renameSession`.
+     *
+     * ⚠️ On ne fabrique **jamais** de valeur pour « que ca passe » : le serveur valide finement
+     * (`External form field must be acknowledged`, `Expected integer`, `Too many selections`…) et
+     * une valeur inventee reviendrait en 400 — ou, pire, ferait accepter une reponse fausse qui
+     * debloque l'agent sur une intention qui n'est pas celle de l'utilisateur.
+     */
+    suspend fun replyForm(sessionID: String, formID: String, answer: JsonObject): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/form/$formID/reply") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(FormReplyBody(answer = answer))
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `GET /api/model/default` : **le modele que le serveur applique** quand une session n'en
+     * choisit pas.
+     *
+     * ⚠️ Mesure du 2026-09-26 : `{"data":{"id":"glm-5.3-flash","modelID":"glm-5.3-flash",
+     * "providerID":"ollama-cloud",…}}`. C'est la verite du serveur, et elle peut differer du
+     * « premier modele du catalogue » que l'app derivait jusqu'ici cote client.
+     *
+     * ⚠️ `data` peut etre **null** (schema : `Model.Info | null`), par exemple avant configuration.
+     */
+    suspend fun defaultModel(location: String): Model? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/model/default") {
+            auth(credentials)
+            at(location)
+        }.body<DefaultModelEnvelope>().data
+    }
+
+    /**
+     * `GET /api/vcs/base` : la **base de revision** que le serveur deduit de l'historique.
+     *
+     * ⚠️ Mesure du 2026-09-26 : `{"data":{"name":"master","ref":"refs/heads/master",
+     * "source":"default"}}`. Peut valoir `null` (avant le premier commit, ou fournisseur sans
+     * metadonnee de base).
+     *
+     * ⚠️ La doc serveur est explicite : un historique ambigu **exige** une base explicite sur les
+     * requetes de diff. On expose donc cette valeur pour la **montrer**, jamais pour la substituer
+     * en silence a un choix de l'utilisateur.
+     */
+    suspend fun vcsBase(location: String): VcsBaseDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/vcs/base") {
+            auth(credentials)
+            at(location)
+        }.body<VcsBaseEnvelope>().data
+    }
+
+    /**
+     * `POST /api/experimental/session/{id}/wait` : **attend que la boucle d'agent devienne idle**.
+     *
+     * ⚠️ Mesure du 2026-09-26 : sur une session idle, rend **204 en 8 ms** ; sur une session en
+     * cours, **bloque jusqu'a la fin** (9,1 s mesures) ; sur un id inconnu, **404**.
+     *
+     * ⚠️ **204 sans corps** : on ne decode rien, on lit le statut (meme piege que `renameSession`).
+     *
+     * ⚠️ Le client **n'impose aucun timeout** : c'est la couche qui appelle ([OpenCodeGateway]) qui
+     * borne l'attente (parametre `timeoutMillis`). Laisser le moteur HTTP couper la requete
+     * rendrait un `SocketTimeoutException` — un echec apparent la ou l'agent travaille simplement
+     * encore.
+     */
+    suspend fun waitForIdle(sessionID: String, timeoutMillis: Long): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/experimental/session/$sessionID/wait") {
+            auth(credentials)
+            // ⚠️ Le `HttpTimeout` global plafonne a 20 s : sans cette surcharge, l'attente serait
+            // coupee au bout de 20 s et rendrait un **timeout** la ou l'agent travaille encore.
+            // On aligne donc le timeout de CETTE requete sur celui voulu, avec une marge de 1 s
+            // pour que l'abandon decide par l'appelant (avecTimeoutOrNull) arrive en premier.
+            timeout { requestTimeoutMillis = timeoutMillis + 1_000 }
         }
         return response.status.isSuccess()
     }
