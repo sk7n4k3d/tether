@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,8 @@ import sh.sk7.tether.ui.theme.TetherCodeStyle
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
+import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -79,6 +82,9 @@ fun ReasoningBlock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // ⚠️ 48 dp : c'est la cible, pas la hauteur visuelle. La ligne reste fine, mais
+                // la zone sensible couvre la hauteur minimale exigée (WCAG 2.5.8).
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable { expanded = !expanded }
                 .padding(vertical = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
@@ -105,7 +111,7 @@ fun ReasoningBlock(
             Icon(
                 imageVector = Lucide.ChevronDown,
                 contentDescription = if (expanded) "Replier le raisonnement" else "Deplier le raisonnement",
-                tint = TetherTextSecondary.copy(alpha = 0.7f),
+                tint = TetherIconMuted,
                 modifier = Modifier
                     .size(14.dp)
                     .rotate(rotation),
@@ -167,6 +173,10 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // ⚠️ 48 dp même quand la carte n'est PAS depliable : la zone cliquable doit
+                // exister à la même place dans les deux cas, sinon la carte « saute » d'un état
+                // à l'autre et le doigt ne retrouve plus sa cible.
+                .heightIn(min = TetherDimensions.touchTarget)
                 .then(if (expandable) Modifier.clickable { expanded = !expanded } else Modifier)
                 .padding(vertical = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
@@ -209,7 +219,7 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
                 Icon(
                     imageVector = Lucide.ChevronDown,
                     contentDescription = if (expanded) "Replier la sortie" else "Deplier la sortie",
-                    tint = TetherTextSecondary.copy(alpha = 0.7f),
+                    tint = TetherIconMuted,
                     modifier = Modifier
                         .size(14.dp)
                         .rotate(rotation),
@@ -221,7 +231,7 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
             Text(
                 text = it,
                 style = TetherCodeStyle,
-                color = TetherTextSecondary.copy(alpha = 0.85f),
+                color = TetherTextMuted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier

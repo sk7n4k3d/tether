@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +50,7 @@ import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -332,7 +337,7 @@ private fun NamedLine(
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TetherTextSecondary.copy(alpha = 0.8f),
+                    color = TetherTextMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -347,7 +352,7 @@ private fun MoreLine(remaining: Int, what: String) {
     Text(
         text = "et $remaining autre${if (remaining > 1) "s" else ""} $what",
         style = TetherDataStyle,
-        color = TetherTextSecondary.copy(alpha = 0.6f),
+        color = TetherTextMuted,
     )
 }
 
@@ -375,7 +380,7 @@ private fun PermissionLine(permission: SavedPermissionDto, onRevoke: () -> Unit)
                 Text(
                     text = it,
                     style = TetherDataStyle,
-                    color = TetherTextSecondary.copy(alpha = 0.8f),
+                    color = TetherTextMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -387,8 +392,14 @@ private fun PermissionLine(permission: SavedPermissionDto, onRevoke: () -> Unit)
             color = TetherAlert,
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                // ⚠️ 48 dp : action de sécurité, elle doit être immanquable.
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(onClick = onRevoke)
-                .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                .padding(horizontal = Spacing.sm)
+                // ⚠️ `role = Button` : sans lui, TalkBack annonce le texte sans dire qu'il est
+                // actionnable — l'utilisateur entend « Révoquer » mais ne sait pas qu'il peut
+                // appuyer. C'est la différence entre un lecteur d'écran utilisable et décoratif.
+                .semantics { role = Role.Button },
         )
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +36,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -49,7 +49,9 @@ import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import sh.sk7.tether.ui.theme.animationsAllowed
 
 /**
  * **Une session, posee sur le fil** — la signature visuelle de Tether.
@@ -131,7 +133,6 @@ fun SessionRow(
     // Positions : le fil est a abscisse FIXE (donc continu), le contenu se decale.
     val railX: Dp = TetherDimensions.railWidth / 2
     val nodeX: Dp = if (isSub) railX + TetherDimensions.indent else railX
-    val contentStart: Dp = TetherDimensions.railWidth + if (isSub) TetherDimensions.indent else 0.dp
     val nodeY: Dp = Spacing.md + 10.dp
 
     val accent = TetherAccent
@@ -150,21 +151,12 @@ fun SessionRow(
     //
     // ⚠️ `rememberInfiniteTransition` anime en PERMANENCE. On ne la déclenche donc jamais pour
     // rien : seuls les parents et les sessions actives pulsent, pas les 440 lignes.
-    // ⚠️ Respect de « réduire les animations » (ANIMATOR_DURATION_SCALE = 0) : sinon on impose
-    // un mouvement continu a quelqu'un qui l'a explicitement desactive.
+    // ⚠️ Respect de « réduire les animations » : la lecture vit dans [animationsAllowed], commune
+    // a tous les écrans — une seule implementation, donc un seul comportement a verifier.
     // ---------------------------------------------------------------
-    val context = LocalContext.current
-    val animationsAllowed = remember(context) {
-        runCatching {
-            android.provider.Settings.Global.getFloat(
-                context.contentResolver,
-                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-                1f,
-            ) > 0f
-        }.getOrDefault(true)
-    }
+    val animationsOn = animationsAllowed()
     val invitesToExpand = expandable && !subsExpanded
-    val pulseOn = animationsAllowed && (branchActive || invitesToExpand)
+    val pulseOn = animationsOn && (branchActive || invitesToExpand)
 
     // ⚠️ **ON N'ANIME QUE L'ACTIVITE, JAMAIS L'INVITATION.**
     //
@@ -291,8 +283,24 @@ fun SessionRow(
         // ---------------------------------------------------------------
         // LA ZONE CLIQUABLE DU NŒUD — couvre toute la hauteur du rail
         // ---------------------------------------------------------------
+        // ⚠️ La zone fait la hauteur d'une ligne (64 dp, au-dessus du seuil) et la largeur du rail
+        // élargie à la cible tactile. Le `semantics` porte le libellé : sans lui, replier un arbre
+        // de sous-agents serait **invisible** à un lecteur d'écran, alors que c'est le seul moyen
+        // de le faire autrement qu'à l'œil.
         val toggleModifier = Modifier
-            .size(width = TetherDimensions.railWidth + if (isSub) TetherDimensions.indent else 0.dp, height = 64.dp)
+            // ⚠️ Largeur portée à la cible tactile (48 dp) : le rail ne fait que **20 dp** de
+            // large, et le nœud qui le contrôle 10 à 13 dp. C'est la cible la plus petite de
+            // l'app, sur un geste (replier un arbre de sous-agents) sans équivalent clavier.
+            //
+            // ⚠️ Ce qui change est **la gouttière**, pas le fil : le trait reste dessiné à
+            // `railX` (10 dp) et le nœud à `nodeX`, inchangés. Seul le contenu commence 28 dp
+            // plus loin. On paie un peu de largeur pour une cible atteignable — le contraire
+            // (garder 20 dp et rater le geste) coûte bien plus cher qu'un peu d'air.
+            .size(
+                width = TetherDimensions.touchTarget +
+                    if (isSub) TetherDimensions.indent else 0.dp,
+                height = 64.dp,
+            )
             .then(
                 if (expandable) {
                     Modifier
@@ -313,6 +321,10 @@ fun SessionRow(
         Column(
             modifier = Modifier
                 .weight(1f)
+                // ⚠️ 48 dp : une ligne de session réduite (titre court, pas de métadonnées) peut
+                // tomber sous le seuil. Le minimum ne change rien à hauteur nominale — il garantit
+                // seulement qu'on ne descend jamais sous la cible.
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(onClick = onClick)
                 .padding(vertical = Spacing.md, horizontal = Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
@@ -410,7 +422,7 @@ fun SessionRow(
                     Text(
                         text = it,
                         style = TetherDataStyle,
-                        color = TetherTextSecondary.copy(alpha = 0.8f),
+                        color = TetherTextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -420,7 +432,7 @@ fun SessionRow(
                     Text(
                         text = it,
                         style = TetherDataStyle,
-                        color = TetherTextSecondary.copy(alpha = 0.8f),
+                        color = TetherTextMuted,
                     )
                 }
             }

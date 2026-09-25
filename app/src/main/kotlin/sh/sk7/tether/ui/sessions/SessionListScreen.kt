@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,6 +59,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -482,7 +487,14 @@ private fun SessionCard(item: SessionItem, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(TetherSurface, RoundedCornerShape(12.dp))
+            // ⚠️ 48 dp : la carte entière est cliquable, et son contenu (3 lignes de métadonnées)
+            // la fait dépasser largement — mais le minimum est affirmé pour que jamais une carte
+            // réduite (titre court, une ligne) ne tombe sous le seuil.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onClick)
+            // ⚠️ `role = Button` : toute la carte est une cible, TalkBack doit l'annoncer comme
+            // actionnable plutôt que comme un bloc de texte.
+            .semantics { role = Role.Button }
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -708,14 +720,26 @@ private fun SearchField(
             )
         }
         if (value.isNotEmpty()) {
-            Icon(
-                imageVector = Lucide.X,
-                contentDescription = "Effacer la recherche",
-                tint = TetherTextSecondary,
+            // ⚠️ Boîte de 48 dp explicite : dans `padding().size(15).clickable`, le `clickable`
+            // est le plus interne et ne couvre que l'icône. Ici la zone sensible est la boîte.
+            Box(
                 modifier = Modifier
-                    .size(15.dp)
-                    .clickable { onValueChange("") },
-            )
+                    .size(TetherDimensions.touchTarget)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .clickable { onValueChange("") }
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Effacer la recherche"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = null,
+                    tint = TetherTextSecondary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }
@@ -764,8 +788,13 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
             modifier = Modifier
                 .padding(top = Spacing.md)
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                // ⚠️ 48 dp : c'est le seul point de sortie de l'etat « aucun resultat ».
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(onClick = onClear)
-                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                .padding(horizontal = Spacing.md)
+                // ⚠️ `role = Button` : c'est un texte qui agit, TalkBack doit l'annoncer comme
+                // une action et pas comme une phrase a lire.
+                .semantics { role = Role.Button },
         )
     }
 }

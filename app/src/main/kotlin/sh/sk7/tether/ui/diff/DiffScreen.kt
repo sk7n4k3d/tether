@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +50,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -154,8 +159,11 @@ private fun ScopeSelector(
                 modifier = Modifier
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))
                     .background(if (active) TetherAccent.copy(alpha = 0.18f) else TetherComposerSurface)
+                    // ⚠️ 48 dp : meme regle que le selecteur de plage des statistiques.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable { onSelect(scope) }
-                    .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                    .padding(horizontal = Spacing.md),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = scope.label,
@@ -197,7 +205,7 @@ private fun FileCard(file: UnifiedDiff.FileDiff) {
                     text = "Le serveur n'a pas fourni de contenu pour ce fichier " +
                         "(binaire, ou diff trop volumineux).",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TetherTextSecondary.copy(alpha = 0.85f),
+                    color = TetherTextMuted,
                     modifier = Modifier.padding(
                         start = Spacing.md, end = Spacing.md, bottom = Spacing.md,
                     ),
@@ -212,6 +220,9 @@ private fun FileHeader(file: UnifiedDiff.FileDiff, expanded: Boolean, onToggle: 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // ⚠️ 48 dp : toute la ligne déplie, et le chevron ne fait que 14 dp. C'est la ligne
+            // qui doit être attrapable.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onToggle)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -234,7 +245,7 @@ private fun FileHeader(file: UnifiedDiff.FileDiff, expanded: Boolean, onToggle: 
             Text(
                 text = file.status.label,
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
             )
         }
         // ⚠️ Les compteurs sont sur la ligne, toujours visibles meme replie : c'est ce qui permet

@@ -176,8 +176,69 @@ data class ContentPart(
     val time: TimeInfo? = null,
 )
 
+/**
+ * Corps de `POST /api/session/{id}/prompt`.
+ *
+ * ⚠️ `files`, `agents` et `skills` sont **mesures** sur le serveur le 2026-09-25, pas deduits du
+ * schema. Les formes qui marchent :
+ *
+ * ```
+ * files:  [{"uri":"data:text/plain;base64,aGVsbG8=","name":"x"}]   -> 200
+ * files:  [{"uri":"file:///home/utilisateur/.../settings.gradle.kts"}] -> 200
+ * agents: [{"name":"build"}]                                        -> 200
+ * skills: [{"id":"test-driven-development"}]                        -> 200
+ * ```
+ *
+ * ⚠️ **Les chemins relatifs sont refuses** : `{"uri":"README.md"}` rend
+ * `400 Invalid attachment URI`. Et `https://` rend `400 Unsupported attachment URI`. Seuls
+ * `data:` (inline, que le serveur transmet en base64) et `file://` (chemin **absolu lisible par
+ * le serveur**) sont acceptes.
+ *
+ * ⚠️ `delivery` est une **chaine** (`steer` | `queue`) et non un objet : c'est le meme piege que
+ * dans l'inbox, la ou le schema annonce `Session.Inbox.Delivery` sans dire que c'est un enum de
+ * chaines.
+ */
 @Serializable
-data class PromptBody(val text: String)
+data class PromptBody(
+    val text: String,
+    val files: List<PromptFileAttachment> = emptyList(),
+    val agents: List<PromptAgentAttachment> = emptyList(),
+    val skills: List<PromptSkillAttachment> = emptyList(),
+)
+
+/**
+ * Une piece jointe de prompt — **la forme du serveur**, pas une commodite d'app.
+ *
+ * ⚠️ `PromptInput.FileAttachment` declare `uri` comme **seul requis** (les autres champs sont
+ * optionnels) : on n'envoie donc ni `description` ni `mention` vides, qui ne servent a rien et
+ * pourraient faire naitre un objet que le serveur n'attend pas.
+ */
+@Serializable
+data class PromptFileAttachment(
+    val uri: String,
+    val name: String? = null,
+)
+
+/** `Prompt.AgentAttachment` : seul `name` est requis. */
+@Serializable
+data class PromptAgentAttachment(val name: String)
+
+/** `PromptInput.SkillAttachment` : seul `id` est requis. */
+@Serializable
+data class PromptSkillAttachment(val id: String)
+
+/**
+ * Corps de `POST /api/experimental/session/{id}/skill`.
+ *
+ * ⚠️ `id` est le **seul champ requis** ; `resume` est optionnel cote serveur (l'omission fait
+ * reprendre l'execution). On l'expose en nullable pour ne pas figer un defaut que le serveur n'a
+ * pas exprime.
+ */
+@Serializable
+data class SkillActivationBody(
+    val id: String,
+    val resume: Boolean? = null,
+)
 
 /** `PATCH /api/session/{id}` : `title` seul (`additionalProperties: false`). */
 @Serializable

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -48,6 +52,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -243,7 +248,7 @@ private fun PermissionCard(
             Text(
                 text = "« Toujours » mémoriserait : ${request.save.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
-                color = TetherTextSecondary.copy(alpha = 0.7f),
+                color = TetherTextMuted,
             )
         }
 
@@ -301,8 +306,15 @@ private fun DecisionButton(
         modifier = Modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
             .background(tint.copy(alpha = if (subtle) 0.06f else 0.12f))
+            // ⚠️ 48 dp : approuver ou refuser une action d'agent est LA décision de l'app. Une
+            // cible de 30 dp sur ces boutons serait le pire endroit pour rater son geste.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            .padding(horizontal = Spacing.md)
+            // ⚠️ `role = Button` : TalkBack doit dire « bouton » et pas seulement lire le
+            // libellé — sur une décision d'autorisation, la nature de l'élément compte autant que
+            // son texte.
+            .semantics { role = Role.Button },
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {

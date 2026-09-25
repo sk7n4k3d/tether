@@ -35,6 +35,7 @@ import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import java.util.Locale
 
@@ -210,7 +211,7 @@ private fun GroupRow(group: ContextGroup) {
             Text(
                 text = "${count(group.inputTokens)} in · ${count(group.outputTokens)} out",
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
             )
         }
 

@@ -12,6 +12,7 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.delete
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.readBytes
 import io.ktor.http.ContentType
 import io.ktor.http.isSuccess
 import io.ktor.http.contentType
@@ -168,12 +169,22 @@ class OpenCodeClient(
     }
 
     /** `POST /prompt` : le texte est dans `payload.text`, la reponse est `{data: <msg_*>}`. */
-    suspend fun prompt(sessionID: String, text: String): PromptAcceptance {
+    suspend fun prompt(sessionID: String, text: String): PromptAcceptance =
+        prompt(sessionID, PromptBody(text = text))
+
+    /**
+     * `POST /api/session/{id}/prompt` **avec pieces jointes**.
+     *
+     * ⚠️ Aucun parametre query : tout est dans le corps (`text`, `files`, `agents`, `skills`).
+     * Les formes acceptees ont ete mesurees (§ [PromptBody]) : `data:` inline ou `file://` absolu
+     * pour un fichier, jamais un chemin relatif ni une URL `https`.
+     */
+    suspend fun prompt(sessionID: String, body: PromptBody): PromptAcceptance {
         val credentials = credentialsProvider.credentials()
         return http.post("$baseUrl/api/session/$sessionID/prompt") {
             auth(credentials)
             contentType(ContentType.Application.Json)
-            setBody(PromptBody(text = text))
+            setBody(body)
         }.body<PromptEnvelope>().data
     }
 
@@ -713,6 +724,121 @@ class OpenCodeClient(
             auth(credentials)
         }
         return response.status.isSuccess()
+    }
+
+    /**
+     * `POST /api/experimental/session/{id}/skill` : **active une competence** dans la session.
+     *
+     * ⚠️ Mesure du 2026-09-25 : rend **204 sans corps**. Ne pas tenter de decoder une reponse —
+     * c'est exactement le bug de `renameSession`, ou `NoTransformationFoundException` faisait
+     * annoncer un echec sur une operation reussie.
+     *
+     * ⚠️ L'effet est **asynchrone** : la competence est ajoutee comme message et l'execution
+     * reprend (`resume` par defaut). Le resultat arrive par le flux, comme un prompt.
+     */
+    suspend fun activateSkill(sessionID: String, skillID: String, resume: Boolean? = null): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/experimental/session/$sessionID/skill") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(SkillActivationBody(id = skillID, resume = resume))
+        }
+        return response.status.isSuccess()
+    }
+
+    /**
+     * `GET /api/fs/list` : les enfants **directs** d'un chemin.
+     *
+     * ⚠️ `path` est **relatif au `location`** ; un chemin absolu rend un `404 FileNotFoundError`
+     * (mesure). Absent, le serveur liste la racine du `location`.
+     */
+    suspend fun fsList(location: String, path: String? = null): List<FsEntryDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/fs/list") {
+            auth(credentials)
+            at(location)
+            path?.let { parameter("path", it) }
+        }.body<LocatedEnvelope<FsEntryDto>>().data
+    }
+
+    /**
+     * `GET /api/fs/find` : **cherche recursivement** des entrees.
+     *
+     * ⚠️ `query` est **requis** (`400` sans lui). `type` restreint a `file` ou `directory`.
+     * `limit` est declare `type: string` dans l'OpenAPI — on l'envoie comme tel.
+     */
+    suspend fun fsFind(
+        location: String,
+        query: String,
+        type: String? = null,
+        limit: Int? = null,
+    ): List<FsEntryDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/fs/find") {
+            auth(credentials)
+            at(location)
+            parameter("query", query)
+            type?.let { parameter("type", it) }
+            limit?.let { parameter("limit", it.toString()) }
+        }.body<LocatedEnvelope<FsEntryDto>>().data
+    }
+
+    /**
+     * `GET /api/fs/read/<chemin>` : lit **un fichier**.
+     *
+     * ⚠️ Trois faits mesures le 2026-09-25, tous silencieux si on les ignore :
+     *
+     * 1. **Le chemin va dans l'URL**, apres `/read/` — c'est un joker (`/api/fs/read/<chemin>`), pas un
+     *    parametre nomme. Les segments sont encodes un par un pour qu'une barre oblique reste un
+     *    separateur de chemin et ne devienne pas `%2F` (ce que le serveur refuserait).
+     * 2. **Le chemin est relatif au `location`** : `/api/fs/read/home/utilisateur/...` rend `404`.
+     * 3. La reponse est du **binaire brut** (`application/octet-stream`), jamais l'enveloppe JSON
+     *    de `list` et `find`. On lit donc les octets, pas un corps type.
+     *
+     * On renvoie `null` sur `404` (fichier absent) : c'est une absence, pas une erreur — meme
+     * distinction que `vcsInfo`, ou « pas un depot » n'est pas un echec.
+     */
+    suspend fun fsRead(location: String, path: String): ByteArray? {
+        val credentials = credentialsProvider.credentials()
+        val encoded = path.split('/').joinToString("/") {
+            java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20")
+        }
+        val response = http.get("$baseUrl/api/fs/read/$encoded") {
+            auth(credentials)
+            at(location)
+        }
+        if (!response.status.isSuccess()) return null
+        return response.readBytes()
+    }
+
+    /** `GET /api/reference` : les references invocables du repertoire. */
+    suspend fun references(location: String): List<ReferenceDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/reference") {
+            auth(credentials)
+            at(location)
+        }.body<LocatedEnvelope<ReferenceDto>>().data
+    }
+
+    /**
+     * `GET /api/vcs/branch` : les branches **locales et distantes** du depot.
+     *
+     * ⚠️ `data` est un tableau de **chaines nues**, pas d'objets (verifie sur `/openapi.json` :
+     * `Vcs.BranchList` = `array of string`). Attendre `{name: ...}` rendrait une liste vide sans
+     * erreur — le pire des modes d'echec pour un selecteur.
+     *
+     * ⚠️ `search` filtre cote serveur, mais on ne s'en sert pas : mesure, `search=feat` sur un
+     * depot ou la branche `feat/palier-1-2-etat` existe rend `data: []`. On charge donc la liste
+     * et on filtre cote app, ce qui evite un appel reseau par frappe.
+     */
+    suspend fun branches(location: String, search: String? = null, limit: Int? = null): List<String> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/vcs/branch") {
+            auth(credentials)
+            at(location)
+            search?.let { parameter("search", it) }
+            limit?.let { parameter("limit", it.toString()) }
+        }.body<BranchListEnvelope>().data
     }
 
     private fun HttpRequestBuilder.auth(credentials: BasicAuthCredentials?) {

@@ -26,6 +26,8 @@ import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
+import sh.sk7.tether.data.api.PromptBody
+import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.data.activity.ActivityMonitor
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.event.ConnectionState
@@ -108,6 +110,15 @@ data class ChatUiState(
 
     /** Ids des messages en file dont l'annulation est en vol (desactive leur bouton). */
     val cancelling: Set<String> = emptySet(),
+
+    /**
+     * Les fichiers joints au prochain envoi, **pas encore envoyes**.
+     *
+     * ⚠️ Ils vivent dans l'etat et pas dans un `remember` d'ecran : un changement de
+     * configuration (rotation) ne doit pas perdre ce que l'utilisateur vient de joindre. C'est
+     * exactement le genre de perte qu'on ne remarque qu'apres avoir appuye sur Envoyer.
+     */
+    val attachments: List<PendingAttachment> = emptyList(),
 ) {
     val isBusy: Boolean get() = phase == UiPhase.Sending || phase == UiPhase.Streaming
 }
@@ -195,6 +206,15 @@ class ChatViewModel @Inject constructor(
     val sessionActivity: StateFlow<Activity?> = activity.state
         .map { it.bySession[sessionID]?.activity }
         .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /**
+     * Les competences disponibles (`GET /api/skill`), pour les activer dans cette session.
+     *
+     * ⚠️ Meme regle que les commandes et les modeles : charge une fois, echec silencieux. Ne pas
+     * avoir la liste ne doit pas empecher d'ecrire — et un selecteur vide se dit, il ne casse rien.
+     */
+    private val _skills = MutableStateFlow<List<SkillDto>>(emptyList())
+    val skills: StateFlow<List<SkillDto>> = _skills.asStateFlow()
 
     private var settings: ConnectionSettings? = null
     private var graceJob: Job? = null
@@ -403,6 +423,7 @@ class ChatViewModel @Inject constructor(
             runCatching { gateway.commands(current) }.onSuccess { _commands.value = it }
             runCatching { gateway.models(current) }.onSuccess { _models.value = it }
             runCatching { gateway.agents(current) }.onSuccess { _agents.value = it }
+            runCatching { gateway.skills(current) }.onSuccess { _skills.value = it }
         }
     }
 
@@ -461,6 +482,33 @@ class ChatViewModel @Inject constructor(
                     _state.update { it.copy(agentOverride = agent) }
                 } else {
                     _state.update { it.copy(error = "Le serveur a refusé le changement d'agent.") }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = ConnectionErrors.describe(e)) }
+            }
+        }
+    }
+
+    /**
+     * **Active une competence dans cette session** (`POST /experimental/session/{id}/skill`).
+     *
+     * ⚠️ C'est un **chemin different** d'une piece `skills` de prompt : ici la competence est
+     * attachee a la session et l'execution reprend, alors qu'une piece de prompt ne vaut que pour
+     * le tour envoye. Comme l'agent et le modele, c'est un reglage **persistant** — et c'est pour
+     * ca qu'on le dit a l'utilisateur au lieu de le faire en silence.
+     *
+     * ⚠️ L'effet est **asynchrone** : la competence arrive comme message par le flux. On ne peut
+     * donc pas afficher un etat local « activee » qui pretendrait connaitre le resultat avant le
+     * serveur.
+     */
+    fun activateSkill(skillID: String) {
+        scope.launch {
+            try {
+                val current = settings ?: store.current().also { settings = it }
+                if (gateway.activateSkill(current, sessionID, skillID)) {
+                    _state.update { if (it.phase == UiPhase.Idle) it.copy(phase = UiPhase.Awaiting) else it }
+                } else {
+                    _state.update { it.copy(error = "Le serveur a refusé d'activer « $skillID ».") }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
@@ -686,15 +734,27 @@ class ChatViewModel @Inject constructor(
     // ------------------------------------------------------------------
 
     /**
-     * Envoie un prompt.
+     * Envoie un prompt, **avec les pieces jointes en attente**.
      *
      * L'acceptation (`{data: msg_*}`) est un **item d'inbox**, pas une reponse : la reponse
      * arrive ensuite par le flux. On passe donc a [UiPhase.Awaiting] des l'acceptation, et
      * on ne reste jamais bloque en [UiPhase.Sending].
+     *
+     * ⚠️ On garde le chemin **sans corps** quand il n'y a rien a joindre : un texte seul continue
+     * de partir par le prompt minimal, et surtout les fakes de test qui n'exercent que le texte
+     * restent valides. Le corps explicite n'est emis **que** s'il porte quelque chose de plus.
+     *
+     * ⚠️ Les pieces jointes ne sont retirees qu'en cas de **succes**. Si l'envoi echoue, elles
+     * restent attachees : l'utilisateur reessaie sans avoir a re-joindre ses fichiers — les perdre
+     * sur un echec reseau serait une double punition.
      */
     fun send(text: String) {
         val body = text.trim()
-        if (body.isEmpty()) return
+        val attachments = _state.value.attachments
+        // ⚠️ Un message **vide** avec un fichier joint est un envoi legitime : « regarde ceci »
+        // se dit par la piece jointe seule. Sans cette exception, on ne pourrait rien envoyer
+        // sans accompagner le fichier d'une phrase.
+        if (body.isEmpty() && attachments.isEmpty()) return
 
         val optimistic = ChatMessage(id = "$OPTIMISTIC_PREFIX${optimisticCounter++}", role = Role.User, text = body)
         _state.update {
@@ -729,12 +789,29 @@ class ChatViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                val accepted = gateway.prompt(current, sessionID, body)
+                val accepted = if (attachments.isEmpty()) {
+                    gateway.prompt(current, sessionID, body)
+                } else {
+                    gateway.prompt(
+                        current,
+                        sessionID,
+                        PromptBody(
+                            // ⚠️ Le serveur exige `text` meme non vide dans son schema, mais un
+                            // texte vide avec fichier a ete accepte en pratique ; on envoie tel
+                            // quel, c'est le cas « regarde ceci ».
+                            text = body,
+                            files = attachments.map { it.toWire() },
+                        ),
+                    )
+                }
                 // ⚠️ `accepted.id` EST l'id REST du message utilisateur : on le retient pour
                 // dedupliquer par id (et non par texte) des sa prochaine apparition.
                 acceptedOptimistic[optimistic.id] = accepted.id
                 // Accepte : etat stable. Le flux peut ne jamais livrer (reseau coupe).
-                _state.update { if (it.phase == UiPhase.Sending) it.copy(phase = UiPhase.Awaiting) else it }
+                _state.update {
+                    val cleared = if (attachments.isEmpty()) it else it.copy(attachments = emptyList())
+                    if (cleared.phase == UiPhase.Sending) cleared.copy(phase = UiPhase.Awaiting) else cleared
+                }
                 // L'inbox a pu arriver avant l'acceptation : on reconcilie maintenant.
                 _state.update { it.copy(chat = dedupeOptimistic(it.chat)) }
                 // ⚠️ Un prompt envoye pendant que le serveur tourne part en **file** : on relit
@@ -763,6 +840,74 @@ class ChatViewModel @Inject constructor(
         _state.update { it.copy(phase = UiPhase.Awaiting) }
         scope.launch {
             runCatching { gateway.interrupt(current, sessionID) }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Pieces jointes
+    // ------------------------------------------------------------------
+
+    /**
+     * Ajoute un fichier **du telephone** aux pieces jointes du prochain envoi.
+     *
+     * ⚠️ Le contenu est lu **tout de suite**, pas au moment de l'envoi : si l'utilisateur deplace
+     * ou renomme le fichier entre-temps — ou si l'URI de contenu expire (ce qui arrive avec les
+     * documents recents sous Android) — l'envoi echouerait apres coup, sans lien visible avec le
+     * geste qui a echoue.
+     *
+     * ⚠️ On refuse les fichiers trop gros **ici**, avec un message : le serveur accepterait 4 Mo
+     * (mesure), l'app se fixe la meme borne. Un echec silencieux au moment de l'envoi serait pire.
+     */
+    fun attachBytes(name: String, mime: String?, bytes: ByteArray) {
+        val attachment = PromptAttachments.fromBytes(name, mime, bytes)
+        if (attachment == null) {
+            _state.update {
+                it.copy(
+                    error = "« $name » dépasse ${PromptAttachments.formatSize(PromptAttachments.MAX_FILE_BYTES)}.",
+                )
+            }
+            return
+        }
+        _state.update {
+            it.copy(
+                attachments = it.attachments + PendingAttachment(
+                    name = name,
+                    sizeBytes = bytes.size,
+                    uri = attachment.uri,
+                ),
+                error = null,
+            )
+        }
+    }
+
+    /**
+     * Ajoute un fichier **du serveur**, par chemin absolu.
+     *
+     * ⚠️ Passe par `file://` : le serveur lit le fichier lui-meme. C'est utile quand on a deja
+     * l'explorateur ouvert et qu'on ne veut pas transporter le contenu par le telephone.
+     */
+    fun attachServerPath(path: String) {
+        val attachment = PromptAttachments.fromServerPath(path)
+        if (attachment == null) {
+            _state.update { it.copy(error = "Chemin non absolu : « $path ».") }
+            return
+        }
+        _state.update {
+            it.copy(
+                attachments = it.attachments + PendingAttachment(
+                    name = attachment.name ?: path,
+                    sizeBytes = 0,
+                    uri = attachment.uri,
+                ),
+                error = null,
+            )
+        }
+    }
+
+    /** Retire une piece jointe en attente. Le nom affiche sert d'identite. */
+    fun removeAttachment(name: String) {
+        _state.update { current ->
+            current.copy(attachments = current.attachments.filterNot { it.name == name })
         }
     }
 

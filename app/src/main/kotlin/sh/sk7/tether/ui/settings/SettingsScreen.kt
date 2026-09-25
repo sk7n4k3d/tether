@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Activity
 import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.FolderOpen
 import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
@@ -53,6 +55,7 @@ import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -81,6 +84,8 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit = {},
     /** Les arbres de travail isoles : essayer sans risquer le depot. */
     onOpenWorktrees: () -> Unit = {},
+    /** L'explorateur de fichiers : verifier un chemin avant de l'envoyer. */
+    onOpenFiles: () -> Unit = {},
     onDisconnected: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -188,6 +193,12 @@ fun SettingsScreen(
                             onClick = onOpenWorktrees,
                         )
                         ActionRow(
+                            label = "Fichiers",
+                            detail = "Vérifier un chemin, lire un fichier",
+                            icon = Lucide.FolderOpen,
+                            onClick = onOpenFiles,
+                        )
+                        ActionRow(
                             label = "À propos",
                             detail = "Version, licence, diagnostics",
                             icon = Lucide.Info,
@@ -227,7 +238,7 @@ fun SettingsScreen(
                         // par precaution.
                         text = "Tes sessions restent sur le serveur opencode : rien n'est supprimé.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TetherTextSecondary.copy(alpha = 0.8f),
+                        color = TetherTextMuted,
                     )
                 }
             },
@@ -326,6 +337,10 @@ private fun ActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+            // ⚠️ 48 dp : c'est la cible de navigation des réglages, présente une douzaine de fois.
+            // Une hauteur de ~40 dp serait juste sous le seuil, donc systématiquement ratée au
+            // pouce — et rien ne le signalerait.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -343,7 +358,7 @@ private fun ActionRow(
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TetherTextSecondary.copy(alpha = 0.85f),
+                    color = TetherTextMuted,
                 )
             }
         }

@@ -35,6 +35,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -81,7 +82,7 @@ fun SlashPalette(
                 text = "Le serveur n'a pas annoncé de commande. " +
                     "Tu peux écrire ton message normalement.",
                 style = MaterialTheme.typography.bodySmall,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
                 modifier = Modifier.padding(
                     start = Spacing.md, end = Spacing.md, bottom = Spacing.md,
                 ),
@@ -106,6 +107,10 @@ private fun CommandRow(command: CommandDto, onPick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // ⚠️ 48 dp : une ligne de commande est une cible, pas une légende. Sans ce minimum,
+            // une commande sans description ne fait que ~30 dp de haut et devient difficile à
+            // choisir dans une palette qui en propose 28.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onPick)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -158,6 +163,10 @@ fun ModelAgentPicker(
     onPickModel: (String) -> Unit,
     onPickAgent: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** Les competences activables dans cette session. Vide = la section est masquee. */
+    skills: List<String> = emptyList(),
+    /** Active une competence : effet immediat cote serveur, contrairement au modele et l'agent. */
+    onPickSkill: (String) -> Unit = {},
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -181,6 +190,18 @@ fun ModelAgentPicker(
                 icon = Lucide.Blocks,
                 onPick = onPickAgent,
             )
+            // ⚠️ Les competences n'apparaissent que si le serveur en annonce. Une section vide de
+            // plus ferait croire a un manque de l'app alors que c'est le serveur qui n'en a pas —
+            // et la question ne se pose pas dans ce cas.
+            if (skills.isNotEmpty()) {
+                PickerSection(
+                    title = "ACTIVER UNE COMPÉTENCE",
+                    items = skills,
+                    current = null,
+                    icon = Lucide.Blocks,
+                    onPick = onPickSkill,
+                )
+            }
         }
     }
 }
@@ -207,7 +228,7 @@ private fun PickerSection(
             Text(
                 text = "Le serveur n'a rien annoncé dans cette catégorie.",
                 style = MaterialTheme.typography.bodySmall,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
                 modifier = Modifier.padding(horizontal = Spacing.lg),
             )
         }
@@ -217,6 +238,10 @@ private fun PickerSection(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // ⚠️ 48 dp : meme regle que les lignes de commande. Les deux listes de la
+                        // feuille (modèles, agents, skills) doivent avoir la même hauteur de
+                        // cible — sinon la feuille saute d'une section à l'autre au doigt.
+                        .heightIn(min = TetherDimensions.touchTarget)
                         .clickable { onPick(item) }
                         .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),

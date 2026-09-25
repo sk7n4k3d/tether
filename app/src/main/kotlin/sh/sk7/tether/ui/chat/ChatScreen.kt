@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -88,6 +92,8 @@ import sh.sk7.tether.ui.theme.TetherBackground
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
+import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -164,6 +170,35 @@ fun ChatScreen(
      * frappe, et la reponse ne change pas — installer un moteur demande de quitter l'app.
      */
     val voiceAvailable = remember { isVoiceInputAvailable(context) }
+
+    /**
+     * **Le selecteur de fichiers du systeme.**
+     *
+     * ⚠️ `OpenDocument` et non `GetContent` : `OpenDocument` rend une URI stable et lisible par
+     * `ContentResolver` directement dans le callback, sans permission de stockage. C'est le chemin
+     * qui fonctionne sur GrapheneOS, ou l'acces au stockage est volontairement restreint.
+     *
+     * ⚠️ La lecture se fait dans le callback `onResult`, sur le dispatcher principal. C'est
+     * volontaire : le fichier a ete choisi par l'utilisateur, sa taille est bornee par
+     * [PromptAttachments.MAX_FILE_BYTES] avant d'etre encodee, et cette lecture n'a lieu qu'une
+     * fois par fichier — monter un `LaunchedEffect` et un `withContext` pour cela ajouterait un
+     * etat pour rien.
+     */
+    val filePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val resolver = context.contentResolver
+            val name = queryDisplayName(context, uri) ?: "fichier"
+            val mime = resolver.getType(uri)
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching
+            viewModel.attachBytes(name = name, mime = mime, bytes = bytes)
+        }.onFailure {
+            android.util.Log.w("TetherChat", "fichier illisible", it)
+        }
+    }
+
     LaunchedEffect(exporting) {
         if (!exporting) return@LaunchedEffect
         val markdown = SessionExporter.toMarkdown(
@@ -445,6 +480,7 @@ fun ChatScreen(
             val commands by viewModel.commands.collectAsStateWithLifecycle()
             val models by viewModel.models.collectAsStateWithLifecycle()
             val agents by viewModel.agents.collectAsStateWithLifecycle()
+            val skills by viewModel.skills.collectAsStateWithLifecycle()
 
             // ⚠️ La palette n'apparait que si une commande est EN COURS DE FRAPPE (voir
             // `SlashInput`). La logique est testee a part parce qu'elle a trois faux positifs
@@ -462,8 +498,16 @@ fun ChatScreen(
                 ModelAgentPicker(
                     models = models.map { it.id },
                     agents = agents.map { it.id },
+                    skills = skills.map { it.id },
                     currentModel = state.meta?.model,
                     currentAgent = state.meta?.agent,
+                    onPickSkill = { id ->
+                        pickerOpen = false
+                        // ⚠️ Activer une competence est un **effet immediat** (le serveur reprend
+                        // l'execution), pas un reglage stocke : on ferme la feuille pour que
+                        // l'utilisateur voie le resultat dans la conversation.
+                        viewModel.activateSkill(id)
+                    },
                     onPickModel = { id ->
                         pickerOpen = false
                         models.firstOrNull { it.id == id }?.let { picked ->
@@ -503,6 +547,13 @@ fun ChatScreen(
                 // vide : choisir un modele ne demande rien d'ecrire, et c'est le moment ou on le
                 // fait — avant de composer.
                 onPickModelAgent = { pickerOpen = true },
+                attachments = state.attachments,
+                onRemoveAttachment = viewModel::removeAttachment,
+                // ⚠️ Le trombone ouvre le selecteur **du systeme** : c'est lui qui a acces aux
+                // documents, et l'app n'a aucune permission de stockage a demander. Lire le
+                // contenu nous-memes (plutot que de passer un chemin au serveur) est le seul
+                // choix possible : le telephone n'a pas acces au disque de la machine distante.
+                onAttach = { filePicker.launch(arrayOf("*/*")) },
                 onSend = {
                     val text = draft
                     // ⚠️ On verifie d'abord si c'est une COMMANDE valide. Le serveur valide le nom
@@ -829,24 +880,29 @@ private fun MessageAction(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-            // ⚠️ Cible tactile : la ligne fait ~28 dp de haut, sous les 48 dp recommandes. Le
-            // `padding` porte la zone sensible a une taille confortable sans elargir le bouton a
-            // l'oeil — c'est la meme technique que les autres controles discrets de l'app.
+            // ⚠️ Cible tactile : la ligne visible fait ~28 dp, sous les 48 dp exiges (WCAG 2.5.8,
+            // et le European Accessibility Act s'applique depuis le 28 juin 2025). Le
+            // `heightIn` est place AVANT `clickable` : c'est la seule position ou Compose en
+            // tient compte pour calculer la zone sensible.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            .padding(horizontal = Spacing.sm)
+            // ⚠️ `role = Button` : TalkBack doit annoncer « bouton », pas seulement lire le
+            // libellé. Sans lui, l'utilisateur entend « Copier » sans savoir qu'il peut appuyer.
+            .semantics { role = androidx.compose.ui.semantics.Role.Button },
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = TetherTextSecondary.copy(alpha = 0.75f),
+            tint = TetherIconMuted,
             modifier = Modifier.size(12.dp),
         )
         Text(
             text = label,
             style = TetherDataStyle,
-            color = TetherTextSecondary.copy(alpha = 0.75f),
+            color = TetherTextMuted,
         )
     }
 }
@@ -892,8 +948,10 @@ private fun HistoryTopRow(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                    // ⚠️ 48 dp : « Remonter dans l'historique » est une cible, pas une légende.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable(enabled = !loading, onClick = onLoadMore)
-                    .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                    .padding(horizontal = Spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -921,7 +979,7 @@ private fun HistoryTopRow(
             Text(
                 text = "DÉBUT DE LA CONVERSATION",
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.5f),
+                color = TetherTextMuted,
             )
         }
     }
@@ -1078,6 +1136,22 @@ private fun RawFallback(raw: String) {
 }
 
 /**
+ * Nom affichable d'un document choisi par le selecteur du systeme.
+ *
+ * ⚠️ `OpenDocument` rend souvent un nom opaque (`content://.../1234`). Le nom lisible vit dans
+ * la colonne `DISPLAY_NAME` du `ContentResolver` : sans cette requete, on joindrait un fichier
+ * nomme « 1234 » et l'utilisateur ne reconnaitrait pas ce qu'il a joint.
+ */
+private fun queryDisplayName(context: android.content.Context, uri: android.net.Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+    }.getOrNull()
+
+/**
  * **Partage d'un export Markdown** via la feuille du systeme.
  *
  * ### Pourquoi un fichier et pas juste du texte
@@ -1188,14 +1262,29 @@ private fun ChatSearchBar(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Icon(
-                imageVector = Lucide.X,
-                contentDescription = "Fermer la recherche",
-                tint = TetherTextSecondary,
+            // ⚠️ Boîte de 48 dp **explicite**, et non un padding autour de l'icône : dans
+            // `padding(12).size(15).clickable`, c'est le `clickable` qui est le plus interne et il
+            // ne couvre que les 15 dp de l'icône — le padding est *hors* de la zone sensible. Une
+            // `Box` de 48 dp avec l'icône centrée ne laisse aucune ambiguïté, et l'ordre des
+            // modificateurs ne peut plus l'inverser.
+            Box(
                 modifier = Modifier
-                    .size(15.dp)
-                    .clickable(onClick = onClose),
-            )
+                    .size(TetherDimensions.touchTarget)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .clickable(onClick = onClose)
+                    .semantics {
+                        role = androidx.compose.ui.semantics.Role.Button
+                        contentDescription = "Fermer la recherche"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = null,
+                    tint = TetherTextSecondary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
 
         if (query.isNotBlank()) {

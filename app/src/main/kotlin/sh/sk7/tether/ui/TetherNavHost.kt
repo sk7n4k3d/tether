@@ -69,6 +69,9 @@ object Routes {
     /** Arbres de travail isoles : essayer sans risquer le depot. */
     const val WORKTREES = "worktrees"
 
+    /** Explorateur de fichiers : verifier un chemin avant de l'envoyer. */
+    const val FILES = "files"
+
     /**
      * Hors connexion : le serveur ne repond pas, on explique et on propose d'agir.
      *
@@ -252,6 +255,7 @@ fun TetherNavHost(
                 onOpenStats = { navController.navigate(Routes.STATS) },
                 onOpenAbout = { navController.navigate(Routes.ABOUT) },
                 onOpenWorktrees = { navController.navigate(Routes.WORKTREES) },
+                onOpenFiles = { navController.navigate(Routes.FILES) },
                 onDisconnected = {
                     navController.navigate(Routes.ONBOARDING) {
                         // ⚠️ On vide la pile : apres une deconnexion, revenir en arriere ne doit
@@ -264,6 +268,11 @@ fun TetherNavHost(
         composable(Routes.WORKTREES) {
             ScreenScaffold(title = "Arbres de travail", onBack = { navController.popBackStack() }) {
                 WorktreeScreen()
+            }
+        }
+        composable(Routes.FILES) {
+            ScreenScaffold(title = "Fichiers", onBack = { navController.popBackStack() }) {
+                sh.sk7.tether.ui.files.FilesScreen()
             }
         }
         composable(Routes.OFFLINE) {
