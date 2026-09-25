@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.GitBranch
@@ -158,11 +163,16 @@ fun WorktreeScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(TetherDimensions.cornerSm))
                                         .background(TetherAccent.copy(alpha = 0.14f))
+                                        // ⚠️ 48 dp : c'est le bouton qui crée l'arbre. Sa
+                                        // hauteur naturelle est d'environ 36 dp (icône + padding),
+                                        // sous le seuil.
+                                        .heightIn(min = TetherDimensions.touchTarget)
                                         .clickable(
                                             enabled = state.draftName.isNotBlank() && !state.creating,
                                             onClick = viewModel::create,
                                         )
-                                        .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                                        .padding(horizontal = Spacing.md)
+                                        .semantics { role = Role.Button },
                                     horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -272,14 +282,28 @@ private fun WorktreeRow(item: WorktreeDirDto, onRemove: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(
-            imageVector = Lucide.Trash2,
-            contentDescription = "Retirer cet arbre",
-            tint = TetherAlert,
+        // ⚠️ Boîte de 48 dp explicite : un `padding` avant `.size(15).clickable` met la zone
+        // sensible sur l'icône seule, pas sur le padding. Sur une action **destructive**, cette
+        // erreur est doublement grave : on rate le bouton, et le voisin devient cliquable par
+        // débordement supposé.
+        Box(
             modifier = Modifier
-                .size(15.dp)
-                .clickable(onClick = onRemove),
-        )
+                .size(TetherDimensions.touchTarget)
+                .clip(RoundedCornerShape(percent = 50))
+                .clickable(onClick = onRemove)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "Retirer cet arbre"
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Lucide.Trash2,
+                contentDescription = null,
+                tint = TetherAlert,
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
 }
 
@@ -290,7 +314,17 @@ private fun Notice(text: String, onClick: (() -> Unit)? = null) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
             .background(TetherAlert.copy(alpha = 0.12f))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            // ⚠️ 48 dp **quand c'est cliquable** : un bandeau d'alerte qu'on peut écarter doit
+            // pouvoir être visé. `heightIn` avant `clickable`, pour que la zone sensible en tienne
+            // compte — l'ordre inverse le rendrait sans effet.
+            .heightIn(min = TetherDimensions.touchTarget)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick).semantics { role = Role.Button }
+                } else {
+                    Modifier
+                },
+            )
             .padding(Spacing.md),
     ) {
         Text(text = text, style = MaterialTheme.typography.bodySmall, color = TetherAlert)

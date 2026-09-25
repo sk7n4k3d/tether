@@ -172,8 +172,8 @@ private fun BrowseSection(
         state.loadingFile -> Box(Modifier.fillMaxSize(), Alignment.Center) {
             CircularProgressIndicator(color = TetherAccent)
         }
-        state.fileTooBig != null -> TooBigNotice(state.fileTooBig!!, onClose = viewModel::closeFile)
-        state.openFile != null -> FileViewer(state.openFile!!, onClose = viewModel::closeFile)
+        state.fileTooBig != null -> TooBigNotice(state.fileTooBig, onClose = viewModel::closeFile)
+        state.openFile != null -> FileViewer(state.openFile, onClose = viewModel::closeFile)
         state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
             CircularProgressIndicator(color = TetherAccent)
         }
@@ -365,8 +365,11 @@ private fun TooBigNotice(tooBig: FileTooBig, onClose: () -> Unit) {
             color = TetherAccent,
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                // ⚠️ 48 dp : seul point de sortie de cet état.
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(onClick = onClose)
-                .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+                .padding(horizontal = Spacing.sm)
+                .semantics { role = Role.Button },
         )
     }
 }
@@ -412,6 +415,7 @@ private fun RecursiveSearchSection(
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
                 .background(TetherAccent.copy(alpha = 0.16f))
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(enabled = !searching) {
                     searching = true
                     error = null
@@ -545,7 +549,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
         if (value.isNotEmpty()) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
+                    .size(TetherDimensions.touchTarget)
                     .clip(RoundedCornerShape(percent = 50))
                     .clickable { onValueChange("") }
                     .semantics {

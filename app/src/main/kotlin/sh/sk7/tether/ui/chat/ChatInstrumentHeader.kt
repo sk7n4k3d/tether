@@ -26,6 +26,7 @@ import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -87,7 +88,7 @@ fun ChatInstrumentHeader(
                 Text(
                     text = provider,
                     style = TetherDataStyle,
-                    color = TetherTextSecondary.copy(alpha = 0.7f),
+                    color = TetherTextMuted,
                 )
             }
         }

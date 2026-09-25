@@ -8,13 +8,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -60,6 +64,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -106,6 +111,13 @@ fun ConnectionScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // ⚠️ `targetSdk 37` impose l'edge-to-edge, et cet écran ne passe pas par un
+            // `Scaffold` (qui applique ses insets tout seul). Sans ce padding, le contenu se
+            // dessine **sous** la barre d'état et sous la barre de navigation : le titre peut être
+            // masqué et le dernier bouton tomber sur la pilule de gestes.
+            // `safeDrawing` couvre les deux (et les découpes d'écran), clavier exclu — cet écran
+            // n'a pas de champ de saisie, le clavier ne s'y ouvre pas.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .imePadding()
             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
@@ -266,7 +278,10 @@ private fun Field(
             onValueChange = onValueChange,
             singleLine = true,
             placeholder = {
-                Text(hint, color = TetherTextSecondary.copy(alpha = 0.6f))
+                // ⚠️ Un placeholder EST du texte : il doit tenir le seuil de 4.5:1 comme le reste.
+                // Mesure : l'ancien `alpha = 0.6` donnait **2.78** sur la surface de saisie —
+                // illisible. C'est la couleur du texte secondaire plein qui passe (5.19).
+                Text(hint, color = TetherTextSecondary)
             },
             visualTransformation = if (secret) {
                 PasswordVisualTransformation()
@@ -288,7 +303,7 @@ private fun Field(
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
             )
         }
     }
@@ -304,7 +319,12 @@ private fun ConnectButton(result: ConnectionTestResult, onClick: () -> Unit) {
         shape = RoundedCornerShape(TetherDimensions.cornerMd),
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
+            // ⚠️ `heightIn(min = 52.dp)` et non `height(52.dp)`. Mesure : avec une taille de
+            // police système à 200 %, un texte qui double de hauteur dans une hauteur **fixe** de
+            // 52 dp est **coupé** — le libellé disparaît en partie, et le bouton principal de
+            // l'écran de connexion devient illisible. Le minimum garde l'épaisseur voulue au
+            // repos, sans plafonner la croissance.
+            .heightIn(min = 52.dp),
     ) {
         if (testing) {
             CircularProgressIndicator(

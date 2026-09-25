@@ -10,6 +10,42 @@ val TetherAccent = Color(0xFF2DD4BF)
 val TetherAlert = Color(0xFFFFB020)
 
 /**
+ * **Texte secondaire attenue, au seuil WCAG AA.**
+ *
+ * ⚠️ C'est une **mesure**, pas un gout. Le seuil pour du texte normal est **4.5:1** (WCAG 2.1 AA,
+ * et l'European Accessibility Act s'applique aux applications mobiles grand public depuis le
+ * 28 juin 2025). Contraste calcule de `#8B98A5` attenue sur les trois fonds reels de l'app :
+ *
+ * ```
+ *   alpha   sur #0B0E11   sur #11151A   sur #1F262E (surface de saisie)   verdict
+ *   0.70        4.18         3.96         3.30                             ÉCHEC
+ *   0.80        4.87         4.61         3.84                             ÉCHEC
+ *   0.85        5.28         5.00         4.17                             ÉCHEC
+ *   0.90        5.70         5.40         4.50                             PASSE
+ *   1.00        6.57         6.22         5.19                             PASSE
+ * ```
+ *
+ * ⚠️ **La surface de saisie est le couple contraignant** : c'est le fond le plus clair, donc celui
+ * ou un texte attenue passe en dernier. 0.85 — la valeur la plus repandue avant cette mesure —
+ * donnait **4.17**, sous le seuil, sur une apparence a priori correcte. C'est le mode d'echec le
+ * plus vicieux : illisible pour qui en a besoin, invisible pour qui ne le remarque pas.
+ *
+ * ⚠️ Pour une **icone** ou un element graphique, le seuil est **3:1** et 0.7 suffit (`3.30`) :
+ * [TetherIconMuted] existe pour ca, afin qu'on ne rabaisse pas le seuil du texte par confusion.
+ */
+val TetherTextMuted = Color(0xFF808D99)
+
+/**
+ * **Icone attenuee, au seuil des elements non textuels (3:1).**
+ *
+ * ⚠️ Contraste mesure de `#6B7681` sur `#1F262E` = **3.30**, sur `#0B0E11` = **4.18**. Le seuil
+ * WCAG pour un composant d'interface ou un graphique est de **3:1** (1.4.11), pas 4.5 : une icone
+ * n'est pas du texte. La distinguer du texte evite deux erreurs symetriques — eclaircir des icones
+ * sans raison, ou garder du texte trop pale parce qu'une icone passait.
+ */
+val TetherIconMuted = Color(0xFF6B7681)
+
+/**
  * Surface de **saisie** : plus presente que les blocs d'information.
  *
  * ⚠️ Choix assume contre le reste de l'app. Les blocs de contenu (raisonnement, outils) sont
@@ -57,4 +93,6 @@ object TetherColors {
     val alert = TetherAlert
     val composerSurface = TetherComposerSurface
     val composerBorder = TetherComposerBorder
+    val textMuted = TetherTextMuted
+    val iconMuted = TetherIconMuted
 }

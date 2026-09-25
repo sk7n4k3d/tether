@@ -63,6 +63,7 @@ import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
+import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDimensions
@@ -188,6 +189,12 @@ fun Composer(
     val scrollState = rememberScrollState()
 
     // --- Le lisere d'activite : un fil teal qui respire quand un tour tourne ---
+    //
+    // ⚠️ Pulsation **infinie**, donc soumise a « réduire les animations » : un mouvement continu
+    // impose a quelqu'un qui l'a desactive peut provoquer un malaise vestibulaire (WCAG 2.3.3).
+    // Sans animation, le lisere reste **teal plein** : l'information « ca tourne » est toujours
+    // la, elle ne clignote simplement plus.
+    val pulseEnabled = animationsAllowed()
     val pulseTransition = rememberInfiniteTransition(label = "composer")
     val pulse by pulseTransition.animateFloat(
         initialValue = 0.15f,
@@ -198,8 +205,9 @@ fun Composer(
         ),
         label = "composer-pulse",
     )
+    val pulseAlpha = if (pulseEnabled) pulse else 0.40f
     // Lisere teal sous la barre : la version du fil qui passe par la zone de saisie.
-    val edgeColor = if (busy) TetherAccent.copy(alpha = pulse) else Color.Transparent
+    val edgeColor = if (busy) TetherAccent.copy(alpha = pulseAlpha) else Color.Transparent
 
     Column(modifier = modifier.fillMaxWidth()) {
         // ------------------------------------------------ LES PIECES JOINTES EN ATTENTE

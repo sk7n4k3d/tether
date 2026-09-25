@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +40,7 @@ import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import java.util.Locale
 
@@ -158,7 +160,7 @@ private fun StatsContent(
                     text = "Le cache représente ${percent(stats.tokenCacheRatio)} de l'entrée. " +
                         "C'est ce qui évite de renvoyer tout le contexte à chaque étape.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TetherTextSecondary.copy(alpha = 0.8f),
+                    color = TetherTextMuted,
                 )
             }
         }
@@ -177,8 +179,13 @@ private fun RangeSelector(selected: StatsRange, onSelect: (StatsRange) -> Unit) 
                     .background(
                         if (active) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
                     )
+                    // ⚠️ 48 dp : une puce de filtre est une cible fréquente et sa hauteur visuelle
+                    // est d'environ 24 dp. `heightIn` avant `clickable` porte la zone sensible à
+                    // la taille exigée sans épaissir la puce.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable { onSelect(range) }
-                    .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                    .padding(horizontal = Spacing.md),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = range.label,
@@ -290,17 +297,17 @@ private fun ActivityChart(activity: List<DailyActivity>) {
             Text(
                 text = activity.first().date,
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.7f),
+                color = TetherTextMuted,
             )
             Text(
                 text = "pic ${activity.maxOf { it.steps }} étapes",
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.7f),
+                color = TetherTextMuted,
             )
             Text(
                 text = activity.last().date,
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.7f),
+                color = TetherTextMuted,
             )
         }
     }
@@ -340,12 +347,12 @@ private fun ModelLine(usage: ModelUsage, totalCost: Double) {
             Text(
                 text = usage.provider,
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
             )
             Text(
                 text = "${percent(share * 100)} · ${count(usage.inputTokens + usage.outputTokens)} tok",
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
             )
         }
         // Barre de part : le rapport se voit sans lire les chiffres.

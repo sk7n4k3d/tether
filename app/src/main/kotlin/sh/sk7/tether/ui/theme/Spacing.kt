@@ -59,4 +59,19 @@ object TetherDimensions {
 
     /** Rayon des petites surfaces (chips, badges). */
     val cornerSm = 8.dp
+
+    /**
+     * **Cible tactile minimale : 48 dp.**
+     *
+     * ⚠️ C'est une obligation, pas une préférence : les WCAG 2.2 (2.5.8, « Target Size ») et les
+     * M3 specifications fixent 48 dp, et le European Accessibility Act s'applique aux applications
+     * mobiles grand public depuis le 28 juin 2025. Une cible plus petite rend le contrôle
+     * inutilisable pour une main qui tremble, et elle est **systématiquement ratée** au pouce sur
+     * un écran de téléphone.
+     *
+     * ⚠️ On l'applique par `heightIn(min = ...)` placé **avant** `clickable` : c'est la seule
+     * position où Compose prend la hauteur en compte pour la zone sensible. Après le `clickable`,
+     * la zone sensible est déjà calculée et le minimum ne la change plus.
+     */
+    val touchTarget = 48.dp
 }

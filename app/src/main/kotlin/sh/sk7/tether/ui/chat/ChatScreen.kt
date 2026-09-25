@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -85,6 +89,8 @@ import sh.sk7.tether.ui.theme.TetherBackground
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
+import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -708,24 +714,29 @@ private fun MessageAction(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-            // ⚠️ Cible tactile : la ligne fait ~28 dp de haut, sous les 48 dp recommandes. Le
-            // `padding` porte la zone sensible a une taille confortable sans elargir le bouton a
-            // l'oeil — c'est la meme technique que les autres controles discrets de l'app.
+            // ⚠️ Cible tactile : la ligne visible fait ~28 dp, sous les 48 dp exiges (WCAG 2.5.8,
+            // et le European Accessibility Act s'applique depuis le 28 juin 2025). Le
+            // `heightIn` est place AVANT `clickable` : c'est la seule position ou Compose en
+            // tient compte pour calculer la zone sensible.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            .padding(horizontal = Spacing.sm)
+            // ⚠️ `role = Button` : TalkBack doit annoncer « bouton », pas seulement lire le
+            // libellé. Sans lui, l'utilisateur entend « Copier » sans savoir qu'il peut appuyer.
+            .semantics { role = androidx.compose.ui.semantics.Role.Button },
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = TetherTextSecondary.copy(alpha = 0.75f),
+            tint = TetherIconMuted,
             modifier = Modifier.size(12.dp),
         )
         Text(
             text = label,
             style = TetherDataStyle,
-            color = TetherTextSecondary.copy(alpha = 0.75f),
+            color = TetherTextMuted,
         )
     }
 }
@@ -771,8 +782,10 @@ private fun HistoryTopRow(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                    // ⚠️ 48 dp : « Remonter dans l'historique » est une cible, pas une légende.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable(enabled = !loading, onClick = onLoadMore)
-                    .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                    .padding(horizontal = Spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -800,7 +813,7 @@ private fun HistoryTopRow(
             Text(
                 text = "DÉBUT DE LA CONVERSATION",
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.5f),
+                color = TetherTextMuted,
             )
         }
     }
@@ -1083,14 +1096,29 @@ private fun ChatSearchBar(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Icon(
-                imageVector = Lucide.X,
-                contentDescription = "Fermer la recherche",
-                tint = TetherTextSecondary,
+            // ⚠️ Boîte de 48 dp **explicite**, et non un padding autour de l'icône : dans
+            // `padding(12).size(15).clickable`, c'est le `clickable` qui est le plus interne et il
+            // ne couvre que les 15 dp de l'icône — le padding est *hors* de la zone sensible. Une
+            // `Box` de 48 dp avec l'icône centrée ne laisse aucune ambiguïté, et l'ordre des
+            // modificateurs ne peut plus l'inverser.
+            Box(
                 modifier = Modifier
-                    .size(15.dp)
-                    .clickable(onClick = onClose),
-            )
+                    .size(TetherDimensions.touchTarget)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .clickable(onClick = onClose)
+                    .semantics {
+                        role = androidx.compose.ui.semantics.Role.Button
+                        contentDescription = "Fermer la recherche"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = null,
+                    tint = TetherTextSecondary,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
 
         if (query.isNotBlank()) {

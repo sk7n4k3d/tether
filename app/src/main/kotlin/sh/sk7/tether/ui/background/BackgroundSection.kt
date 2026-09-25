@@ -29,6 +29,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -180,7 +181,7 @@ private fun BackgroundRow(
             Text(
                 text = detail,
                 style = TetherDataStyle,
-                color = TetherTextSecondary.copy(alpha = 0.8f),
+                color = TetherTextMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -193,7 +194,7 @@ private fun BackgroundRow(
                     Text(
                         text = "depuis $minutes min",
                         style = TetherDataStyle,
-                        color = TetherTextSecondary.copy(alpha = 0.7f),
+                        color = TetherTextMuted,
                     )
                 }
             }

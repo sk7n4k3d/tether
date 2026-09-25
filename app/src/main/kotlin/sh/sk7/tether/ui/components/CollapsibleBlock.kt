@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -23,6 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +35,7 @@ import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAlert
+import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -70,8 +75,15 @@ fun CollapsibleBlock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // ⚠️ 48 dp : le chevron de pliage fait 14 dp, mais c'est toute la ligne qui replie
+                // et toute la ligne qui doit etre attrapable. Viser 14 dp au doigt est impossible.
+                .heightIn(min = TetherDimensions.touchTarget)
                 .clickable { expanded = !expanded }
-                .padding(vertical = Spacing.sm),
+                .padding(vertical = Spacing.sm)
+                // ⚠️ `role = Button` : la ligne EST le contrôle de pliage. Sans le rôle, TalkBack
+                // lit le résumé sans dire qu'on peut l'ouvrir — le contenu replié devient
+                // inaccessible à un lecteur d'écran.
+                .semantics { role = Role.Button },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {

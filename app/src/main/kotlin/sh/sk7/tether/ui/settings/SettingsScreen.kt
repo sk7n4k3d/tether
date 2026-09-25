@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,6 +54,7 @@ import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -235,7 +237,7 @@ fun SettingsScreen(
                         // par precaution.
                         text = "Tes sessions restent sur le serveur opencode : rien n'est supprimé.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TetherTextSecondary.copy(alpha = 0.8f),
+                        color = TetherTextMuted,
                     )
                 }
             },
@@ -334,6 +336,10 @@ private fun ActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+            // ⚠️ 48 dp : c'est la cible de navigation des réglages, présente une douzaine de fois.
+            // Une hauteur de ~40 dp serait juste sous le seuil, donc systématiquement ratée au
+            // pouce — et rien ne le signalerait.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -351,7 +357,7 @@ private fun ActionRow(
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TetherTextSecondary.copy(alpha = 0.85f),
+                    color = TetherTextMuted,
                 )
             }
         }

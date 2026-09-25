@@ -6,10 +6,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,6 +30,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.KeyRound
@@ -43,6 +50,7 @@ import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -78,6 +86,10 @@ fun OfflineScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            // ⚠️ Edge-to-edge (impose par targetSdk 37) sans `Scaffold` : sans ces insets, le
+            // contenu passe sous la barre d'état et la barre de navigation. `safeDrawing` couvre
+            // les deux et les découpes d'écran.
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .padding(Spacing.xl),
         verticalArrangement = Arrangement.Center,
@@ -122,7 +134,7 @@ fun OfflineScreen(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodySmall,
-                color = TetherTextSecondary.copy(alpha = 0.85f),
+                color = TetherTextMuted,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = Spacing.lg),
@@ -233,8 +245,12 @@ private fun Action(
             .background(
                 if (primary) TetherAccent.copy(alpha = 0.16f) else TetherComposerSurface,
             )
+            // ⚠️ 48 dp : les actions de cet écran sont les seules issues apres un echec de
+            // connexion. Une cible facile a rater ici n'a pas de rattrapage.
+            .heightIn(min = TetherDimensions.touchTarget)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+            .padding(horizontal = Spacing.lg, vertical = Spacing.md)
+            .semantics { role = Role.Button },
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {

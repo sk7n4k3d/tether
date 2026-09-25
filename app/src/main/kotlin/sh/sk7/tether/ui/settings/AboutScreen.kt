@@ -27,6 +27,7 @@ import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -87,7 +88,7 @@ fun AboutScreen(
                         text = "Licence MIT — logiciel libre, sans dépendance aux services " +
                             "Google. Conçu pour fonctionner sans Play Services.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TetherTextSecondary.copy(alpha = 0.85f),
+                        color = TetherTextMuted,
                     )
                 }
             }
