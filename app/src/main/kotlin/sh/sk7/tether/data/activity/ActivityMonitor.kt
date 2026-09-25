@@ -24,6 +24,7 @@ import sh.sk7.tether.domain.model.Activity
 import sh.sk7.tether.domain.model.FleetState
 import sh.sk7.tether.domain.model.SessionActivity
 import sh.sk7.tether.domain.model.ShellActivity
+import sh.sk7.tether.domain.model.TerminalActivity
 
 /**
  * **Le détenteur unique de l'état vivant de l'installation.**
@@ -181,6 +182,10 @@ class ActivityMonitor @Inject constructor(
 
                 val activeIDs = gateway.activeSessions(settings)
                 val shells = gateway.shells(settings)
+                // ⚠️ Les terminaux sont lus **en plus** des shells : sur ce serveur, la route
+                // `POST /session/{id}/shell` rend 500 (bug de plugin), donc les shells seuls
+                // donneraient une image incomplete du travail de fond.
+                val terminals = runCatching { gateway.terminals(settings) }.getOrDefault(emptyList())
                 // Les permissions et les formulaires sont ce qui « attend ». Ils viennent d'une
                 // seule route globale : pas besoin de la demander par session.
                 val pendingPermissions = gateway.pendingPermissions(settings)
@@ -197,6 +202,17 @@ class ActivityMonitor @Inject constructor(
                 _state.value = FleetState(
                     bySession = activities,
                     shells = shells.map { it.toShellActivity() },
+                    terminals = terminals.map { t ->
+                        TerminalActivity(
+                            id = t.id,
+                            title = t.title,
+                            command = t.command,
+                            cwd = t.cwd,
+                            status = t.status,
+                            pid = t.pid,
+                            exitCode = t.exitCode,
+                        )
+                    },
                     loading = false,
                     error = null,
                     polledAt = System.currentTimeMillis(),

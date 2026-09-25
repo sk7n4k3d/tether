@@ -536,3 +536,28 @@ data class ShellOutputEnvelope(
  */
 @Serializable
 data class ViewBody(val idle: Long)
+
+/**
+ * `Pty` — un **terminal** ouvert sur la machine.
+ *
+ * ⚠️ Mesure : `POST /api/session/{id}/shell` rend **500** sur ce serveur (bug du plugin
+ * `cc-safety-net`), alors que `POST /api/pty` rend **200**. Un client qui ne regarderait que les
+ * shells conclurait « rien ne tourne » alors qu'un terminal est ouvert.
+ *
+ * ⚠️ Pas de `sessionID` : un terminal n'appartient pas a une session. On ne fabrique pas ce lien.
+ */
+@Serializable
+data class PtyInfoDto(
+    val id: String,
+    val title: String = "",
+    val command: String = "",
+    val args: List<String> = emptyList(),
+    val cwd: String? = null,
+    val status: String = "",
+    val pid: Long? = null,
+    val exitCode: Int? = null,
+)
+
+/** `GET /api/pty` : `{location, data: [Pty]}`. */
+@Serializable
+data class PtyEnvelope(val location: LocationInfo? = null, val data: List<PtyInfoDto> = emptyList())

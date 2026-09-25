@@ -227,6 +227,14 @@ interface OpenCodeGateway {
     /** Les commandes shell du serveur, terminees comprises. */
     suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto>
 
+    /**
+     * Les **terminaux** ouverts (`/api/pty`).
+     *
+     * ⚠️ Indispensable en plus des shells : `POST /api/session/{id}/shell` rend 500 sur ce serveur
+     * (bug de plugin), donc se fier aux seuls shells ferait croire que rien ne tourne.
+     */
+    suspend fun terminals(settings: ConnectionSettings): List<PtyInfoDto>
+
     /** La sortie d'un shell, a partir d'un curseur optionnel. */
     suspend fun shellOutput(settings: ConnectionSettings, shellID: String, cursor: Int? = null): ShellOutputDto?
 
@@ -572,6 +580,9 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto> =
         client(settings).shells(settings.directory)
+
+    override suspend fun terminals(settings: ConnectionSettings): List<PtyInfoDto> =
+        client(settings).terminals(settings.directory)
 
     override suspend fun shellOutput(
         settings: ConnectionSettings,

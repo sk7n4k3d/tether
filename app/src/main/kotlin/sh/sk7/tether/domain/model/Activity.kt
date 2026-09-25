@@ -112,6 +112,18 @@ data class FleetState(
     val bySession: Map<String, SessionActivity> = emptyMap(),
     /** Les commandes shell connues du serveur, y compris terminées. */
     val shells: List<ShellActivity> = emptyList(),
+    /**
+     * Les **terminaux** ouverts (`/api/pty`).
+     *
+     * ⚠️ Distincts des shells d'agent, et les deux comptent :
+     *  - un `shell` est lance **par l'agent** pendant un tour, et porte un `metadata.sessionID` ;
+     *  - un `pty` est un **terminal** (souvent lance a la main), avec un `title` et pas de session.
+     *
+     * ⚠️ Mesure : `POST /api/session/{id}/shell` rend **500** sur ce serveur (bug de plugin
+     * `cc-safety-net`), alors que `POST /api/pty` rend **200**. Si on ne se fiait qu'aux shells,
+     * on conclurait « rien ne tourne en arriere-plan » alors qu'un terminal tourne.
+     */
+    val terminals: List<TerminalActivity> = emptyList(),
     /** Vrai tant qu'aucune interrogation n'a abouti. */
     val loading: Boolean = false,
     /** Dernière erreur d'interrogation, s'il y en a une. */
@@ -154,6 +166,18 @@ data class FleetState(
     /** Les shells encore vivants. */
     val liveShells: List<ShellActivity> get() = shells.filter { it.isLive }
 
+    /** Les terminaux encore ouverts. */
+    val liveTerminals: List<TerminalActivity> get() = terminals.filter { it.isLive }
+
+    /**
+     * **Tout le travail de fond encore vivant**, shells et terminaux reunis.
+     *
+     * ⚠️ On expose cette vue **uniquement** pour l'affichage : l'utilisateur veut savoir « qu'est-ce
+     * qui tourne encore », pas « quel type de processus tourne ». La distinction de type reste
+     * visible par ligne, mais elle ne doit pas fragmenter la reponse a la question.
+     */
+    val liveBackground: Int get() = liveShells.size + liveTerminals.size
+
     /**
      * **L'état global, réduit à un seul mot.**
      *
@@ -195,7 +219,7 @@ data class FleetState(
     /** Y a-t-il **quelque chose** à signaler ? */
     val hasAnything: Boolean
         get() = waiting.isNotEmpty() || unseen.isNotEmpty() || running.isNotEmpty() ||
-            queued.isNotEmpty() || liveShells.isNotEmpty()
+            queued.isNotEmpty() || liveBackground > 0
 
     /** Nombre de sessions qui attendent une décision — pour le badge. */
     val waitingCount: Int get() = waiting.size
@@ -251,4 +275,27 @@ data class ShellActivity(
             else -> "${ms / 3_600_000} h"
         }
     }
+}
+
+/**
+ * **Un terminal ouvert sur la machine** (`/api/pty`).
+ *
+ * ⚠️ Pas de `sessionID` : un terminal n'appartient pas a une session. Il se rattache par son
+ * `title` et son `cwd` — c'est-a-dire par ce que l'utilisateur reconnait. Chercher une session a
+ * tout prix serait inventer un lien que le serveur n'exprime pas.
+ */
+data class TerminalActivity(
+    val id: String,
+    val title: String,
+    val command: String,
+    val cwd: String? = null,
+    /** `running` ou `exited`. */
+    val status: String,
+    val pid: Long? = null,
+    val exitCode: Int? = null,
+) {
+    val isLive: Boolean get() = status == "running"
+
+    /** Ce qu'on affiche : le titre s'il existe, sinon la commande. */
+    val label: String get() = title.ifBlank { command }
 }

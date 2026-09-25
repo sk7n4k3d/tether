@@ -653,6 +653,21 @@ class OpenCodeClient(
     }
 
     /**
+     * `GET /api/pty` : les **terminaux** ouverts.
+     *
+     * ⚠️ C'est la seule source de « travail de fond » qui fonctionne sur ce serveur :
+     * `POST /api/session/{id}/shell` rend 500 (bug de plugin). Un client qui ne regarderait que
+     * les shells conclurait a tort que rien ne tourne.
+     */
+    suspend fun terminals(location: String): List<PtyInfoDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/pty") {
+            auth(credentials)
+            at(location)
+        }.body<PtyEnvelope>().data
+    }
+
+    /**
      * `GET /api/shell/{id}/output` : la sortie d'un shell.
      *
      * ⚠️ `cursor` permet de ne lire que le **nouveau** depuis un point connu. Sans lui, chaque

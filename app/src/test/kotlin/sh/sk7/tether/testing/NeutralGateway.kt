@@ -15,6 +15,7 @@ import sh.sk7.tether.data.api.PluginDto
 import sh.sk7.tether.data.api.ProjectDto
 import sh.sk7.tether.data.api.PromptAcceptance
 import sh.sk7.tether.data.api.ProviderDto
+import sh.sk7.tether.data.api.PtyInfoDto
 import sh.sk7.tether.data.api.RevertResultDto
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.data.api.ServerInfo
@@ -173,6 +174,8 @@ open class NeutralGateway : OpenCodeGateway {
     override suspend fun activeSessions(settings: ConnectionSettings): Set<String> = emptySet()
 
     override suspend fun shells(settings: ConnectionSettings): List<ShellInfoDto> = emptyList()
+
+    override suspend fun terminals(settings: ConnectionSettings): List<PtyInfoDto> = emptyList()
 
     override suspend fun shellOutput(
         settings: ConnectionSettings,

@@ -3,6 +3,7 @@ package sh.sk7.tether.ui.sessions
 import sh.sk7.tether.domain.model.FleetState
 
 import sh.sk7.tether.domain.model.Activity
+import sh.sk7.tether.ui.background.BackgroundSection
 
 import sh.sk7.tether.ui.theme.TetherDataStyle
 
@@ -179,6 +180,10 @@ fun SessionListScreen(
             if (fleet.hasAnything || fleet.polledAt != null) {
                 FleetHeader(fleet = fleet)
             }
+            // ⚠️ Le travail de fond est **au-dessus** de la liste : c'est ce qu'on vient chercher
+            // quand on se demande pourquoi la machine est lente, et ça ne doit pas demander de
+            // défiler 450 sessions pour le trouver.
+            BackgroundSection(fleet = fleet)
         Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 SessionListUiState.Loading -> Centered {
