@@ -5,6 +5,8 @@ import com.composables.icons.lucide.Download
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -57,6 +59,7 @@ import com.composables.icons.lucide.GitCompare
 import com.composables.icons.lucide.Layers
 import com.composables.icons.lucide.Copy
 import com.composables.icons.lucide.Undo2
+import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Square
@@ -72,6 +75,9 @@ import dev.snipme.highlights.model.SyntaxThemes
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.ui.theme.Spacing
+import sh.sk7.tether.ui.theme.TetherComposerSurface
+import sh.sk7.tether.ui.theme.TetherComposerBorder
+import com.composables.icons.lucide.X
 import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherAlert
@@ -120,6 +126,17 @@ fun ChatScreen(
 
     /** Confirmation de copie : un retour visible, sinon le geste semble ignore. */
     var copiedNotice by remember { mutableStateOf(false) }
+
+    /** La recherche dans la conversation. Vide = pas de recherche. */
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // ⚠️ On calcule le resultat a la composition, pas dans un `LaunchedEffect` : la recherche est
+    // locale et instantanee, donc un aller-retour asynchrone introduirait un delai visible pour
+    // une operation qui n'en a aucun besoin.
+    val searchResult = remember(state.chat.messages, searchQuery) {
+        ChatSearch.find(state.chat.messages, searchQuery)
+    }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     val listState = rememberLazyListState()
@@ -253,6 +270,9 @@ fun ChatScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { searchOpen = !searchOpen }) {
+                            Icon(Lucide.Search, contentDescription = "Rechercher dans la conversation")
+                        }
                         // ⚠️ Deux actions de plus dans la barre, et elles sont justifiees : les
                         // diffs et le contexte sont les deux informations qu'un client d'agent a
                         // et qu'un client de chat n'a pas. Les enfouir reviendrait a les rendre
@@ -276,6 +296,21 @@ fun ChatScreen(
                     ),
                 )
                 ChatInstrumentHeader(state = state.chat, meta = state.meta)
+                // ⚠️ La barre de recherche vit **sous** l'en-tete, pas dans la top bar : elle
+                // apparait a la demande, et une top bar qui changerait de hauteur au clic ferait
+                // sauter le contenu — donc perdre la position de lecture, precisement au moment
+                // ou on cherche quelque part dans la conversation.
+                if (searchOpen) {
+                    ChatSearchBar(
+                        query = searchQuery,
+                        result = searchResult,
+                        onQueryChange = { searchQuery = it },
+                        onClose = {
+                            searchOpen = false
+                            searchQuery = ""
+                        },
+                    )
+                }
             }
         },
         bottomBar = {
@@ -918,5 +953,98 @@ private fun shareMarkdown(
         )
     }.onFailure {
         android.util.Log.w("TetherChat", "export impossible", it)
+    }
+}
+
+/**
+ * **La barre de recherche dans la conversation.**
+ *
+ * ### Pourquoi elle vit sous l'en-tete et non dans la top bar
+ * ⚠️ Elle **apparait a la demande**. Une top bar dont la hauteur change au clic ferait sauter tout
+ * le contenu sous elle, et la position de lecture serait perdue — precisement au moment ou on
+ * cherche quelque part dans la conversation.
+ *
+ * ### Ce que le compteur dit, et pourquoi il est precis
+ * On affiche **« 3 messages · 7 occurrences »** et pas seulement un total : un message peut
+ * contenir le mot cherche sept fois, et « 7 » tout seul laisserait croire a sept messages. Les
+ * deux chiffres repondent a deux questions differentes (« combien d'endroits ? » et « combien de
+ * messages a ouvrir ? »).
+ *
+ * ⚠️ Le compteur est **neutre tant que rien n'est cherche** : afficher « 0 » sur une barre qu'on
+ * vient d'ouvrir ferait croire qu'il n'y a rien, alors qu'on n'a rien demande.
+ */
+@Composable
+private fun ChatSearchBar(
+    query: String,
+    result: ChatSearch.Result,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(TetherDimensions.cornerMd))
+                .background(TetherComposerSurface)
+                .border(1.dp, TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerMd))
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Icon(
+                imageVector = Lucide.Search,
+                contentDescription = null,
+                tint = TetherTextSecondary,
+                modifier = Modifier.size(15.dp),
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                if (query.isEmpty()) {
+                    Text(
+                        text = "Rechercher dans la conversation",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TetherTextSecondary,
+                    )
+                }
+                androidx.compose.foundation.text.BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = TetherTextPrimary),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(TetherAccent),
+                    // ⚠️ `fillMaxWidth` obligatoire : sans lui, le champ n'occupe que la largeur de
+                    // son texte — vide au depart — et le tap tombe sur le placeholder. C'est le
+                    // bug deja rencontre sur la recherche de sessions.
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Icon(
+                imageVector = Lucide.X,
+                contentDescription = "Fermer la recherche",
+                tint = TetherTextSecondary,
+                modifier = Modifier
+                    .size(15.dp)
+                    .clickable(onClick = onClose),
+            )
+        }
+
+        if (query.isNotBlank()) {
+            Text(
+                text = if (result.isEmpty) {
+                    "Aucun résultat pour « $query »"
+                } else {
+                    val msgs = result.messageCount
+                    val total = result.total
+                    "$msgs message${if (msgs > 1) "s" else ""} · " +
+                        "$total occurrence${if (total > 1) "s" else ""}"
+                },
+                style = TetherDataStyle,
+                color = if (result.isEmpty) TetherAlert else TetherTextSecondary,
+            )
+        }
     }
 }
