@@ -264,6 +264,47 @@ fun Composer(
                     // leur. Serrer davantage nuirait a la lisibilite des prompts longs.
                     .padding(horizontal = Spacing.md, vertical = Spacing.sm),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    // -------------------------------- LE TROMBONE, A GAUCHE DU CHAMP
+                    //
+                    // ⚠️ **Il etait a DROITE, colle au micro et a l'envoi : c'est l'anti-pattern que
+                    // les references evitent.** Releve du 2026-09-25 sur quatre grands produits
+                    // (ChatGPT, Claude, Gemini, Perplexity) : **tous** mettent un controle unique a
+                    // **gauche** du champ, et ne gardent a droite que la dictee et l'envoi. Apple a
+                    // recule en iOS 27 sur le micro colle a l'envoi, justement parce que deux cibles
+                    // trop proches declenchent des gestes faux.
+                    //
+                    // Trois icones serrees sur une barre etroite, c'est ce qui donnait l'impression
+                    // de fouillis (constat de Bastien : « super moche avec ses deux boutons »).
+                    if (onAttach != null) {
+                        Box(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(percent = 50))
+                                .clickable(onClick = onAttach)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = "Joindre un fichier"
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Lucide.Paperclip,
+                                contentDescription = null,
+                                tint = TetherTextSecondary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                    // Le champ prend la place restante : le trombone ne peut donc plus avaler sa
+                    // zone de tap (piege documente : un controle a gauche sans marge fait rater le
+                    // tap dans le champ).
+                    Box(modifier = Modifier.weight(1f)) {
                 if (value.isEmpty()) {
                     // ⚠️ Placeholder **plein**, surtout pas un texte secondaire attenue.
                     // Mesure : mon ancien placeholder a 60 % d'opacite donnait **2.96** de
@@ -315,68 +356,50 @@ fun Composer(
                         keyboardActions = KeyboardActions(),
                     )
                 }
+                    }
+
+                    // -------------------------------- LE MICRO, DANS LA MEME SURFACE
+                    //
+                    // ⚠️ Il vit **dans** la surface, en fin de champ, parce que dicter est une facon
+                    // d'ECRIRE — comme joindre un fichier. Le sortir dans une barre d'outils en ferait
+                    // une fonction a part alors que c'est la meme intention.
+                    //
+                    // ⚠️ **Et il est a l'interieur, pas a cote du bouton d'envoi.** C'est la raison qui
+                    // a fait reculer Apple en iOS 27 : un micro colle a la fleche d'envoi declenche des
+                    // dictees accidentelles. Ici la distance est celle du champ, et la forme differe
+                    // (icone transparente contre cercle plein) : deux signaux qui evitent le mis-tap.
+                    if (onVoice != null) {
+                        Box(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(percent = 50))
+                                // ⚠️ La teinte dit l'etat d'ecoute : sans elle, appuyer sur le micro ne
+                                // produirait aucun retour local, et on ne saurait pas si le geste a ete
+                                // pris en compte avant l'ouverture du dialogue systeme.
+                                .background(
+                                    if (listening) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
+                                )
+                                .clickable(enabled = !listening, onClick = onVoice)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription =
+                                        if (listening) "Dictee en cours" else "Dicter le message"
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Lucide.Mic,
+                                contentDescription = null,
+                                tint = if (listening) TetherAccent else TetherTextSecondary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
             }
 
-            // ------------------------------------------------ LE TROMBONE, MEME SURFACE
-      //
-      // ⚠️ Il vit **dans** la surface de saisie, comme le micro : joindre un fichier est une
-      // facon d'ECRIRE, pas une fonction a part. Le sortir dans une barre d'outils en ferait
-      // une action detachee alors que c'est la meme intention.
-      if (onAttach != null) {
-          Box(
-              modifier = Modifier
-                  .minimumInteractiveComponentSize()
-                  .size(30.dp)
-                  .clip(RoundedCornerShape(percent = 50))
-                  .clickable(onClick = onAttach)
-                  .semantics {
-                      role = Role.Button
-                      contentDescription = "Joindre un fichier"
-                  },
-              contentAlignment = Alignment.Center,
-          ) {
-              Icon(
-                  imageVector = Lucide.Paperclip,
-                  contentDescription = null,
-                  tint = TetherTextSecondary,
-                  modifier = Modifier.size(16.dp),
-              )
-          }
-      }
 
-      // ------------------------------------------------ LE MICRO, DANS LA MEME SURFACE
-          //
-          // ⚠️ Le micro vit **dans** la surface de saisie, a cote du bouton d'envoi, parce que
-          // dicter est une facon d'ECRIRE. Le mettre dans une barre d'outils en ferait une
-          // fonction a part, alors que c'est la meme intention.
-          if (onVoice != null) {
-              Box(
-                  modifier = Modifier
-                      .minimumInteractiveComponentSize()
-                      .size(30.dp)
-                      .clip(RoundedCornerShape(percent = 50))
-                      // ⚠️ La teinte dit l'etat d'ecoute : sans elle, appuyer sur le micro ne
-                      // produirait aucun retour local, et l'utilisateur ne saurait pas si le geste
-                      // a ete pris en compte avant l'ouverture du dialogue systeme.
-                      .background(
-                          if (listening) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
-                      )
-                      .clickable(enabled = !listening, onClick = onVoice)
-                      .semantics {
-                          role = Role.Button
-                          contentDescription =
-                              if (listening) "Dictée en cours" else "Dicter le message"
-                      },
-                  contentAlignment = Alignment.Center,
-              ) {
-                  Icon(
-                      imageVector = Lucide.Mic,
-                      contentDescription = null,
-                      tint = if (listening) TetherAccent else TetherTextSecondary,
-                      modifier = Modifier.size(16.dp),
-                  )
-              }
-          }
 
           // ------------------------------------------------ L'ACTION, DANS LA MEME SURFACE
             //
