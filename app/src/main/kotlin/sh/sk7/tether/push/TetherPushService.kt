@@ -1,5 +1,7 @@
 package sh.sk7.tether.push
 
+import java.net.HttpURLConnection
+import java.net.URL
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -149,33 +151,62 @@ class TetherPushService : PushService() {
 }
 
 /**
- * **Transmission de l'endpoint** vers ce qui sait quoi en faire.
+ * **Transmission de l'endpoint** vers le serveur, via un topic ntfy relais.
  *
- * ⚠️ Point d'architecture : l'endpoint doit finir **cote serveur** pour que le publieur sache
- * ou envoyer. Ce relais est volontairement une interface : l'implementation vit ailleurs (et
- * peut etre branchee plus tard sans toucher au service). Tant qu'aucun relais n'est installe,
- * on **trace** l'endpoint plutot que de le perdre en silence — c'est ce qui permet de le
- * recuperer a la main pour configurer le serveur.
+ * ### Le probleme
+ * Pour qu'une notification arrive, il faut que le **publieur** (le plugin opencode sur
+ * le serveur) connaisse l'endpoint genere par le distributeur du telephone. Or cet endpoint
+ * n'existe **que** sur le telephone, et opencode n'expose **aucune route** pour le stocker
+ * (verifie sur `/openapi.json` : `/api/experimental/config` n'accepte que `shell`).
  *
- * (L'endpoint n'est **pas** un secret au sens d'un mot de passe, mais il **est** une capacite
- * d'ecriture : quiconque le connait peut publier sur ce topic. On ne le journalise donc qu'au
- * niveau `info`, jamais dans un ecran ni dans un partage.)
+ * ### La solution : le topic comme boite aux lettres
+ * L'app publie son endpoint sur le topic `TetherEndpoint` (`write-only` anonyme) ; le plugin
+ * opencode, lui, **lit** ce topic avec un compte qui en a le droit. C'est un canal **a sens
+ * unique**, et c'est exactement ce qu'il faut : personne d'autre ne peut lire l'endpoint, et
+ * l'app n'a besoin d'aucun secret pour ecrire.
+ *
+ * ⚠️ Ne PAS tenter de « faire plus simple » en ecrivant un fichier sur le serveur : la route
+ * `/api/session/{id}/shell` renvoie **500** a cause d'un plugin mal configure
+ * (`cc-safety-net` : shell `fish` vs option `posix`). Ce chemin est casse pour l'instant, et
+ * il n'est de toute facon pas necessaire.
+ *
+ * ⚠️ L'endpoint **est une capacite d'ecriture** : qui le connait peut publier sur ce topic.
+ * On l'envoie donc sur un canal prive en lecture, jamais dans un log partage.
  */
 object PushEndpointRelay {
 
-    @Volatile
-    private var sink: ((String) -> Unit)? = null
+    /** Topic relais : ecriture anonyme, lecture reservee. */
+    private const val RELAY_URL = "https://ntfy.example.com/TetherEndpoint"
 
-    /** Installe le destinataire (le serveur, plus tard). */
-    fun install(sink: (String) -> Unit) {
-        this.sink = sink
-    }
-
+    /**
+     * Recoit l'endpoint annonce par le distributeur ([TetherPushService.onNewEndpoint]).
+     *
+     * ⚠️ On **persiste** l'envoi : l'endpoint change quand l'app est reinstallee ou quand le
+     * distributeur renouvelle son topic. On le republie donc a chaque fois qu'il change.
+     */
     fun publish(context: Context, endpoint: String) {
-        sink?.invoke(endpoint) ?: Log.i(
-            "TetherPush",
-            "endpoint recu, aucun relais installe : $endpoint",
-        )
+        if (endpoint.isBlank()) return
+        val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
+        if (prefs.getString("last-endpoint", null) == endpoint) return
+        prefs.edit().putString("last-endpoint", endpoint).apply()
+
+        // Envoi en arriere-plan : on ne bloque jamais le thread du distributeur.
+        Thread {
+            runCatching {
+                val connection = URL(RELAY_URL).openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.connectTimeout = 10_000
+                connection.readTimeout = 10_000
+                connection.outputStream.use { it.write(endpoint.toByteArray()) }
+                Log.i("TetherPush", "endpoint publie sur le relais (http=${connection.responseCode})")
+                connection.disconnect()
+            }.onFailure { e ->
+                // Echec reseau : l'endpoint n'est pas perdu, il sera republie au prochain
+                // demarrage (le `last-endpoint` n'a pas ete ecrit si l'envoi a echoue…).
+                Log.w("TetherPush", "publication de l'endpoint impossible", e)
+            }
+        }.start()
     }
 }
 

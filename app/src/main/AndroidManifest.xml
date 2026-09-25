@@ -35,10 +35,25 @@
         <activity
             android:name=".MainActivity"
             android:windowSoftInputMode="adjustNothing"
+            android:launchMode="singleTop"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+              Deep link des notifications : `opencode://session/<sessionID>`.
+              C'est le format envoye par le plugin opencode (en-tete `Click` de ntfy).
+              ⚠️ `launchMode="singleTop"` est indispensable : sans lui, taper une
+              notification alors que l'app tourne cree une DEUXIEME activite au lieu de
+              livrer un `onNewIntent` a celle qui existe. La pile s'empile et le bouton
+              retour devient incoherent.
+            -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opencode" android:host="session" />
             </intent-filter>
         </activity>
 
