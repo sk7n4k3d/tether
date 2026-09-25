@@ -179,6 +179,16 @@ object PushEndpointRelay {
     private const val RELAY_URL = "https://ntfy.example.com/TetherEndpoint"
 
     /**
+     * Delai avant de republier l'endpoint, meme inchange.
+     *
+     * ⚠️ 6 h : la moitie du cache ntfy par defaut (12 h). Republier a la moitie garantit qu'un
+     * message **toujours valide** est present, avec une large marge si un envoi echoue.
+     * Republier toutes les heures couterait 24 requetes par jour pour rien ; ne jamais republier
+     * perdait les notifications.
+     */
+    private const val REPUBLISH_INTERVAL_MS = 6 * 60 * 60 * 1000L
+
+    /**
      * Recoit l'endpoint annonce par le distributeur ([TetherPushService.onNewEndpoint]).
      *
      * ⚠️ On **persiste** l'envoi : l'endpoint change quand l'app est reinstallee ou quand le
@@ -187,8 +197,25 @@ object PushEndpointRelay {
     fun publish(context: Context, endpoint: String) {
         if (endpoint.isBlank()) return
         val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
-        if (prefs.getString("last-endpoint", null) == endpoint) return
-        prefs.edit().putString("last-endpoint", endpoint).apply()
+
+        // ⚠️ BUG REEL CORRIGE ICI : la condition ne portait que sur l'ENDPOINT, jamais sur la
+        // DATE. Or le topic du relais est un topic ntfy, et ntfy **expire ses messages**
+        // (cache-duration). Consequence : une fois le message expire, le serveur ne retrouvait
+        // plus l'endpoint et se repliait sur le topic fixe — donc **plus aucune notification
+        // sur le telephone**, sans erreur nulle part. La preuve de bout en bout avait ete faite
+        // juste apres la publication, donc dans la fenetre ou ca marchait encore.
+        //
+        // ⚠️ On republie donc periodiquement, a la moitie du cache courant. Republier est un POST
+        // de quelques dizaines d'octets : le cout est nul, et il est tres inferieur a celui d'une
+        // notification perdue en silence.
+        val lastEndpoint = prefs.getString("last-endpoint", null)
+        val lastAt = prefs.getLong("last-endpoint-at", 0L)
+        val fresh = System.currentTimeMillis() - lastAt < REPUBLISH_INTERVAL_MS
+        if (lastEndpoint == endpoint && fresh) return
+        prefs.edit()
+            .putString("last-endpoint", endpoint)
+            .putLong("last-endpoint-at", System.currentTimeMillis())
+            .apply()
 
         // Envoi en arriere-plan : on ne bloque jamais le thread du distributeur.
         Thread {
