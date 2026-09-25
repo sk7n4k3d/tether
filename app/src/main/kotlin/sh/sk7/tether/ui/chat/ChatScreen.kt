@@ -42,11 +42,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +62,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.ArrowDown
 import com.composables.icons.lucide.Brain
 import com.composables.icons.lucide.GitCompare
 import com.composables.icons.lucide.Hourglass
@@ -78,10 +82,12 @@ import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeBlock
 import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
 import dev.snipme.highlights.Highlights
+import kotlinx.coroutines.launch
 import dev.snipme.highlights.model.SyntaxThemes
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.ui.theme.Spacing
+import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import com.composables.icons.lucide.X
@@ -240,6 +246,9 @@ fun ChatScreen(
     // reel (voir [scrollToBottom]).
     var stickToBottom by remember { mutableStateOf(true) }
     var firstScrollDone by remember { mutableStateOf(false) }
+    // ⚠️ Le bouton « aller en bas » anime le retour ; `rememberCoroutineScope` est le bon
+    // proprietaire : lie au cycle de vie de la composition, annule avec elle.
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress to listState.canScrollForward }
@@ -440,9 +449,14 @@ fun ChatScreen(
                 // L'union couvre les deux cas (mesure : Pixel 1080x2404, IME 986 px).
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
         ) {
+            // ⚠️ **Un `Box` autour de la liste, et non la liste seule.** Le bouton « aller en bas »
+            // doit **flotter au-dessus** d'elle : le poser dans le flux la pousserait, et il
+            // disparaitrait justement quand on en a besoin (une fois remonte). Le `weight` passe
+            // donc sur le `Box`, la liste prend toute la place disponible dedans.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.sm),
             ) {
                 // ---------------------------------------------- LE BOUT DU FIL
@@ -466,9 +480,20 @@ fun ChatScreen(
                 itemsIndexed(
                     state.chat.messages.filterNot { it.isQueued },
                     key = { _, m -> m.id },
-                ) { _, message ->
+                ) { index, message ->
                     MessageBlock(
                         message = message,
+                        // ⚠️ **« Revenir ici » n'a pas de sens sur le dernier message** (constat de
+                        // Bastien). Revenir a un point, c'est annuler tout ce qui le suit : quand
+                        // il n'y a rien apres, le bouton ne fait rien de visible et laisse croire
+                        // a un bug. On ne le montre donc que s'il y a vraiment quelque chose a
+                        // annuler — c'est-a-dire un message **apres** celui-ci.
+                        //
+                        // ⚠️ « Copier » reste, lui, toujours utile : c'est la reponse la plus
+                        // recente qu'on veut coller ailleurs, pas moins que les autres.
+                        // ⚠️ On compte sur la liste **filtrée**, pas sur `state.chat.messages` :
+                        // les messages en file vivent dans `QueuedBar`, pas ici.
+                        isLast = index == state.chat.messages.count { !it.isQueued } - 1,
                         onCopy = { copied ->
                             // ⚠️ On copie le TEXTE, pas le markdown source : ce qu'on veut coller
                             // ailleurs est ce qu'on lit a l'ecran.
@@ -484,6 +509,27 @@ fun ChatScreen(
                 item(key = "streaming") {
                     StreamingBlock(state.chat)
                 }
+            }
+
+                // ⚠️ **Il n'apparait que si on n'est PAS en bas.** Le critere est `stickToBottom`,
+                        // qui est deja la detection reelle du « colle en bas » (il ne se desactive
+                        // que sur un geste de l'utilisateur). Un bouton toujours visible serait une
+                        // action sans effet la plupart du temps — exactement ce que le projet
+                        // s'interdit.
+                        if (!stickToBottom) {
+                            ScrollToBottomButton(
+                                streaming = state.chat.streamingText != null ||
+                                    state.chat.streamingReasoning != null ||
+                                    state.chat.streamingTools.isNotEmpty(),
+                                onClick = {
+                                    stickToBottom = true
+                                    scope.launch { listState.animateScrollToBottom() }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = Spacing.lg, bottom = Spacing.md),
+                            )
+                        }
             }
             val commands by viewModel.commands.collectAsStateWithLifecycle()
             val models by viewModel.models.collectAsStateWithLifecycle()
@@ -740,6 +786,16 @@ private fun QueuedRow(
 @Composable
 private fun MessageBlock(
     message: ChatMessage,
+    /**
+     * ⚠️ **Le dernier message n'a pas de « Revenir ici ».**
+     *
+     * Revenir a un point, c'est annuler tout ce qui le suit. Sur le dernier message il n'y a rien
+     * a annuler : le bouton ne ferait rien de visible et laisserait croire a un bug (constat de
+     * Bastien : « totalement inutile vu que c'est le dernier message »).
+     *
+     * ⚠️ « Copier » n'est pas concerne : c'est justement la reponse fraiche qu'on veut coller.
+     */
+    isLast: Boolean,
     onCopy: (ChatMessage) -> Unit,
     onRevert: ((ChatMessage) -> Unit)?,
 ) {
@@ -791,6 +847,7 @@ private fun MessageBlock(
                     onCopy = onCopy,
                     onRevert = onRevert,
                     alignEnd = true,
+                    isLast = isLast,
                 )
             return@Row
         }
@@ -805,6 +862,7 @@ private fun MessageBlock(
                 .padding(start = Spacing.sm, end = Spacing.md, top = Spacing.sm, bottom = Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
+            androidx.compose.foundation.text.selection.SelectionContainer {
             message.reasoning.takeIf { it.isNotBlank() }?.let { reasoning ->
                 ReasoningBlock(reasoning, durationLabel = message.reasoningDurationLabel)
             }
@@ -813,11 +871,13 @@ private fun MessageBlock(
             message.rawFallback?.takeIf { it.isNotBlank() }?.let { raw ->
                 RawFallback(raw)
             }
+            }
             MessageActions(
                 message = message,
                 onCopy = onCopy,
                 onRevert = onRevert,
                 alignEnd = false,
+                isLast = isLast,
             )
         }
     }
@@ -847,13 +907,25 @@ private fun MessageActions(
     onCopy: (ChatMessage) -> Unit,
     onRevert: ((ChatMessage) -> Unit)?,
     alignEnd: Boolean,
+    /** ⚠️ Sur le dernier message, « Revenir ici » n'aurait rien a annuler (voir [MessageBlock]). */
+    isLast: Boolean,
 ) {
     Row(
         horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MessageAction("Copier", Lucide.Copy) { onCopy(message) }
-        if (onRevert != null && message.role == Role.Assistant && !message.id.startsWith("local_")) {
+        // ⚠️ **Trois conditions, chacune pour une raison mesuree.**
+        //  - `!isLast` : rien a annuler apres le dernier message, donc le bouton ne ferait rien
+        //    de visible (constat de Bastien : « totalement inutile vu que c'est le dernier »).
+        //  - `role == Assistant` : on ne revient pas a SON propre message, on annule le travail
+        //    de l'agent.
+        //  - `!message.isOptimistic` : un message pas encore confirme n'a **pas d'identifiant
+        //    serveur** — l'appel echouerait a coup sur. ⚠️ Le test etait `id.startsWith("local_")`
+        //    avec un **underscore**, alors que le prefixe reel est `local-` : il ne matchait donc
+        //    **jamais**, et le bouton s'affichait sur des messages non confirmes. C'est la
+        //    propriete du modele qui tranche, pas une copie du prefixe dans un fichier d'UI.
+        if (onRevert != null && message.role == Role.Assistant && !message.isOptimistic && !isLast) {
             MessageAction("Revenir ici", Lucide.Undo2) { onRevert(message) }
         }
     }
@@ -1375,6 +1447,72 @@ private fun ChatSearchBar(
                 },
                 style = TetherDataStyle,
                 color = if (result.isEmpty) TetherAlert else TetherTextSecondary,
+            )
+        }
+    }
+}
+
+/**
+ * **Le retour au bas de la conversation, quand on est remonte.**
+ *
+ * ### Pourquoi il existe
+ * Constat de Bastien : « il n'y a pas de bouton pour aller tout en bas de la conversation une fois
+ * qu'on scrolle vers le haut ». C'est un manque reel sur une conversation longue : le fil peut
+ * faire des milliers de messages, et le seul moyen de revenir etait de faire defiler a la main
+ * — ou de relancer l'ecran.
+ *
+ * ### Ce que le dessin dit, et pourquoi
+ *  - **Il flotte au-dessus de la liste**, en bas a droite : c'est la place ou le pouce arrive sans
+ *    lacher le telephone, et il ne pousse pas le contenu (le poser dans le flux le ferait
+ *    disparaitre au moment ou on en a besoin).
+ *  - **Il n'apparait que remonte** : un bouton qui ne fait rien la plupart du temps apprend a ne
+ *    plus croire les boutons. C'est l'appelant qui decide, via `stickToBottom`.
+ *  - **Un chevron vers le BAS**, pas une fleche vers le haut : l'action est « descendre ».
+ *  - ⚠️ **Quand ca tourne, le libelle le dit** (« Aller a la fin » devient « L'agent travaille —
+ *    aller a la fin » ? ). Mesure assumee mais volontairement discrete : on change la
+ *    `contentDescription`, pas le dessin — l'icone reste lisible, et le texte long ferait une
+ *    pastille trop large sur un ecran etroit.
+ *
+ * ⚠️ **Il n'anime jamais pendant un flux de tokens.** `animateScrollToBottom` sur une liste qui
+ * grandit a chaque frame s'annule et se relance en continu : clignotement garanti. Mais ici
+ * l'animation ne dure que le temps du geste de l'utilisateur, et l'auto-scroll reprend la main
+ * ensuite (`stickToBottom = true`), donc le cas ne se produit pas — l'appelant remet l'etat AVANT
+ * de lancer l'animation.
+ */
+@Composable
+private fun ScrollToBottomButton(
+    streaming: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val animationsOn = animationsAllowed()
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    androidx.compose.material3.Surface(
+        modifier = modifier
+            .size(TetherDimensions.touchTarget)
+            // ⚠️ Ombre portee : sans elle, la pastille se confond avec le message qui passe
+            // dessous et on ne voit plus qu'elle **est** au-dessus.
+            .shadow(6.dp, androidx.compose.foundation.shape.CircleShape),
+        shape = androidx.compose.foundation.shape.CircleShape,
+        color = TetherAlert,
+        onClick = {
+            // ⚠️ Retour haptique `TextHandleMove` : c'est le seul effet court et leger expose
+            // directement par Compose. Le pattern officiel Android pour un bouton d'action
+            // (`CONFIRM`) demanderait `LocalView` — surdimensionne pour un simple retour au bas.
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+        contentColor = androidx.compose.ui.graphics.Color.Black,
+    ) {
+        androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Lucide.ArrowDown,
+                contentDescription = if (streaming) {
+                    "L'agent travaille — aller a la fin"
+                } else {
+                    "Aller a la fin de la conversation"
+                },
+                modifier = Modifier.size(20.dp),
             )
         }
     }

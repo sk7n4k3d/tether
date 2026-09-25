@@ -1,5 +1,7 @@
 package sh.sk7.tether.ui.chat
 
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import com.composables.icons.lucide.Cpu
 import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.domain.model.SessionUiState
 import sh.sk7.tether.domain.model.SessionStatus
+import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherAlert
@@ -137,11 +140,51 @@ fun ChatInstrumentHeader(
 @Composable
 private fun StatusDot(status: SessionStatus) {
     val color = statusColor(status)
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .size(8.dp)
-            .background(color, androidx.compose.foundation.shape.CircleShape),
+    val running = status == SessionStatus.Running
+
+    // ⚠️ **Quand ca tourne, la pastille RESPIRE et s'entoure d'un halo** (demande de Bastien :
+    // « quand un agent est en cours, que ce soit flag, qu'on le remarque bien »).
+    //
+    // Avant : un point de 8 dp teal fixe, noye dans une ligne de texte de la meme teinte — on ne
+    // voyait pas qu'un tour tournait sans lire le mot « en cours ». Le halo donne une tache de
+    // couleur qui se remarque du coin de l'oeil, sans ajouter de texte.
+    //
+    // ⚠️ Mouvement **infini**, donc soumis a « reduire les animations » (WCAG 2.3.3 : une
+    // pulsation continue imposee peut provoquer un malaise vestibulaire). Sans animation, le halo
+    // reste a **alpha fixe** : l'information « ca tourne » est toujours la, elle ne clignote plus.
+    // C'est exactement la regle deja appliquee au lisere du Composer, pour que les deux zones
+    // disent la meme chose de la meme facon.
+    val animationsOn = animationsAllowed()
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "status-dot")
+    val pulse by transition.animateFloat(
+        initialValue = 0.14f,
+        targetValue = 0.42f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(1400),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "status-dot-pulse",
     )
+    val haloAlpha = if (!running) 0f else if (animationsOn) pulse else 0.28f
+
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier.size(18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Le halo : deux fois le diametre du point, donc visible sans decaler la ligne.
+        if (running) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .background(color.copy(alpha = haloAlpha), androidx.compose.foundation.shape.CircleShape),
+            )
+        }
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color, androidx.compose.foundation.shape.CircleShape),
+        )
+    }
 }
 
 private fun statusLabel(status: SessionStatus): String = when (status) {
