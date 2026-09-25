@@ -49,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.composables.icons.lucide.Activity
+import com.composables.icons.lucide.ShieldCheck
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.RefreshCw
@@ -69,15 +71,26 @@ import sh.sk7.tether.ui.theme.TetherTextSecondary
 fun SessionListScreen(
     onOpenSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
+    /** Statistiques d'usage. */
+    onOpenStats: () -> Unit = {},
+    /** Inventaire du serveur (MCP, skills, permissions). */
+    onOpenServer: () -> Unit = {},
+    /** Approbations en attente. */
+    onOpenPermissions: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SessionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val create by viewModel.create.collectAsStateWithLifecycle()
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
+    val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
     // Dialogues d'action : la session visee, ou null. L'etat vit ici (et non dans la branche
     // `Loaded`) parce que les boites sont affichees **hors** du `when` : si la liste passe par
     // un etat transitoire pendant l'action, le dialogue ne doit pas disparaitre sous le doigt.
+    // ⚠️ La teinte du bouton d'approbations dit s'il y a quelque chose a faire. Un bouton
+    // toujours identique obligerait a l'ouvrir pour savoir — c'est-a-dire a faire le travail
+    // que le badge est cense epargner.
+    val pendingTint = if (pendingApprovals > 0) TetherAlert else TetherTextPrimary
     var renaming by remember { mutableStateOf<SessionItem?>(null) }
     var deleting by remember { mutableStateOf<SessionItem?>(null) }
 
@@ -92,6 +105,20 @@ fun SessionListScreen(
                     titleContentColor = TetherTextPrimary,
                 ),
                 actions = {
+                    IconButton(onClick = onOpenStats) {
+                        Icon(Lucide.Activity, contentDescription = "Statistiques")
+                    }
+                    // ⚠️ L'acces aux approbations est dans la barre principale, pas enfoui dans
+                    // les reglages : c'est **la** raison d'etre d'une app compagne (une session
+                    // peut rester bloquee des heures sur une demande non vue). Un ecran qu'il
+                    // faut aller chercher ne repond pas a une urgence.
+                    IconButton(onClick = onOpenPermissions) {
+                        Icon(
+                            imageVector = Lucide.ShieldCheck,
+                            contentDescription = "Approbations en attente",
+                            tint = pendingTint,
+                        )
+                    }
                     IconButton(onClick = { viewModel.refresh() }) {
                         Icon(Lucide.RefreshCw, contentDescription = "Recharger")
                     }

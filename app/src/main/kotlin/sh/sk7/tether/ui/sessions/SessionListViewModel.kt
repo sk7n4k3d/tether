@@ -121,6 +121,20 @@ class SessionListViewModel @Inject constructor(
     private val _sessionError = MutableStateFlow<String?>(null)
     val sessionError: StateFlow<String?> = _sessionError.asStateFlow()
 
+    /**
+     * Nombre de demandes d'autorisation en attente sur le serveur.
+     *
+     * ⚠️ **Compte separe de la liste des sessions**, et rafraichi independamment : une demande
+     * d'autorisation peut concerner une session qui n'est pas dans la page courante, ou arriver
+     * alors que la liste est deja chargee. Le badge doit refleter l'etat **du serveur**, pas ce
+     * qu'on a sous les yeux.
+     *
+     * ⚠️ Un echec ici ne remonte rien a l'utilisateur : ce compteur est un confort. Le faire
+     * echouer bruyamment transformerait un detail en panne apparente.
+     */
+    private val _pendingApprovals = MutableStateFlow(0)
+    val pendingApprovals: StateFlow<Int> = _pendingApprovals.asStateFlow()
+
     init {
         refresh()
     }
@@ -179,6 +193,11 @@ class SessionListViewModel @Inject constructor(
 
     private suspend fun load(settings: ConnectionSettings): SessionListUiState {
         val sessions = gateway.allSessions(settings)
+        // ⚠️ On compte les approbations en attente **a chaque chargement de la liste** : c'est le
+        // moment ou l'utilisateur regarde l'app, donc celui ou le badge doit etre juste. Un
+        // echec est ignore (`getOrElse`) : le badge est un confort, pas une fonction critique.
+        _pendingApprovals.value =
+            runCatching { gateway.pendingPermissions(settings).size }.getOrElse { 0 }
         if (sessions.isEmpty()) return SessionListUiState.Empty(settings.directory)
         // L'arbre : chaque parent suivi de ses sous-agents (67 % des sessions reelles).
         val items = SessionListMapper.toTree(sessions)

@@ -1,26 +1,62 @@
 package sh.sk7.tether.ui
 
 import android.content.Intent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.push.NotificationPermissionRequest
 import sh.sk7.tether.ui.chat.ChatScreen
+import sh.sk7.tether.ui.permissions.PermissionsScreen
+import sh.sk7.tether.ui.server.ServerScreen
 import sh.sk7.tether.ui.sessions.SessionListScreen
+import sh.sk7.tether.ui.settings.AboutScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
+import sh.sk7.tether.ui.settings.SettingsScreen
+import sh.sk7.tether.ui.stats.StatsScreen
+import sh.sk7.tether.ui.theme.TetherTextPrimary
 
 object Routes {
     const val SESSIONS = "sessions"
     const val SETTINGS = "settings"
     const val CHAT = "chat/{sessionID}"
     const val ARG_SESSION_ID = "sessionID"
+
+    /** Statistiques d'usage : cout, tokens, activite, repartition par modele. */
+    const val STATS = "stats"
+
+    /** Inventaire du serveur : MCP, plugins, skills, commandes, permissions. */
+    const val SERVER = "server"
+
+    /** Demandes d'autorisation en attente. */
+    const val PERMISSIONS = "permissions"
+
+    /** A propos, diagnostics, licence. */
+    const val ABOUT = "about"
+
+    /** Connexion, en mode premiere ouverture (sans retour, avec guidage). */
+    const val ONBOARDING = "onboarding"
 
     fun chat(sessionID: String): String = "chat/$sessionID"
 }
@@ -90,6 +126,9 @@ fun TetherNavHost(
             SessionListScreen(
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 onOpenSession = { sessionID -> navController.navigate(Routes.chat(sessionID)) },
+                onOpenStats = { navController.navigate(Routes.STATS) },
+                onOpenServer = { navController.navigate(Routes.SERVER) },
+                onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
             )
         }
         composable(
@@ -98,10 +137,97 @@ fun TetherNavHost(
         ) {
             ChatScreen(onBack = { navController.popBackStack() })
         }
+        composable(Routes.STATS) {
+            ScreenScaffold(title = "Statistiques", onBack = { navController.popBackStack() }) {
+                StatsScreen()
+            }
+        }
+        composable(Routes.SERVER) {
+            ScreenScaffold(title = "Serveur", onBack = { navController.popBackStack() }) {
+                ServerScreen()
+            }
+        }
+        composable(Routes.PERMISSIONS) {
+            ScreenScaffold(title = "Approbations", onBack = { navController.popBackStack() }) {
+                PermissionsScreen()
+            }
+        }
+        composable(Routes.ABOUT) {
+            ScreenScaffold(title = "À propos", onBack = { navController.popBackStack() }) {
+                AboutScreen()
+            }
+        }
         composable(Routes.SETTINGS) {
-            ConnectionScreen(
+            SettingsScreen(
                 onBack = { navController.popBackStack() },
+                onOpenServer = { navController.navigate(Routes.SERVER) },
+                onOpenStats = { navController.navigate(Routes.STATS) },
+                onOpenAbout = { navController.navigate(Routes.ABOUT) },
+                onDisconnected = {
+                    navController.navigate(Routes.ONBOARDING) {
+                        // ⚠️ On vide la pile : apres une deconnexion, revenir en arriere ne doit
+                        // pas ramener sur des ecrans qui exigent une connexion.
+                        popUpTo(Routes.SESSIONS) { inclusive = true }
+                    }
+                },
             )
+        }
+        composable(Routes.ONBOARDING) {
+            ConnectionScreen(
+                firstRun = true,
+                onConnected = { navController.popBackStack() },
+            )
+        }
+    }
+}
+
+/**
+ * **Le cadre commun des ecrans secondaires** : titre, retour, fond.
+ *
+ * ⚠️ Il existe pour une raison de coherence, pas de commodite : six ecrans secondaires ecrits
+ * separement finiraient par avoir six tailles de titre, deux styles de retour et des fonds
+ * legerement differents. Une app dont les ecrans ne se ressemblent pas **parait inachevee**
+ * meme quand chacun est correct isolement.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScreenScaffold(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Lucide.ArrowLeft,
+                            contentDescription = "Retour",
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = TetherTextPrimary,
+                ),
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+        ) {
+            content()
         }
     }
 }

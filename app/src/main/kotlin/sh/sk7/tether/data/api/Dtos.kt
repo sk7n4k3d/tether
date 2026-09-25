@@ -248,3 +248,21 @@ data class ServerInfo(
     val urls: List<String> = emptyList(),
     val paths: JsonObject? = null,
 )
+
+/** `Permission.Request` tel que le serveur le renvoie (formes relevees 2026-09-25). */
+@Serializable
+data class PermissionAskDto(
+    val id: String,
+    val sessionID: String = "",
+    val action: String = "",
+    val resources: List<String> = emptyList(),
+    val save: List<String> = emptyList(),
+    val message: String? = null,
+)
+
+/** Corps de `POST /api/session/{id}/permission/{requestID}/reply`. */
+@Serializable
+data class PermissionReplyBody(
+    val decision: String,
+    val message: String? = null,
+)

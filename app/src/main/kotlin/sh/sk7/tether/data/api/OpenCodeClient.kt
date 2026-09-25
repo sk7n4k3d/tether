@@ -225,6 +225,125 @@ class OpenCodeClient(
         return response.status.isSuccess()
     }
 
+    // ------------------------------------------------------------------
+    // Statistiques et inventaire du serveur
+    // ------------------------------------------------------------------
+
+    /**
+     * `GET /api/experimental/session/stats` : les statistiques d'usage.
+     *
+     * ⚠️ `from` (millisecondes) restreint la plage — verifie sur le serveur : avec
+     * `from=1790000000000`, `sessions` passe de 146 a 73 et l'activite de 13 a 5 jours.
+     * Sans borne, le serveur renvoie tout son historique.
+     */
+    suspend fun stats(location: String, fromMillis: Long? = null): StatsDto? {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/experimental/session/stats") {
+            auth(credentials)
+            parameter("directory", location)
+            fromMillis?.let { parameter("from", it) }
+        }.body<StatsEnvelope>().data
+    }
+
+    /**
+     * Les **collections** de l'API, qui partagent toutes l'enveloppe `{location, data}`.
+     *
+     * ⚠️ Enveloppe **differente** de `{data}` utilisee ailleurs : se tromper donne une liste vide
+     * sans erreur, ce qui est le pire des modes d'echec pour un ecran d'inventaire.
+     */
+    private suspend inline fun <reified T> located(path: String, location: String): List<T> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl$path") {
+            auth(credentials)
+            parameter("directory", location)
+        }.body<LocatedEnvelope<T>>().data
+    }
+
+    suspend fun commands(location: String): List<CommandDto> = located("/api/command", location)
+
+    suspend fun skills(location: String): List<SkillDto> = located("/api/skill", location)
+
+    suspend fun mcpServers(location: String): List<McpServerDto> = located("/api/mcp", location)
+
+    suspend fun plugins(location: String): List<PluginDto> = located("/api/plugin", location)
+
+    suspend fun providers(location: String): List<ProviderDto> = located("/api/provider", location)
+
+    /** `GET /api/permission/saved` : les autorisations memorisees, revocables. */
+    suspend fun savedPermissions(location: String): List<SavedPermissionDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/permission/saved") {
+            auth(credentials)
+            parameter("directory", location)
+        }.body<ListEnvelope<SavedPermissionDto>>().data
+    }
+
+    /**
+     * `DELETE /api/permission/saved/{id}` : revoque une autorisation memorisee.
+     *
+     * ⚠️ C'est une action de **securite** : elle retire un droit qui avait ete accorde. Elle
+     * n'est jamais automatique — seul l'utilisateur la declenche.
+     */
+    suspend fun revokePermission(permissionID: String): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.delete("$baseUrl/api/permission/saved/$permissionID") {
+            auth(credentials)
+        }
+        return response.status.isSuccess()
+    }
+
+    /** `GET /api/project` : les projets connus du serveur. */
+    suspend fun projects(): List<ProjectDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/project") {
+            auth(credentials)
+        }.body<ListEnvelope<ProjectDto>>().data
+    }
+
+    /**
+     * `GET /api/permission/request` : les demandes d'autorisation en attente **sur le serveur**.
+     *
+     * ⚠️ Enveloppe `{location, data}` **et non** `{data}` — comme `/api/command` et `/api/mcp`.
+     * Se tromper d'enveloppe donne une liste vide sans erreur, donc une app qui croit qu'il n'y a
+     * rien a approuver alors que l'agent est bloque.
+     */
+    suspend fun permissionRequests(location: String): List<PermissionAskDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/permission/request") {
+            auth(credentials)
+            parameter("directory", location)
+        }.body<LocatedEnvelope<PermissionAskDto>>().data
+    }
+
+    /** `GET /api/session/{id}/permission` : les demandes d'une session precise. */
+    suspend fun sessionPermissionRequests(sessionID: String): List<PermissionAskDto> {
+        val credentials = credentialsProvider.credentials()
+        return http.get("$baseUrl/api/session/$sessionID/permission") {
+            auth(credentials)
+        }.body<ListEnvelope<PermissionAskDto>>().data
+    }
+
+    /**
+     * `POST /api/session/{id}/permission/{requestID}/reply`.
+     *
+     * ⚠️ `decision` est une des trois chaines `once`, `always`, `reject` (enum
+     * `Permission.Reply` de l'OpenAPI). Toute autre valeur est refusee par le serveur.
+     */
+    suspend fun replyPermission(
+        sessionID: String,
+        requestID: String,
+        decision: String,
+        message: String?,
+    ): Boolean {
+        val credentials = credentialsProvider.credentials()
+        val response = http.post("$baseUrl/api/session/$sessionID/permission/$requestID/reply") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(PermissionReplyBody(decision = decision, message = message))
+        }
+        return response.status.isSuccess()
+    }
+
     private fun HttpRequestBuilder.auth(credentials: BasicAuthCredentials?) {
         if (credentials == null) return
         basicAuth(credentials.username, credentials.password)

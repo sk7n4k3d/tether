@@ -1,6 +1,11 @@
 package sh.sk7.tether.data.api
 
 import sh.sk7.tether.data.settings.ConnectionSettings
+import sh.sk7.tether.domain.model.DailyActivity
+import sh.sk7.tether.domain.model.PermissionDecision
+import sh.sk7.tether.domain.model.PermissionRequest
+import sh.sk7.tether.domain.model.ModelUsage
+import sh.sk7.tether.domain.model.UsageStats
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -171,6 +176,74 @@ interface OpenCodeGateway {
      */
     suspend fun compactSession(settings: ConnectionSettings, sessionID: String): Boolean
 
+    // ------------------------------------------------------------------
+    // Statistiques et inventaire du serveur
+    // ------------------------------------------------------------------
+
+    /**
+     * Statistiques d'usage (`/api/experimental/session/stats`).
+     *
+     * @param fromMillis borne basse de la plage, ou `null` pour tout l'historique du serveur.
+     */
+    suspend fun stats(settings: ConnectionSettings, fromMillis: Long? = null): UsageStats
+
+    /** Commandes slash disponibles. */
+    suspend fun commands(settings: ConnectionSettings): List<CommandDto>
+
+    /** Skills (competences) disponibles. */
+    suspend fun skills(settings: ConnectionSettings): List<SkillDto>
+
+    /** Serveurs MCP et leur etat de connexion. */
+    suspend fun mcpServers(settings: ConnectionSettings): List<McpServerDto>
+
+    /** Plugins charges et leur etat. */
+    suspend fun plugins(settings: ConnectionSettings): List<PluginDto>
+
+    /** Fournisseurs de modeles configures. */
+    suspend fun providers(settings: ConnectionSettings): List<ProviderDto>
+
+    /** Autorisations **memorisees** (revoquables). */
+    suspend fun savedPermissions(settings: ConnectionSettings): List<SavedPermissionDto>
+
+    /** Revoque une autorisation memorisee. Action de securite, jamais automatique. */
+    suspend fun revokePermission(settings: ConnectionSettings, permissionID: String): Boolean
+
+    /** Projets connus du serveur. */
+    suspend fun projects(settings: ConnectionSettings): List<ProjectDto>
+
+    // ------------------------------------------------------------------
+    // Autorisations — le coeur d'un client d'agent
+    // ------------------------------------------------------------------
+
+    /**
+     * Les demandes d'autorisation **en attente sur tout le serveur**.
+     *
+     * ⚠️ Route **globale** (`/api/permission/request`) et non par session : c'est ce qui permet
+     * de repondre a une demande **sans savoir de quelle session elle vient**. Un utilisateur qui
+     * recoit une notification veut approuver, pas naviguer d'abord.
+     */
+    suspend fun pendingPermissions(settings: ConnectionSettings): List<PermissionRequest>
+
+    /** Demandes en attente **d'une session donnee** (`/api/session/{id}/permission`). */
+    suspend fun sessionPermissions(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<PermissionRequest>
+
+    /**
+     * Repond a une demande : `once`, `always` ou `reject`.
+     *
+     * ⚠️ `always` **memorise** le droit : c'est une decision qui survit a la session. La
+     * signature le rend explicite ([PermissionDecision]) au lieu d'un booleen ambigu.
+     */
+    suspend fun replyPermission(
+        settings: ConnectionSettings,
+        sessionID: String,
+        requestID: String,
+        decision: PermissionDecision,
+        message: String? = null,
+    ): Boolean
+
     companion object {
         /** 200 tient en 4 pages pour 428 sessions (mesure 2026-09-25), sans charger d'un bloc. */
         const val DEFAULT_PAGE_SIZE: Int = 200
@@ -309,4 +382,124 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun compactSession(settings: ConnectionSettings, sessionID: String) =
         client(settings).compactSession(sessionID)
+
+    // ------------------------------------------------------------------
+    // Statistiques et inventaire
+    // ------------------------------------------------------------------
+
+    override suspend fun stats(settings: ConnectionSettings, fromMillis: Long?): UsageStats =
+        client(settings).stats(settings.directory, fromMillis).toUsageStats()
+
+    override suspend fun commands(settings: ConnectionSettings): List<CommandDto> =
+        client(settings).commands(settings.directory)
+
+    override suspend fun skills(settings: ConnectionSettings): List<SkillDto> =
+        client(settings).skills(settings.directory)
+
+    override suspend fun mcpServers(settings: ConnectionSettings): List<McpServerDto> =
+        client(settings).mcpServers(settings.directory)
+
+    override suspend fun plugins(settings: ConnectionSettings): List<PluginDto> =
+        client(settings).plugins(settings.directory)
+
+    override suspend fun providers(settings: ConnectionSettings): List<ProviderDto> =
+        client(settings).providers(settings.directory)
+
+    override suspend fun savedPermissions(settings: ConnectionSettings): List<SavedPermissionDto> =
+        client(settings).savedPermissions(settings.directory)
+
+    override suspend fun revokePermission(settings: ConnectionSettings, permissionID: String): Boolean =
+        client(settings).revokePermission(permissionID)
+
+    override suspend fun projects(settings: ConnectionSettings): List<ProjectDto> =
+        client(settings).projects()
+
+    override suspend fun pendingPermissions(settings: ConnectionSettings): List<PermissionRequest> {
+        val http = client(settings)
+        return http.permissionRequests(settings.directory).map { it.toAsk() }
+    }
+
+    override suspend fun sessionPermissions(
+        settings: ConnectionSettings,
+        sessionID: String,
+    ): List<PermissionRequest> {
+        val http = client(settings)
+        return http.sessionPermissionRequests(sessionID).map { it.toAsk() }
+    }
+
+    override suspend fun replyPermission(
+        settings: ConnectionSettings,
+        sessionID: String,
+        requestID: String,
+        decision: PermissionDecision,
+        message: String?,
+    ): Boolean = client(settings).replyPermission(sessionID, requestID, decision.wire, message)
+
 }
+
+/**
+ * Traduit le DTO du serveur en modele de domaine.
+ *
+ * ⚠️ Tous les champs sont **nullable cote DTO** : le serveur peut omettre une section
+ * (`tools`, `tokens.cache`, `models`) selon la plage ou la version. On normalise ici, une fois,
+ * pour que l'UI n'ait jamais a gerer de `null` — un ecran qui doit verifier 12 champs nullables
+ * finit par en oublier un, et affiche « 0 » la ou il n'y a pas de donnee.
+ *
+ * ⚠️ **`null` n'est pas `0`** : un cout absent et un cout nul sont deux faits differents. Le DTO
+ * porte deja des valeurs par defaut a 0 pour les nombres, donc on ne peut plus les distinguer
+ * apres coup — mais sur ces champs-la, une absence signifie bien « rien compte », pas « inconnu ».
+ */
+private fun StatsDto?.toUsageStats(): UsageStats {
+    val dto = this ?: return UsageStats()
+    return UsageStats(
+        fromMillis = dto.range?.from,
+        toMillis = dto.range?.to,
+        sessions = dto.sessions,
+        subagents = dto.subagents,
+        prompts = dto.prompts,
+        steps = dto.steps,
+        inputTokens = dto.tokens?.input ?: 0,
+        outputTokens = dto.tokens?.output ?: 0,
+        reasoningTokens = dto.tokens?.reasoning ?: 0,
+        cacheReadTokens = dto.tokens?.cache?.read ?: 0,
+        cacheWriteTokens = dto.tokens?.cache?.write ?: 0,
+        cost = dto.cost,
+        toolCalls = dto.tools?.totals?.calls ?: 0,
+        toolSucceeded = dto.tools?.totals?.succeeded ?: 0,
+        toolFailed = dto.tools?.totals?.failed ?: 0,
+        toolUnfinished = dto.tools?.totals?.unfinished ?: 0,
+        activeDays = dto.activeDays,
+        streak = dto.streak,
+        activity = dto.activity.map { DailyActivity(date = it.date, steps = it.steps) },
+        models = dto.models
+            .map { m ->
+                ModelUsage(
+                    model = m.model?.id.orEmpty(),
+                    provider = m.model?.providerID.orEmpty(),
+                    steps = m.steps,
+                    inputTokens = m.tokens?.input ?: 0,
+                    outputTokens = m.tokens?.output ?: 0,
+                    cacheReadTokens = m.tokens?.cache?.read ?: 0,
+                    cost = m.cost,
+                )
+            }
+            // ⚠️ Tri par COUT, pas par etapes : c'est ce qu'on paie qui doit venir en premier.
+            // Un modele tres utilise mais bon marche ne doit pas masquer celui qui coute cher.
+            .sortedByDescending { it.cost },
+    )
+}
+
+/**
+ * Traduit la demande du serveur vers le modele d'affichage.
+ *
+ * ⚠️ Aucun resume : on transporte l'action et les ressources **telles quelles**. Reformuler
+ * « bash » en « commande » ferait perdre le mot que l'utilisateur doit reconnaitre pour decider.
+ */
+private fun PermissionAskDto.toAsk(): PermissionRequest = PermissionRequest(
+    id = id,
+    sessionID = sessionID,
+    action = action,
+    resources = resources,
+    save = save,
+    message = message,
+)

@@ -34,6 +34,17 @@ import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
 import sh.sk7.tether.data.event.EventSourceFactory
 import sh.sk7.tether.data.event.OcEvent
+import sh.sk7.tether.data.api.CommandDto
+import sh.sk7.tether.data.api.McpServerDto
+import sh.sk7.tether.data.api.PermissionAskDto
+import sh.sk7.tether.data.api.PluginDto
+import sh.sk7.tether.data.api.ProjectDto
+import sh.sk7.tether.data.api.ProviderDto
+import sh.sk7.tether.data.api.SavedPermissionDto
+import sh.sk7.tether.data.api.SkillDto
+import sh.sk7.tether.domain.model.PermissionDecision
+import sh.sk7.tether.domain.model.PermissionRequest
+import sh.sk7.tether.domain.model.UsageStats
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.domain.model.Role
@@ -177,6 +188,42 @@ class ChatViewModelTest {
             olderCalls++
             return olderDtos
         }
+
+        // Les fakes n'implementent que ce que les tests exercent : les nouvelles routes
+        // renvoient du vide, ce qui suffit puisque aucun test ne les couvre encore.
+        override suspend fun stats(settings: ConnectionSettings, fromMillis: Long?) = UsageStats()
+
+        override suspend fun commands(settings: ConnectionSettings) = emptyList<CommandDto>()
+
+        override suspend fun skills(settings: ConnectionSettings) = emptyList<SkillDto>()
+
+        override suspend fun mcpServers(settings: ConnectionSettings) = emptyList<McpServerDto>()
+
+        override suspend fun plugins(settings: ConnectionSettings) = emptyList<PluginDto>()
+
+        override suspend fun providers(settings: ConnectionSettings) = emptyList<ProviderDto>()
+
+        override suspend fun savedPermissions(settings: ConnectionSettings) =
+            emptyList<SavedPermissionDto>()
+
+        override suspend fun revokePermission(settings: ConnectionSettings, permissionID: String) =
+            true
+
+        override suspend fun projects(settings: ConnectionSettings) = emptyList<ProjectDto>()
+
+        override suspend fun pendingPermissions(settings: ConnectionSettings) =
+            emptyList<PermissionRequest>()
+
+        override suspend fun sessionPermissions(settings: ConnectionSettings, sessionID: String) =
+            emptyList<PermissionRequest>()
+
+        override suspend fun replyPermission(
+            settings: ConnectionSettings,
+            sessionID: String,
+            requestID: String,
+            decision: PermissionDecision,
+            message: String?,
+        ): Boolean = true
 
         override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean {
             interrupts++
