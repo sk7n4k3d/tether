@@ -50,6 +50,26 @@ data class ChatMessage(
 
     /** Vrai si ce message **corrige** le tour en cours plutot que d'attendre son tour. */
     val isSteering: Boolean get() = delivery == "steer"
+
+    /**
+     * **Vrai pour un message ecrit localement, pas encore confirme par le serveur.**
+     *
+     * ⚠️ Pourquoi cette propriete vit sur le modele et pas dans le ViewModel : la marque est
+     * portee par l'**identifiant** (`local-…`, voir `ChatViewModel.OPTIMISTIC_PREFIX`), donc
+     * toute comparaison ecrite ailleurs doit connaitre ce prefixe — et il y en avait six, dans
+     * le ViewModel seul. La nommer ici, c'est une seule regle pour tout le monde.
+     *
+     * ⚠️ Elle repond a un bug reel (B5) : un optimiste est **absent du REST** (il n'existe que
+     * localement), donc un filtre « ce qui n'est pas dans la fenetre REST » le considerait comme
+     * de l'historique ancien et le remontait **tout en haut** de la conversation — alors qu'il
+     * venait d'etre ecrit, en bas.
+     */
+    val isOptimistic: Boolean get() = id.startsWith(OPTIMISTIC_ID_PREFIX)
+
+    companion object {
+        /** Prefixe des identifiants locaux. ⚠️ Doit rester aligne sur le ViewModel. */
+        const val OPTIMISTIC_ID_PREFIX: String = "local-"
+    }
 }
 
 enum class Role { User, Assistant }
@@ -113,7 +133,26 @@ data class FormRequest(
     val raw: JsonObject = JsonObject(emptyMap()),
 )
 
-enum class SessionStatus { Idle, Running, Succeeded, Failed, Interrupted }
+enum class SessionStatus {
+    Idle,
+    Running,
+    Succeeded,
+    Failed,
+    Interrupted;
+
+    /**
+     * **Le tour est fini** — quelle qu'en soit l'issue.
+     *
+     * ⚠️ Pourquoi sur l'enum et pas dans le reducer : trois appelants en ont besoin, dans trois
+     * fichiers differents ([sh.sk7.tether.data.repository.EventReducer] pour ne pas rejouer un
+     * statut terminal, le chat pour marquer vu ce qu'on vient de lire). Une copie privee par
+     * fichier est exactement ce qui fait diverger une regle.
+     *
+     * ⚠️ `Idle` **n'est pas terminal** : c'est l'absence de tour, pas un tour fini. Confondre les
+     * deux ferait marquer « vu » une conversation ou rien ne s'est termine.
+     */
+    fun isTerminal(): Boolean = this == Succeeded || this == Failed || this == Interrupted
+}
 
 /**
  * Etat d'un ecran de session, produit uniquement par [sh.sk7.tether.data.repository.EventReducer].

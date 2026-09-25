@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import sh.sk7.tether.data.api.HistoryPage
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.CursorPage
 import sh.sk7.tether.data.api.InMemoryCredentialsProvider
@@ -147,18 +148,15 @@ class SessionListViewModelTest {
          * Les fakes renvoient la MEME page que [messagesPage] : les tests ne portent pas sur la
          * pagination, et simuler une vraie fenetre ici ne testerait que le fake lui-meme.
          */
-        override suspend fun recentMessages(
+        override suspend fun messagesPageBack(
             settings: ConnectionSettings,
             sessionID: String,
             limit: Int,
-        ): List<MessageDto> = messagesPage(settings, sessionID, limit, null, null).data
-
-        override suspend fun messagesBefore(
-            settings: ConnectionSettings,
-            sessionID: String,
-            beforeMessageID: String,
-            limit: Int,
-        ): List<MessageDto> = emptyList()
+            cursor: String?,
+        ): HistoryPage {
+            val page = messagesPage(settings, sessionID, limit, null, null)
+            return HistoryPage(messages = page.data, cursorBack = null)
+        }
 
         override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean {
             failure?.let { throw it }

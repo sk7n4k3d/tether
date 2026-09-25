@@ -1,5 +1,6 @@
 package sh.sk7.tether.testing
 
+import sh.sk7.tether.data.api.HistoryPage
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.ContextMessageDto
@@ -100,18 +101,12 @@ open class NeutralGateway : OpenCodeGateway {
         order: String?,
     ): CursorPage<MessageDto> = CursorPage(data = emptyList())
 
-    override suspend fun recentMessages(
+    override suspend fun messagesPageBack(
         settings: ConnectionSettings,
         sessionID: String,
         limit: Int,
-    ): List<MessageDto> = emptyList()
-
-    override suspend fun messagesBefore(
-        settings: ConnectionSettings,
-        sessionID: String,
-        beforeID: String,
-        limit: Int,
-    ): List<MessageDto> = emptyList()
+        cursor: String?,
+    ): HistoryPage = HistoryPage(messages = emptyList(), cursorBack = null)
 
     override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean = true
 

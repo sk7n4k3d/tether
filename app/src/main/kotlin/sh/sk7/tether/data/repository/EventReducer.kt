@@ -374,10 +374,8 @@ object EventReducer {
     private fun ToolStatus.isTerminal(): Boolean =
         this == ToolStatus.Succeeded || this == ToolStatus.Failed
 
-    private fun SessionStatus.isTerminal(): Boolean =
-        this == SessionStatus.Succeeded ||
-            this == SessionStatus.Failed ||
-            this == SessionStatus.Interrupted
+    // ⚠️ `SessionStatus.isTerminal()` vit desormais sur l'enum (voir ChatMessage.kt) : trois
+    // fichiers en ont besoin, et une copie privee par fichier est ce qui fait diverger une regle.
 
     // ------------------------------------------------------------------
     // Contenu de forme inconnue

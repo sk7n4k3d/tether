@@ -401,8 +401,16 @@ fun ChatScreen(
                         color = TetherTextSecondary,
                         modifier = Modifier
                             .fillMaxWidth()
+                            // ⚠️ 48 dp AVANT `clickable` : c'est la seule position ou Compose en
+                            // tient compte pour la zone sensible. Sans elle, la cible faisait la
+                            // hauteur du texte (~17 dp) — trop petite pour un doigt, et sous le
+                            // seuil du projet (WCAG 2.5.8 / EAA).
+                            .heightIn(min = TetherDimensions.touchTarget)
                             .clickable(onClick = viewModel::clearNotice)
                             .padding(horizontal = 16.dp, vertical = 4.dp),
+                        // ⚠️ Le texte se centre dans la cible agrandie : sinon il flotte en haut
+                        // d'une zone de 48 dp et le geste semble viser a cote.
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                     )
                 }
                 state.error?.let { error ->
@@ -1252,6 +1260,15 @@ private fun shareMarkdown(
  * deux chiffres repondent a deux questions differentes (« combien d'endroits ? » et « combien de
  * messages a ouvrir ? »).
  *
+ * ⚠️ **Et on dit OU ca matche** (bug B14). Quand tout se trouve dans le **raisonnement replie**
+ * ou dans une **sortie d'outil elle aussi repliee**, l'utilisateur voit « 3 messages » sans rien
+ * voir a l'ecran : le texte est la, mais derriere un bloc ferme. Le nommer (« surtout dans le
+ * raisonnement ») lui dit qu'il doit **deplier** — c'est une information, pas une decoration.
+ * `ChatSearch.Match.field` le calculait deja et personne ne le lisait.
+ *
+ * ⚠️ Le champ n'est nomme que pour le cas **non evident** : « dans le message » serait du bruit,
+ * puisque c'est ce qu'on voit par defaut. On ne parle que de ce qui est cache.
+ *
  * ⚠️ Le compteur est **neutre tant que rien n'est cherche** : afficher « 0 » sur une barre qu'on
  * vient d'ouvrir ferait croire qu'il n'y a rien, alors qu'on n'a rien demande.
  */
@@ -1336,8 +1353,25 @@ private fun ChatSearchBar(
                 } else {
                     val msgs = result.messageCount
                     val total = result.total
-                    "$msgs message${if (msgs > 1) "s" else ""} · " +
-                        "$total occurrence${if (total > 1) "s" else ""}"
+                    buildString {
+                        append("$msgs message${if (msgs > 1) "s" else ""} · ")
+                        append("$total occurrence${if (total > 1) "s" else ""}")
+                        // ⚠️ **On dit ou ca se cache** (bug B14). « 3 messages » sans rien de
+                        // visible a l'ecran laisse croire a un bug : le texte est dans le
+                        // raisonnement ou une sortie d'outil, tous deux **replies**. Nommer le
+                        // champ majoritaire, c'est dire qu'il faut deplier pour le voir.
+                        //
+                        // ⚠️ On ne nomme PAS `Text` : c'est ce qu'on voit par defaut, le dire
+                        // serait du bruit sur la majorite des recherches.
+                        val hiddenField = result.matches
+                            .filter { it.field != ChatSearch.Match.Field.Text }
+                            .groupingBy { it.field }
+                            .eachCount()
+                            .maxByOrNull { it.value }
+                        hiddenField?.let { (field, count) ->
+                            append(" · $count dans le ${field.label}")
+                        }
+                    }
                 },
                 style = TetherDataStyle,
                 color = if (result.isEmpty) TetherAlert else TetherTextSecondary,

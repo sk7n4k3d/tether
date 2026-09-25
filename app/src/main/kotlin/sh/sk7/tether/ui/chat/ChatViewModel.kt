@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -100,6 +101,34 @@ data class ChatUiState(
     val loadingOlder: Boolean = false,
 
     /**
+     * **Curseur vers la tranche precedente**, `null` quand il n'y a plus rien.
+     *
+     * ⚠️ C'est lui qui rend [loadOlder] O(1) par tranche. Le jeter (ancien comportement)
+     * obligeait a repartir du sommet a chaque cran : O(n²), ~200 requetes pour remonter une
+     * session de 2 040 messages.
+     *
+     * ⚠️ **`null` est une preuve de fin d'historique** quand il provient de [loadOlder] : le
+     * gateway sonde le curseur et ne le rend que si la page suivante contient vraiment
+     * quelque chose.
+     */
+    val olderCursor: String? = null,
+
+    /**
+     * **On a atteint le debut de la session, et c'est prouve.**
+     *
+     * ⚠️ Pourquoi ce drapeau separe, alors que [olderCursor] `null` pourrait suffire : une
+     * **resync** relit la page la plus recente, dont le curseur pointe evidemment vers la
+     * deuxieme page. Sans ce drapeau, chaque resync **re-armait** `hasOlder` sur une session
+     * entierement remontee, et le scroll vers le haut repartait charger une tranche deja
+     * affichee (doublons filtres par id, mais requete gaspillee et « charger plus » qui
+     * reapparait sans raison).
+     *
+     * ⚠️ Il ne redevient **jamais** faux, et c'est correct : l'historique grandit par sa **fin**
+     * (messages recents), jamais par son debut. Une fois le plus ancien message vu, il le reste.
+     */
+    val historyExhausted: Boolean = false,
+
+    /**
      * **Information neutre a montrer a l'utilisateur**, distincte d'une erreur.
      *
      * ⚠️ Pourquoi un champ a part et pas [error] : « rien ne bloquait, l'appel etait sans effet »
@@ -144,6 +173,32 @@ data class SessionMeta(
  *
  * `EventReducer` reste pur : ce ViewModel est le seul detenteur de l'etat.
  */
+/**
+ * **Les listes de reference, partagees par processus** (bug S11).
+ *
+ * ⚠️ Pourquoi un `object` et pas le cache Hilt : ces listes (`/api/command`, `/api/model`,
+ * `/api/agent`, `/api/skill`) sont **globales au serveur**, pas a une session. Les recharger a
+ * chaque ouverture de conversation faisait quatre requetes identiques par session ouverte.
+ *
+ * ⚠️ **Pourquoi ce n'est pas un mensonge.** Le serveur reste la verite : on ne fige rien sur
+ * disque, le cache meurt avec le processus, et une ecriture n'a lieu que sur un **succes** — un
+ * echec reseau ne memorise jamais une liste vide. Le seul ecart possible est celui du temps de
+ * vie du processus, borne par le fait que ces listes ne changent qu'a l'ajout d'un modele ou
+ * d'une competence, gestes rares et faits sur le serveur.
+ *
+ * ⚠️ `isLoaded` distingue « jamais charge » de « charge et vide » : sans lui, un serveur qui
+ * repond legitimement des listes vides passerait pour non charge et serait interroge sans fin.
+ */
+internal object ReferenceCache {
+    var commands: List<CommandDto> = emptyList()
+    var models: List<Model> = emptyList()
+    var agents: List<Agent> = emptyList()
+    var skills: List<SkillDto> = emptyList()
+
+    /** Vrai des qu'au moins une lecture a **reussi** : on ne rejoue plus le cycle complet. */
+    var isLoaded: Boolean = false
+}
+
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -220,12 +275,23 @@ class ChatViewModel @Inject constructor(
     private var graceJob: Job? = null
 
     /**
-     * Lien id-local (`local-N`) -> id serveur accepte (`msg_*`) pour chaque optimiste.
+     * **Le lien entre un message optimiste et son identifiant serveur.**
      *
-     * `PromptAcceptance.id` **est** l'id REST du message utilisateur : c'est lui qui permet
-     * une confirmation exacte, plutot qu'une comparaison de textes (voir [dedupeOptimistic]).
+     * `PromptAcceptance.id` **est** l'id REST du message utilisateur : c'est lui qui permet une
+     * confirmation exacte, plutot qu'une comparaison de textes (voir [dedupeOptimistic]).
+     *
+     * ⚠️ **Thread-safe, et c'est obligatoire** (bug B9). Ces cartes sont lues et ecrites par
+     * plusieurs coroutines a la fois : le flux SSE (`applyEvent` -> `dedupeOptimistic`), l'envoi
+     * (`send`), et la resync. Un `mutableMapOf` n'est pas concu pour ca — deux ecritures
+     * simultanees peuvent en perdre une, et une lecture pendant un redimensionnement peut lever.
+     * Sur un dispatcher multi-thread (`Dispatchers.IO`), la fenetre est reelle.
+     *
+     * ⚠️ **On ne serialise pas avec un Mutex pour autant** : les acces sont courts et sans
+     * suspension, et `ConcurrentHashMap` les rend corrects sans bloquer. Introduire un `Mutex`
+     * ici obligerait a suspendre dans `dedupeOptimistic`, qui est appele **dans** un
+     * `_state.update` — un bloc qui doit rester non-suspendable pour rejouer son compare-and-set.
      */
-    private val acceptedOptimistic = mutableMapOf<String, String>()
+    private val acceptedOptimistic = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
      * Ids serveur des messages utilisateur **deja vus** au moment ou l'optimiste est cree.
@@ -240,7 +306,7 @@ class ChatViewModel @Inject constructor(
      * confirmer l'optimiste : c'est la seule lecture honnete de « un message serveur identique
      * confirme un envoi ».
      */
-    private val preexistingUserIds = mutableMapOf<String, Set<String>>()
+    private val preexistingUserIds = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
 
     init {
         // ⚠️ On s'abonne au détenteur d'état partagé : sans cela, ouvrir le chat **directement**
@@ -279,6 +345,39 @@ class ChatViewModel @Inject constructor(
             // ⚠️ On marque APRES la resync : c'est elle qui charge l'état de la session, dont on
             // lit ensuite l'`idle` pour le marquage.
             markSessionViewed()
+            // ⚠️ **Et on remarque aussi ce qui se termine PENDANT qu'on regarde** (bug B6).
+            //
+            // Avant, `markSessionViewed()` n'etait appele qu'une fois, a l'ouverture. Un tour qui
+            // se terminait pendant qu'on avait la conversation sous les yeux restait donc
+            // « termine / pas vu » : le badge revenait dans la liste des sessions, et le pousser
+            // demandait de **quitter puis rouvrir** la conversation. C'est exactement l'inverse de
+            // ce qu'on veut — on etait en train de le lire.
+            //
+            // ⚠️ On observe l'etat **reduit du flux** (`_state`), pas le detenteur d'activite :
+            // c'est la fin d'un tour de CETTE session qu'on veut remarquer, et le detenteur
+            // interroge le serveur toutes les 12 s (trop lent, et il ignore quelle conversation
+            // est a l'ecran).
+            observeViewingEndOfTurn()
+        }
+    }
+
+    /**
+     * **Marque vu des qu'un tour se termine pendant qu'on regarde.**
+     *
+     * ⚠️ `distinctUntilChanged` est indispensable : sans lui, chaque emission d'etat d'un tour
+     * deja termine relancerait un marquage — et [markSessionViewed] fait un appel HTTP. On ne
+     * veut reagir qu'au **passage** a un statut terminal.
+     *
+     * ⚠️ Le marquage reste **silencieux en cas d'echec** : ne pas pouvoir marquer vu ne doit
+     * jamais empecher de lire la conversation (voir [markSessionViewed]).
+     */
+    private fun observeViewingEndOfTurn() {
+        scope.launch {
+            _state
+                .map { it.chat.status }
+                .distinctUntilChanged()
+                .filter { it.isTerminal() }
+                .collect { markSessionViewed() }
         }
     }
 
@@ -307,9 +406,21 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun applyEvent(event: OcEvent) {
-        val reduced = EventReducer.reduce(_state.value.chat, event)
-        val running = reduced.status == SessionStatus.Running
+        // ⚠️ **La reduction se fait DANS le `update`, pas avant** (bug B9).
+        //
+        // L'ancien code reduisait depuis `_state.value.chat` puis ecrivait
+        // `current.copy(chat = reduced)` : il **jetait `current.chat`**. Si une resync (ou un
+        // envoi) modifiait la conversation entre la lecture et l'ecriture, sa mise a jour etait
+        // perdue — un message valide disparaissait. `MutableStateFlow.update` rejoue son bloc
+        // jusqu'a reussir le compare-and-set : en reduisant **depuis `current`**, chaque tentative
+        // part de l'etat reellement en place, et aucune mise a jour concurrente ne se perd.
+        //
+        // ⚠️ `running` est declare **hors** du bloc pour ressortir : `update` ne rend pas de
+        // valeur. Il est recalcule a chaque tentative, donc apres la derniere il est juste.
+        var running = false
         _state.update { current ->
+            val reduced = EventReducer.reduce(current.chat, event)
+            running = reduced.status == SessionStatus.Running
             current.copy(
                 chat = dedupeOptimistic(reduced),
                 phase = when {
@@ -320,7 +431,7 @@ class ChatViewModel @Inject constructor(
                 error = null,
             )
         }
-        if (reduced.status == SessionStatus.Running) armGrace() else cancelGrace()
+        if (running) armGrace() else cancelGrace()
     }
 
     /**
@@ -412,18 +523,49 @@ class ChatViewModel @Inject constructor(
      * Les optimistes sont ensuite reconcilies par [dedupeOptimistic] (par id).
      */
     /**
-     * Charge les listes **de reference** de l'ecran : commandes, modeles, agents.
+     * Charge les listes **de reference** de l'ecran : commandes, modeles, agents, skills.
      *
      * ⚠️ Chaque appel est isole (`runCatching`) : un serveur qui ne repond pas a `/api/agent` ne
-     * doit pas priver l'utilisateur de ses commandes slash. Les trois listes sont independantes.
+     * doit pas priver l'utilisateur de ses commandes slash. Les quatre listes sont independantes.
+     *
+     * ⚠️ **Le resultat est partage par processus** (bug S11). Avant, ces quatre lectures etaient
+     * refaites a **chaque ouverture de conversation** — 4 requetes HTTP pour des listes qui ne
+     * changent qu'a l'ajout d'un modele ou d'une competence. Ouvrir dix sessions dans la meme
+     * minute faisait quarante requetes identiques, alors que le contenu est le meme pour tout
+     * l'appareil : ces routes sont **globales**, elles ne dependent pas de la session.
+     *
+     * ⚠️ On ne les met pas en cache sur disque : le serveur reste la verite, et une liste figee
+     * afficherait un modele supprime. Le cache vit le **temps du processus**, ce qui couvre
+     * exactement le cas couteux (enchainement d'ouvertures) sans jamais mentir apres un
+     * redemarrage.
+     *
+     * ⚠️ `refresh = true` reste possible pour forcer une relecture (bouton, apres un ajout de
+     * competence), et un echec **n'ecrit rien** dans le cache : on ne memorise pas un vide, sinon
+     * une panne reseau passagere figerait des listes vides pour toute la session.
      */
-    private fun loadReferenceData() {
+    private fun loadReferenceData(refresh: Boolean = false) {
         scope.launch {
             val current = settings ?: store.current().also { settings = it }
-            runCatching { gateway.commands(current) }.onSuccess { _commands.value = it }
-            runCatching { gateway.models(current) }.onSuccess { _models.value = it }
-            runCatching { gateway.agents(current) }.onSuccess { _agents.value = it }
-            runCatching { gateway.skills(current) }.onSuccess { _skills.value = it }
+            if (!refresh && ReferenceCache.isLoaded) {
+                _commands.value = ReferenceCache.commands
+                _models.value = ReferenceCache.models
+                _agents.value = ReferenceCache.agents
+                _skills.value = ReferenceCache.skills
+                return@launch
+            }
+            // ⚠️ On ne marque le cache charge que si **au moins une** lecture a reussi. Un
+            // serveur injoignable ne doit pas figer des listes vides pour tout le processus :
+            // c'est la meme regle que pour chaque liste prise separement.
+            var anySuccess = false
+            runCatching { gateway.commands(current) }
+                .onSuccess { _commands.value = it; ReferenceCache.commands = it; anySuccess = true }
+            runCatching { gateway.models(current) }
+                .onSuccess { _models.value = it; ReferenceCache.models = it; anySuccess = true }
+            runCatching { gateway.agents(current) }
+                .onSuccess { _agents.value = it; ReferenceCache.agents = it; anySuccess = true }
+            runCatching { gateway.skills(current) }
+                .onSuccess { _skills.value = it; ReferenceCache.skills = it; anySuccess = true }
+            if (anySuccess) ReferenceCache.isLoaded = true
         }
     }
 
@@ -516,17 +658,22 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * **Ouvre l'historique sur sa fin**, en gardant le curseur pour remonter.
+     *
+     * ⚠️ On conserve le `cursorBack` de la page : c'est lui qui rend [loadOlder] **O(1)** par
+     * tranche. L'ancien code le jetait, et devait donc repartir du sommet a chaque cran.
+     *
+     * ⚠️ On ne remplace PAS tout : les messages plus anciens deja charges par [loadOlder]
+     * doivent survivre a une resync, sinon remonter puis perdre la connexion effacerait
+     * l'historique qu'on vient de charger.
+     */
     fun resync() {
         val current = settings ?: return
         scope.launch {
             try {
-                // ⚠️ **Fenetre recente, pas tout l'historique.** `allMessages` pagine depuis le
-                // debut : mesure sur le serveur, les sessions lourdes font **810 messages en
-                // moyenne** et jusqu'a **2 040**. Charger tout a chaque ouverture et a chaque
-                // reconnexion etait le principal cout de cet ecran. On demande donc les N
-                // derniers, et le reste vient au scroll ([loadOlder]).
-                val dtos = gateway.recentMessages(current, sessionID, ChatWindow.SERVER_PAGE)
-                val fromRest = ChatMessageMapper.fromDtos(dtos)
+                val page = gateway.messagesPageBack(current, sessionID, ChatWindow.SERVER_PAGE, cursor = null)
+                val fromRest = ChatMessageMapper.fromDtos(page.messages)
                 val restIds = fromRest.map { it.id }.toHashSet()
                 // ⚠️ La file est lue **en plus** de l'historique, et pas dedans : mesure du
                 // 2026-09-25, un message en file n'apparait PAS dans `GET /message` (une session
@@ -537,21 +684,45 @@ class ChatViewModel @Inject constructor(
                     .getOrDefault(emptyList())
                 val queued = ChatMessageMapper.fromInboxItems(inbox)
                 _state.update { state ->
-                    // ⚠️ On ne remplace PAS tout : les messages plus anciens deja charges par
-                    // [loadOlder] doivent survivre a une resync, sinon remonter puis perdre la
-                    // connexion effacerait l'historique qu'on vient de charger.
-                    // ⚠️ Ordre : [anciens charges] + [fenetre recente du REST]. Les anciens
-                    // sont ceux que [loadOlder] a remontes ; ils gardent leur place en tete.
-                    val alreadyOlder = state.chat.messages.filter { it.id !in restIds }
-                    // ⚠️ Ordre : on **fusionne la file d'abord**, puis on déduplique. L'item
-                    // d'inbox porte l'id serveur du message envoyé (`accepted.id`), donc le faire
-                    // entrer avant [dedupeOptimistic] permet à l'optimiste d'être reconnu par id —
-                    // l'inverse laisserait temporairement les deux à l'écran.
-                    val merged = state.chat.copy(messages = alreadyOlder + fromRest)
+                    // ⚠️ **Trois groupes, trois places** — et c'est le sens de ce bloc.
+                    //
+                    //  1. `history` : ce que [loadOlder] a remonte, anterieur a la fenetre REST.
+                    //     Il passe DEVANT (c'est le plus ancien).
+                    //  2. `fromRest` : la fenetre recente, qui fait foi.
+                    //  3. `optimistic` : les messages ecrits ici et pas encore confirmes. Ils
+                    //     passent **DERRIERE** : ils sont les plus recents.
+                    //
+                    // ⚠️ **Bug B5** : l'ancien filtre `id !in restIds` rangeait les optimistes
+                    // dans `history`, donc il les **remontait tout en haut** de la conversation —
+                    // un message qu'on venait d'ecrire apparaissait des centaines de lignes plus
+                    // haut. Les exclure sans les replacer les faisait **disparaitre**, ce qui est
+                    // pire. Ils ont une troisieme place, a la fin.
+                    val history = state.chat.messages.filter { message ->
+                        !message.isOptimistic && message.id !in restIds
+                    }
+                    val optimistic = state.chat.messages.filter { it.isOptimistic }
+                    // ⚠️ On **fusionne la file d'abord**, puis on deduplique : l'item d'inbox porte
+                    // l'id serveur du message envoye (`accepted.id`), donc le faire entrer avant
+                    // [dedupeOptimistic] permet a l'optimiste d'etre reconnu par id — l'inverse
+                    // laisserait temporairement les deux a l'ecran.
+                    val merged = state.chat.copy(messages = history + fromRest + optimistic)
                     val withInbox = ChatMessageMapper.mergeInbox(merged.messages, queued)
                     state.copy(
                         chat = dedupeOptimistic(merged.copy(messages = withInbox)),
-                        hasOlder = state.hasOlder || dtos.size >= ChatWindow.SERVER_PAGE,
+                        // ⚠️ **Une resync ne re-arme jamais l'historique, et n'ecrase pas le
+                        // curseur courant.** Elle relit la page la plus recente, dont le curseur
+                        // pointe vers la **deuxieme** page : s'en servir aveuglement remettrait le
+                        // curseur en arriere apres une pagination profonde, et **re-armerait**
+                        // `hasOlder` sur une session entierement remontee (le test
+                        // `loadOlder ajoute les messages anciens devant et sans doublon` le
+                        // detecte).
+                        //
+                        //   - `historyExhausted` reste la verite : une fois le debut atteint, il
+                        //     l'est pour toujours, l'historique grandissant par sa **fin** ;
+                        //   - le curseur **courant** est conserve (`?:`), et celui de la resync
+                        //     ne sert que s'il n'y en a pas encore — c'est le cas de l'ouverture.
+                        hasOlder = !state.historyExhausted && (state.hasOlder || page.cursorBack != null),
+                        olderCursor = state.olderCursor ?: page.cursorBack,
                     )
                 }
                 // ⚠️ On pousse le compte de file au détenteur d'état partagé : c'est la seule
@@ -701,25 +872,45 @@ class ChatViewModel @Inject constructor(
      * ⚠️ On **prepend** les anciens et on conserve le reste : la fusion se fait par id, comme la
      * resync, pour qu'un message arrive par le flux entre-temps ne soit jamais perdu.
      */
+    /**
+     * **Remonte d'une tranche**, en suivant le curseur memorise.
+     *
+     * ⚠️ **Une requete par tranche, quelle que soit la profondeur** (voir
+     * `OpenCodeGateway.messagesPageBack`). L'ancienne version cherchait un message de reference
+     * en repartant du sommet a chaque cran : O(n²), ~200 requetes pour remonter 2 040 messages.
+     *
+     * ⚠️ On ne cherche plus « le message le plus ancien deja charge » : la fenetre n'est pas
+     * forcement contigue (les optimistes, la file, et les marqueurs de tour filtres par le
+     * mapper rendent tout index local faux). Le curseur, lui, vient du serveur.
+     *
+     * ⚠️ On **prepend** les anciens et on conserve le reste, fusion par id : un message arrive
+     * par le flux entre-temps ne doit jamais etre perdu.
+     */
     fun loadOlder() {
         val current = _state.value
         if (current.loadingOlder || !current.hasOlder) return
-        val oldest = current.chat.messages.firstOrNull() ?: return
+        val cursor = current.olderCursor ?: return
         val settings = settings ?: return
 
         _state.update { it.copy(loadingOlder = true) }
         scope.launch {
             try {
-                val dtos = gateway.messagesBefore(settings, sessionID, oldest.id, ChatWindow.SERVER_PAGE)
-                val older = ChatMessageMapper.fromDtos(dtos)
+                val page = gateway.messagesPageBack(settings, sessionID, ChatWindow.SERVER_PAGE, cursor)
+                val older = ChatMessageMapper.fromDtos(page.messages)
                 _state.update { state ->
                     // Fusion par id : les anciens passent DEVANT, les existants sont conserves.
                     val known = state.chat.messages.map { it.id }.toHashSet()
                     val fresh = older.filter { it.id !in known }
                     state.copy(
                         chat = state.chat.copy(messages = fresh + state.chat.messages),
-                        // Une tranche vide ou incomplete = on a atteint le debut de la session.
-                        hasOlder = dtos.size >= ChatWindow.SERVER_PAGE,
+                        // ⚠️ `cursorBack == null` = fin d'historique **prouvee** (le gateway
+                        // sonde le curseur et rend `null` quand la page suivante est vide).
+                        // ⚠️ On pose `historyExhausted` en plus : une resync posterieure ne doit
+                        // pas re-armer `hasOlder` depuis sa page recente (elle a toujours un
+                        // curseur, par construction).
+                        hasOlder = page.cursorBack != null,
+                        olderCursor = page.cursorBack,
+                        historyExhausted = page.cursorBack == null,
                         loadingOlder = false,
                     )
                 }

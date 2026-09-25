@@ -302,7 +302,19 @@ class ActivityMonitor @Inject constructor(
                 )
                 connection.markOffline(
                     message,
-                    unauthorized = message.contains("401") || message.contains("403"),
+                    // ⚠️ **On interroge l'erreur, pas son texte traduit.**
+                    //
+                    // Le code faisait `message.contains("401")` — sur la chaine produite par
+                    // [ConnectionErrors.describe], qui traduit 401 en « Mot de passe refuse par le
+                    // serveur. » **sans chiffre**. Le test etait donc toujours faux :
+                    // `ConnectionStatus.Unauthorized` n'etait jamais produit, et l'ecran
+                    // hors-connexion envoyait chercher une machine eteinte a quelqu'un dont le
+                    // seul probleme etait un mot de passe errone.
+                    //
+                    // ⚠️ Le typage ne le disait pas : `message` est un `String`, `unauthorized`
+                    // un `Boolean`, rien n'empechait de comparer du texte a une cause. C'est
+                    // [ConnectionErrors.isUnauthorized] qui porte la regle, sur le TYPE.
+                    unauthorized = sh.sk7.tether.ui.settings.ConnectionErrors.isUnauthorized(e),
                 )
             }
         }

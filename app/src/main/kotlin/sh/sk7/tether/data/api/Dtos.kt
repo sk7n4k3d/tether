@@ -43,6 +43,23 @@ data class CursorPage<T>(
     val previous: String? = null,
 )
 
+/**
+ * **Une page d'historique, avec de quoi remonter d'un cran.**
+ *
+ * ⚠️ Distincte de [CursorPage] : ici `messages` est deja **remise a l'endroit**
+ * (chronologique) et `cursorBack` a ete **valide** — il vaut `null` quand il n'y a plus rien
+ * a charger.
+ *
+ * ⚠️ **`cursorBack == null` est la seule preuve fiable de fin d'historique.** Mesure du
+ * 2026-09-25 : le serveur renvoie un `next` **non nul** sur la derniere page, deja courte ;
+ * suivre ce curseur rend **0 message**. Une UI qui se fierait a `messages.size < limit` ou a
+ * `next != null` resterait bloquee avec « charger plus » affiche pour toujours.
+ */
+data class HistoryPage(
+    val messages: List<MessageDto>,
+    val cursorBack: String?,
+)
+
 /** Reponse de `POST /api/session/{id}/interrupt` : `{interrupted}`. */
 @Serializable
 data class InterruptResponse(val interrupted: Boolean = false)

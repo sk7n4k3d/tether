@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import sh.sk7.tether.data.api.HistoryPage
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.ContentPart
 import sh.sk7.tether.data.api.CursorPage
@@ -46,6 +47,7 @@ import sh.sk7.tether.data.api.ProjectDto
 import sh.sk7.tether.data.api.ProviderDto
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.data.api.SkillDto
+import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.domain.model.UsageStats
@@ -177,20 +179,27 @@ class ChatViewModelTest {
         var olderDtos: List<MessageDto> = emptyList()
         var olderCalls = 0
 
-        override suspend fun recentMessages(
-            settings: ConnectionSettings,
-            sessionID: String,
-            limit: Int,
-        ): List<MessageDto> = messagesPage(settings, sessionID, limit, null, null).data
+        /**
+         * ⚠️ Le curseur rendu par la 1re page. `null` par defaut = **fin d'historique prouvee** :
+         * un test qui ne veut pas de pagination n'a rien a simuler de plus.
+         */
+        @Volatile
+        var cursorBack: String? = null
 
-        override suspend fun messagesBefore(
+        override suspend fun messagesPageBack(
             settings: ConnectionSettings,
             sessionID: String,
-            beforeMessageID: String,
             limit: Int,
-        ): List<MessageDto> {
+            cursor: String?,
+        ): HistoryPage {
+            // ⚠️ On distingue les deux appels **par le curseur**, pas par un compteur : la 1re
+            // page n'en a pas (et porte l'ordre `desc`), les suivantes en ont un.
+            if (cursor == null) {
+                val page = messagesPage(settings, sessionID, limit, null, "desc")
+                return HistoryPage(messages = page.data, cursorBack = cursorBack)
+            }
             olderCalls++
-            return olderDtos
+            return HistoryPage(messages = olderDtos, cursorBack = null)
         }
 
 
@@ -504,8 +513,10 @@ class ChatViewModelTest {
 
         val after = vm.state.value.chat.messages
         val oks = after.filter { it.role == Role.User && it.text == "ok" }
-        assertEquals(2, oks.size, "l'optimiste doit survivre : seul son id exact le confirme")
-        assertTrue(after.any { it.id.startsWith("local-") }, "l'optimiste est encore affiche")
+        // ⚠️ On nomme ce qu'on a vu : une assertion qui ne dit que « 1 au lieu de 2 » oblige a
+        // rejouer le test pour comprendre, alors que la liste suffit a trancher.
+        assertEquals(2, oks.size, "l'optimiste doit survivre : seul son id exact le confirme — vu ${after.map { it.id }}")
+        assertTrue(after.any { it.id.startsWith("local-") }, "l'optimiste est encore affiche — vu ${after.map { it.id }}")
     }
 
     /**
@@ -658,12 +669,14 @@ class ChatViewModelTest {
     @Test
     fun `loadOlder ajoute les messages anciens devant et sans doublon`() {
         val source = FakeEventSource()
-        // ⚠️ Une page PLEINE : c'est ce qui met `hasOlder` a vrai (l'API ne dit pas le total
-        // d'une session, on le deduit d'une page pleine — sinon `loadOlder` sort immediatement).
+        // ⚠️ **`cursorBack` non nul EST la preuve qu'il reste de l'historique.** Avant, le test
+        // dependait d'une page pleine (`dtos.size >= SERVER_PAGE`) : ce critere etait faux, le
+        // serveur rendant un `next` non nul meme en fin d'historique (bug B13).
         val window = (0 until ChatWindow.SERVER_PAGE).map {
             MessageDto(id = "msg_$it", type = "user", text = "m$it")
         }
         val gateway = FakeGateway(dtos = window)
+        gateway.cursorBack = "curseur_vers_les_anciens"
         gateway.olderDtos = listOf(
             MessageDto(id = "msg_ancien", type = "user", text = "ancien"),
             // ⚠️ Doublon volontaire : deja dans la fenetre. Il ne doit apparaitre qu'UNE fois.
@@ -671,7 +684,7 @@ class ChatViewModelTest {
         )
         val vm = viewModel(gateway, source)
         awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_0" } }
-        assertTrue(vm.state.value.hasOlder, "une page pleine doit annoncer qu'il reste de l'historique")
+        assertTrue(vm.state.value.hasOlder, "un curseur non nul doit annoncer qu'il reste de l'historique")
 
         vm.loadOlder()
         awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_ancien" } }
@@ -682,6 +695,60 @@ class ChatViewModelTest {
         assertTrue(
             ids.indexOf("msg_ancien") < ids.indexOf("msg_0"),
             "l'ancien doit etre devant, obtenu ${ids.take(4)}",
+        )
+        // ⚠️ Une tranche qui rend `cursorBack = null` **prouve** la fin : plus de « charger plus ».
+        assertFalse(vm.state.value.hasOlder, "un curseur nul doit clore l'historique")
+    }
+
+    @Test
+    fun `loadOlder ne redemande pas le sommet a chaque tranche`() {
+        val source = FakeEventSource()
+        val window = (0 until ChatWindow.SERVER_PAGE).map {
+            MessageDto(id = "msg_$it", type = "user", text = "m$it")
+        }
+        val gateway = FakeGateway(dtos = window)
+        gateway.cursorBack = "curseur_1"
+        gateway.olderDtos = listOf(MessageDto(id = "msg_ancien", type = "user", text = "ancien"))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_0" } }
+
+        vm.loadOlder()
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_ancien" } }
+
+        // ⚠️ **Le cœur de P1** : on suit le curseur, donc **une** requete par tranche. L'ancien
+        // code repartait du sommet et redescendait jusqu'a la reference : 1 requete, puis 2,
+        // puis 3… soit O(n²) — ~200 requetes pour remonter 2 040 messages au lieu de 21.
+        assertEquals(1, gateway.olderCalls, "une tranche = une requete, jamais un balayage depuis le sommet")
+    }
+
+    @Test
+    fun `une resync ne remonte pas un optimiste en tete de conversation`() {
+        val source = FakeEventSource()
+        val existing = (0 until 3).map {
+            MessageDto(id = "msg_$it", type = "user", text = "m$it")
+        }
+        val gateway = FakeGateway(dtos = existing)
+        gateway.cursorBack = null
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_2" } }
+
+        // ⚠️ Un message ecrit ici, pas encore confirme par le serveur : il est **absent du REST**.
+        vm.send("bonjour")
+        awaitValue(vm.state) { it.chat.messages.any { m -> m.isOptimistic } }
+
+        // ⚠️ **Bug B5** : une resync le classait dans « historique ancien » (absent du REST) et le
+        // **prependait tout en haut** — un message qu'on venait d'ecrire apparaissait au debut de
+        // la conversation. Il doit rester **en bas**, la ou on l'a ecrit.
+        vm.resync()
+        awaitValue(vm.state) { it.chat.messages.any { m -> m.id == "msg_2" } }
+
+        val ids = vm.state.value.chat.messages.map { it.id }
+        val optimisticIndex = ids.indexOfFirst { it.startsWith(ChatMessage.OPTIMISTIC_ID_PREFIX) }
+        assertTrue(optimisticIndex >= 0, "l'optimiste doit toujours etre present, obtenu $ids")
+        assertEquals(
+            ids.size - 1,
+            optimisticIndex,
+            "l'optimiste doit rester en DERNIER, pas etre remonte en tete : $ids",
         )
     }
 
