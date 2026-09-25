@@ -76,6 +76,19 @@ interface OpenCodeGateway {
     /** `POST /prompt` : accepte le prompt. La reponse arrive ensuite par le flux. */
     suspend fun prompt(settings: ConnectionSettings, sessionID: String, text: String): PromptAcceptance
 
+    /** Surcharge avec pieces jointes, agents ou skills (`files`, `agents`, `skills` du corps).
+     *
+     * ⚠️ Les formes acceptees sont **mesurees** (voir [PromptBody]) : un fichier marche en `data:`
+     * inline ou en `file://` **absolu**, jamais en chemin relatif. On garde donc les deux
+     * surcharges : un texte seul continue de passer par la version sans corps explicite, et cette
+     * surcharge n'existe que pour ce qui n'est pas du texte.
+     */
+    suspend fun prompt(
+        settings: ConnectionSettings,
+        sessionID: String,
+        body: PromptBody,
+    ): PromptAcceptance
+
     /** Un tour complet de messages, **toutes pages confondues**, dans l'ordre chronologique. */
     suspend fun allMessages(
         settings: ConnectionSettings,
@@ -248,6 +261,41 @@ interface OpenCodeGateway {
 
     /** Deplace les outils bloquants d'une session en observation d'arriere-plan. */
     suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean
+
+    /** Active une competence dans une session (`POST /experimental/session/{id}/skill`).
+     *
+     * ⚠️ Chemin **different** de la piece `skills` d'un prompt : ici la competence est attachee a la
+     * session et l'execution reprend ; dans le corps du prompt, elle ne vaut que pour ce tour. Les
+     * deux existent, on expose les deux plutot que d'en choisir un a la place de l'utilisateur.
+     */
+    suspend fun activateSkill(settings: ConnectionSettings, sessionID: String, skillID: String): Boolean
+
+    /** Les enfants directs d'un chemin, **relatif au repertoire configure** (`GET /api/fs/list`). */
+    suspend fun fsList(settings: ConnectionSettings, path: String? = null): List<FsEntryDto>
+
+    /** Recherche recursive d'entrees (`GET /api/fs/find`). */
+    suspend fun fsFind(settings: ConnectionSettings, query: String, type: String? = null): List<FsEntryDto>
+
+    /** Le contenu d'un fichier, ou `null` s'il n'existe pas (`GET /api/fs/read/<chemin>`).
+     *
+     * ⚠️ Le chemin est **relatif au repertoire configure** : le serveur refuse un chemin absolu
+     * (mesure : `404 FileNotFoundError`). On ne « corrige » pas ce chemin cote app — on ne peut pas
+     * savoir a quoi un chemin absolu se rapporte sur la machine distante.
+     */
+    suspend fun fsRead(settings: ConnectionSettings, path: String): ByteArray?
+
+    /** Les references invocables du repertoire (`GET /api/reference`). */
+    suspend fun references(settings: ConnectionSettings): List<ReferenceDto>
+
+    /** Les branches du depot du repertoire configure (`GET /api/vcs/branch`).
+     *
+     * ⚠️ Le depot du repertoire configure, **pas** celui d'une session : une session peut travailler
+     * ailleurs. Pour ce cas-la, voir [branchesIn].
+     */
+    suspend fun branches(settings: ConnectionSettings): List<String>
+
+    /** Les branches d'un **repertoire donne**, distinct de reprendre les branches du cwd. */
+    suspend fun branchesIn(settings: ConnectionSettings, directory: String): List<String>
 
 
     // ------------------------------------------------------------------
@@ -456,6 +504,12 @@ class KtorOpenCodeGateway @Inject constructor(
         text: String,
     ): PromptAcceptance = client(settings).prompt(sessionID, text)
 
+    override suspend fun prompt(
+        settings: ConnectionSettings,
+        sessionID: String,
+        body: PromptBody,
+    ): PromptAcceptance = client(settings).prompt(sessionID, body)
+
     override suspend fun messagesPage(
         settings: ConnectionSettings,
         sessionID: String,
@@ -598,6 +652,39 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean =
         client(settings).backgroundTools(sessionID)
+
+    override suspend fun activateSkill(
+        settings: ConnectionSettings,
+        sessionID: String,
+        skillID: String,
+    ): Boolean = client(settings).activateSkill(sessionID, skillID)
+
+    // ------------------------------------------------------------------
+    // Explorateur de fichiers, references, branches
+    // ------------------------------------------------------------------
+
+    override suspend fun fsList(settings: ConnectionSettings, path: String?): List<FsEntryDto> =
+        client(settings).fsList(settings.directory, path)
+
+    override suspend fun fsFind(
+        settings: ConnectionSettings,
+        query: String,
+        type: String?,
+    ): List<FsEntryDto> = client(settings).fsFind(settings.directory, query, type)
+
+    override suspend fun fsRead(settings: ConnectionSettings, path: String): ByteArray? =
+        client(settings).fsRead(settings.directory, path)
+
+    override suspend fun references(settings: ConnectionSettings): List<ReferenceDto> =
+        client(settings).references(settings.directory)
+
+    override suspend fun branches(settings: ConnectionSettings): List<String> =
+        client(settings).branches(settings.directory)
+
+    override suspend fun branchesIn(
+        settings: ConnectionSettings,
+        directory: String,
+    ): List<String> = client(settings).branches(directory)
 
 
     override suspend fun pendingPermissions(settings: ConnectionSettings): List<PermissionRequest> {

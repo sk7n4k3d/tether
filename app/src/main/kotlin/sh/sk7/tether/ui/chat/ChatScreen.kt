@@ -152,6 +152,35 @@ fun ChatScreen(
      * frappe, et la reponse ne change pas — installer un moteur demande de quitter l'app.
      */
     val voiceAvailable = remember { isVoiceInputAvailable(context) }
+
+    /**
+     * **Le selecteur de fichiers du systeme.**
+     *
+     * ⚠️ `OpenDocument` et non `GetContent` : `OpenDocument` rend une URI stable et lisible par
+     * `ContentResolver` directement dans le callback, sans permission de stockage. C'est le chemin
+     * qui fonctionne sur GrapheneOS, ou l'acces au stockage est volontairement restreint.
+     *
+     * ⚠️ La lecture se fait dans le callback `onResult`, sur le dispatcher principal. C'est
+     * volontaire : le fichier a ete choisi par l'utilisateur, sa taille est bornee par
+     * [PromptAttachments.MAX_FILE_BYTES] avant d'etre encodee, et cette lecture n'a lieu qu'une
+     * fois par fichier — monter un `LaunchedEffect` et un `withContext` pour cela ajouterait un
+     * etat pour rien.
+     */
+    val filePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val resolver = context.contentResolver
+            val name = queryDisplayName(context, uri) ?: "fichier"
+            val mime = resolver.getType(uri)
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching
+            viewModel.attachBytes(name = name, mime = mime, bytes = bytes)
+        }.onFailure {
+            android.util.Log.w("TetherChat", "fichier illisible", it)
+        }
+    }
+
     LaunchedEffect(exporting) {
         if (!exporting) return@LaunchedEffect
         val markdown = SessionExporter.toMarkdown(
@@ -390,6 +419,7 @@ fun ChatScreen(
             val commands by viewModel.commands.collectAsStateWithLifecycle()
             val models by viewModel.models.collectAsStateWithLifecycle()
             val agents by viewModel.agents.collectAsStateWithLifecycle()
+            val skills by viewModel.skills.collectAsStateWithLifecycle()
 
             // ⚠️ La palette n'apparait que si une commande est EN COURS DE FRAPPE (voir
             // `SlashInput`). La logique est testee a part parce qu'elle a trois faux positifs
@@ -407,8 +437,16 @@ fun ChatScreen(
                 ModelAgentPicker(
                     models = models.map { it.id },
                     agents = agents.map { it.id },
+                    skills = skills.map { it.id },
                     currentModel = state.meta?.model,
                     currentAgent = state.meta?.agent,
+                    onPickSkill = { id ->
+                        pickerOpen = false
+                        // ⚠️ Activer une competence est un **effet immediat** (le serveur reprend
+                        // l'execution), pas un reglage stocke : on ferme la feuille pour que
+                        // l'utilisateur voie le resultat dans la conversation.
+                        viewModel.activateSkill(id)
+                    },
                     onPickModel = { id ->
                         pickerOpen = false
                         models.firstOrNull { it.id == id }?.let { picked ->
@@ -448,6 +486,13 @@ fun ChatScreen(
                 // vide : choisir un modele ne demande rien d'ecrire, et c'est le moment ou on le
                 // fait — avant de composer.
                 onPickModelAgent = { pickerOpen = true },
+                attachments = state.attachments,
+                onRemoveAttachment = viewModel::removeAttachment,
+                // ⚠️ Le trombone ouvre le selecteur **du systeme** : c'est lui qui a acces aux
+                // documents, et l'app n'a aucune permission de stockage a demander. Lire le
+                // contenu nous-memes (plutot que de passer un chemin au serveur) est le seul
+                // choix possible : le telephone n'a pas acces au disque de la machine distante.
+                onAttach = { filePicker.launch(arrayOf("*/*")) },
                 onSend = {
                     val text = draft
                     // ⚠️ On verifie d'abord si c'est une COMMANDE valide. Le serveur valide le nom
@@ -910,6 +955,22 @@ private fun RawFallback(raw: String) {
         )
     }
 }
+
+/**
+ * Nom affichable d'un document choisi par le selecteur du systeme.
+ *
+ * ⚠️ `OpenDocument` rend souvent un nom opaque (`content://.../1234`). Le nom lisible vit dans
+ * la colonne `DISPLAY_NAME` du `ContentResolver` : sans cette requete, on joindrait un fichier
+ * nomme « 1234 » et l'utilisateur ne reconnaitrait pas ce qu'il a joint.
+ */
+private fun queryDisplayName(context: android.content.Context, uri: android.net.Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+            }
+    }.getOrNull()
 
 /**
  * **Partage d'un export Markdown** via la feuille du systeme.

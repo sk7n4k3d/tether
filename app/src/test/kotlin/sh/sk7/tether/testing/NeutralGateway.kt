@@ -5,6 +5,7 @@ import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.data.api.ContextMessageDto
 import sh.sk7.tether.data.api.CursorPage
 import sh.sk7.tether.data.api.FileDiffDto
+import sh.sk7.tether.data.api.FsEntryDto
 import sh.sk7.tether.data.api.InboxItemDto
 import sh.sk7.tether.data.api.McpServerDto
 import sh.sk7.tether.data.api.MessageDto
@@ -14,8 +15,11 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.PluginDto
 import sh.sk7.tether.data.api.ProjectDto
 import sh.sk7.tether.data.api.PromptAcceptance
+import sh.sk7.tether.data.api.PromptBody
+import sh.sk7.tether.data.api.PromptPayload
 import sh.sk7.tether.data.api.ProviderDto
 import sh.sk7.tether.data.api.PtyInfoDto
+import sh.sk7.tether.data.api.ReferenceDto
 import sh.sk7.tether.data.api.RevertResultDto
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.data.api.ServerInfo
@@ -80,6 +84,13 @@ open class NeutralGateway : OpenCodeGateway {
         sessionID: String,
         text: String,
     ): PromptAcceptance = PromptAcceptance(id = "msg_t", sessionID = sessionID, type = "user")
+
+    override suspend fun prompt(
+        settings: ConnectionSettings,
+        sessionID: String,
+        body: PromptBody,
+    ): PromptAcceptance =
+        PromptAcceptance(id = "msg_t", sessionID = sessionID, type = "user", payload = PromptPayload(body.text))
 
     override suspend fun messagesPage(
         settings: ConnectionSettings,
@@ -191,6 +202,32 @@ open class NeutralGateway : OpenCodeGateway {
 
     override suspend fun backgroundTools(settings: ConnectionSettings, sessionID: String): Boolean =
         true
+
+    override suspend fun activateSkill(
+        settings: ConnectionSettings,
+        sessionID: String,
+        skillID: String,
+    ): Boolean = true
+
+    override suspend fun fsList(settings: ConnectionSettings, path: String?): List<FsEntryDto> =
+        emptyList()
+
+    override suspend fun fsFind(
+        settings: ConnectionSettings,
+        query: String,
+        type: String?,
+    ): List<FsEntryDto> = emptyList()
+
+    override suspend fun fsRead(settings: ConnectionSettings, path: String): ByteArray? = null
+
+    override suspend fun references(settings: ConnectionSettings): List<ReferenceDto> = emptyList()
+
+    override suspend fun branches(settings: ConnectionSettings): List<String> = emptyList()
+
+    override suspend fun branchesIn(
+        settings: ConnectionSettings,
+        directory: String,
+    ): List<String> = emptyList()
 
     override suspend fun vcsInfo(
         settings: ConnectionSettings,

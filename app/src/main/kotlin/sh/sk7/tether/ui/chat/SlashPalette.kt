@@ -158,6 +158,10 @@ fun ModelAgentPicker(
     onPickModel: (String) -> Unit,
     onPickAgent: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** Les competences activables dans cette session. Vide = la section est masquee. */
+    skills: List<String> = emptyList(),
+    /** Active une competence : effet immediat cote serveur, contrairement au modele et l'agent. */
+    onPickSkill: (String) -> Unit = {},
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -181,6 +185,18 @@ fun ModelAgentPicker(
                 icon = Lucide.Blocks,
                 onPick = onPickAgent,
             )
+            // ⚠️ Les competences n'apparaissent que si le serveur en annonce. Une section vide de
+            // plus ferait croire a un manque de l'app alors que c'est le serveur qui n'en a pas —
+            // et la question ne se pose pas dans ce cas.
+            if (skills.isNotEmpty()) {
+                PickerSection(
+                    title = "ACTIVER UNE COMPÉTENCE",
+                    items = skills,
+                    current = null,
+                    icon = Lucide.Blocks,
+                    onPick = onPickSkill,
+                )
+            }
         }
     }
 }

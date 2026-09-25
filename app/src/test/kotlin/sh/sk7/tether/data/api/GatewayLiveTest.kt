@@ -7,6 +7,7 @@ import org.junit.Ignore
 import sh.sk7.tether.data.settings.ConnectionSettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -71,5 +72,56 @@ class GatewayLiveTest {
         assertTrue(all.size > 50, "pagination non suivie : ${all.size} sessions seulement")
         assertEquals(all.size, all.map { it.id }.distinct().size, "sessions dupliquees entre pages")
         println("allSessions -> ${all.size} sessions (${all.size / 50 + 1} pages)")
+    }
+
+    // ------------------------------------------------------------------
+    // Palier 3 : capacites serveur, exercees contre le serveur REEL
+    // ------------------------------------------------------------------
+
+    /**
+     * ⚠️ Ces tests ne verifient pas seulement que les routes existent : ils verifient les **formes
+     * reelles**, qui sont la source des cinq erreurs documentees dans le plan.
+     */
+    @Test
+    fun `fsList et fsFind rendent des entrees reelles`() = runBlocking<Unit> {
+        val gateway = gateway()
+        val root = gateway.fsList(settings(), path = null)
+        assertTrue(root.isNotEmpty(), "la racine du repertoire doit contenir des entrees")
+        assertTrue(root.all { it.path.isNotBlank() })
+        println("fsList racine -> ${root.size} entrees, ex: ${root.first().path} (${root.first().type})")
+
+        val found = gateway.fsFind(settings(), query = "settings.gradle.kts")
+        assertTrue(found.isNotEmpty(), "find doit trouver le fichier de build")
+        assertTrue(found.any { it.path.endsWith("settings.gradle.kts") })
+    }
+
+    @Test
+    fun `fsRead lit un fichier texte par chemin relatif`() = runBlocking<Unit> {
+        val gateway = gateway()
+        // ⚠️ Chemin RELATIF au repertoire configure. Un absolu rend 404 (mesure).
+        val path = "Projects/tether/settings.gradle.kts"
+        val bytes = gateway.fsRead(settings(), path)
+        requireNotNull(bytes) { "le fichier doit etre lisible : $path" }
+        val text = bytes.decodeToString()
+        assertTrue(text.contains("rootProject.name"), "contenu inattendu : ${text.take(80)}")
+        println("fsRead -> ${bytes.size} octets")
+    }
+
+    @Test
+    fun `fsRead rend null sur un fichier absent, sans lever`() = runBlocking<Unit> {
+        val gateway = gateway()
+        assertNull(gateway.fsRead(settings(), "ce/chemin/n/existe/pas.txt"))
+    }
+
+    @Test
+    fun `references et branches repondent, meme vides`() = runBlocking<Unit> {
+        val gateway = gateway()
+        // ⚠️ Mesure du 2026-09-25 : `/api/reference` rend `data: []` sur ce serveur. Ce n'est pas
+        // un echec, c'est une absence — le test verifie que l'appel ABOUTIT.
+        val refs = gateway.references(settings())
+        println("references -> ${refs.size}")
+        val branches = gateway.branchesIn(settings(), "${directory}/Projects/tether")
+        assertTrue(branches.isNotEmpty(), "le depot tether doit avoir des branches")
+        println("branches -> $branches")
     }
 }

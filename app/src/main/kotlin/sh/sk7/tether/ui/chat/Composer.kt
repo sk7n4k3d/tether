@@ -9,6 +9,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -57,9 +58,11 @@ import com.composables.icons.lucide.CircleStop
 import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Paperclip
+import com.composables.icons.lucide.X
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
 import sh.sk7.tether.ui.theme.TetherAlert
+import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDimensions
@@ -116,20 +119,37 @@ fun Composer(
      * une barre ou chaque pixel coute au champ de saisie.
      */
     onPickModelAgent: (() -> Unit)? = null,
+    /**
+     * Les fichiers joints au prochain envoi.
+     *
+     * ⚠️ On recoit la liste deja construite et on **remonte** les retraits : le Composer ne lit ni
+     * n'ecrit le disque, il montre et il signale. Toute la logique d'URI et de taille vit dans le
+     * ViewModel, ou elle est testee.
+     */
+    attachments: List<PendingAttachment> = emptyList(),
+    /** Retire une piece jointe (par son nom). */
+    onRemoveAttachment: (String) -> Unit = {},
+    /** Ouvre le selecteur de fichiers. `null` masque le trombone. */
+    onAttach: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val hasText = value.isNotBlank()
+    // ⚠️ Un fichier joint EST un message : « regarde ceci » se dit sans phrase. Le bouton d'envoi
+    // doit donc s'allumer et envoyer sur cette seule base — sinon on ne pourrait rien joindre
+    // sans accompagner le fichier d'un texte, ce qui n'est pas ce qu'on veut faire la plupart du
+    // temps.
+    val hasContent = hasText || attachments.isNotEmpty()
 
     // Le bouton change de sens : « interrompre » pendant un tour, « envoyer » sinon.
-    // ⚠️ Des que du texte est present, ENVOYER prime — sinon on ne pourrait pas repondre a un
+    // ⚠️ Des que du contenu est present, ENVOYER prime — sinon on ne pourrait pas repondre a un
     // agent qui tourne (le cas `steer` de l'API), ce qui est precisement ce qu'on veut faire.
-    val showStop = busy && !hasText
+    val showStop = busy && !hasContent
 
     // Couleur du bouton : ambre (interrompre) > teal (envoyer) > muet (vide).
     val buttonColor by animateColorAsState(
         targetValue = when {
             showStop -> TetherAlert
-            hasText -> TetherAccent
+            hasContent -> TetherAccent
             else -> TetherTextSecondary.copy(alpha = 0.25f)
         },
         label = "composer-button-color",
@@ -143,7 +163,7 @@ fun Composer(
         // qu'on rate — or c'est le controle qu'on presse le plus dans l'app. 40 dp reste sous
         // les 48 dp Material, mais c'est un choix de densite **conscient**, compense par
         // `minimumInteractiveComponentSize()` qui etend la zone sensible a 48 dp.
-        targetValue = if (showStop || hasText) 40.dp else 36.dp,
+        targetValue = if (showStop || hasContent) 40.dp else 36.dp,
         label = "composer-button-size",
     )
     // Icone : rotation douce entre la fleche et le carre (morph visuel).
@@ -182,6 +202,29 @@ fun Composer(
     val edgeColor = if (busy) TetherAccent.copy(alpha = pulse) else Color.Transparent
 
     Column(modifier = modifier.fillMaxWidth()) {
+        // ------------------------------------------------ LES PIECES JOINTES EN ATTENTE
+        //
+        // ⚠️ Elles sont **au-dessus** de la barre, pas dedans : la barre de saisie doit rester
+        // sur une ligne fine, et un fichier joint n'est pas du texte a editer. Les mettre dans le
+        // champ melangerait deux choses qui n'ont pas la meme duree de vie.
+        //
+        // ⚠️ Chaque puce porte la **taille** et un bouton de retrait : joindre un fichier par
+        // erreur doit pouvoir se defaire d'un geste, sinon on renvoie un message qu'on ne voulait
+        // pas. Le retrait a un `contentDescription` propre — TalkBack ne peut pas « voir » la croix.
+        if (attachments.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = Spacing.md, end = Spacing.md, top = Spacing.sm)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                attachments.forEach { attachment ->
+                    AttachmentChip(attachment = attachment, onRemove = { onRemoveAttachment(attachment.name) })
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -266,7 +309,34 @@ fun Composer(
                 }
             }
 
-            // ------------------------------------------------ LE MICRO, DANS LA MEME SURFACE
+            // ------------------------------------------------ LE TROMBONE, MEME SURFACE
+      //
+      // ⚠️ Il vit **dans** la surface de saisie, comme le micro : joindre un fichier est une
+      // facon d'ECRIRE, pas une fonction a part. Le sortir dans une barre d'outils en ferait
+      // une action detachee alors que c'est la meme intention.
+      if (onAttach != null) {
+          Box(
+              modifier = Modifier
+                  .minimumInteractiveComponentSize()
+                  .size(30.dp)
+                  .clip(RoundedCornerShape(percent = 50))
+                  .clickable(onClick = onAttach)
+                  .semantics {
+                      role = Role.Button
+                      contentDescription = "Joindre un fichier"
+                  },
+              contentAlignment = Alignment.Center,
+          ) {
+              Icon(
+                  imageVector = Lucide.Paperclip,
+                  contentDescription = null,
+                  tint = TetherTextSecondary,
+                  modifier = Modifier.size(16.dp),
+              )
+          }
+      }
+
+      // ------------------------------------------------ LE MICRO, DANS LA MEME SURFACE
           //
           // ⚠️ Le micro vit **dans** la surface de saisie, a cote du bouton d'envoi, parce que
           // dicter est une facon d'ECRIRE. Le mettre dans une barre d'outils en ferait une
@@ -313,11 +383,11 @@ fun Composer(
                     .clip(RoundedCornerShape(percent = 50))
                     .background(buttonColor)
                     .clickable(
-                        enabled = showStop || hasText || onPickModelAgent != null,
+                        enabled = showStop || hasContent || onPickModelAgent != null,
                     ) {
                         when {
                             showStop -> onStop()
-                            hasText -> onSend()
+                            hasContent -> onSend()
                             // ⚠️ Champ vide et rien en cours : le bouton n'a rien a envoyer, donc
                             // il propose le reglage qui sert **avant** d'ecrire — le modele et
                             // l'agent. Sans ce cas, le bouton resterait inerte et l'utilisateur
@@ -334,7 +404,7 @@ fun Composer(
                         // fois.
                         contentDescription = when {
                             showStop -> "Arrêter l'exécution"
-                            hasText -> "Envoyer le message"
+                            hasContent -> "Envoyer le message"
                             onPickModelAgent != null -> "Modèle et agent"
                             else -> "Envoyer (aucun texte)"
                         }
@@ -377,6 +447,68 @@ fun Composer(
 
 /** Encre sur l'accent : sombre, pour rester lisible sur le teal clair. */
 private val ComposerOnAccent = Color(0xFF0B0E11)
+
+/**
+ * **Une piece jointe en attente, sous forme de puce.**
+ *
+ * ⚠️ La puce porte le **nom** et la **taille** : le nom seul ne dit pas si l'on a joint une note
+ * de trois lignes ou un binaire de 3 Mo, et c'est pourtant ce qui change la decision d'envoyer.
+ *
+ * ⚠️ Le bouton de retrait a une cible tactile **rembourrée** (padding 8 dp autour d'une icone de
+ * 12 dp = 28 dp de contenu, plus `minimumInteractiveComponentSize` qui etend la zone sensible a
+ * 48 dp) : viser une croix de 12 dp au doigt est impossible, et une cible ratee ici laisse un
+ * fichier qu'on ne veut pas envoyer.
+ */
+@Composable
+private fun AttachmentChip(attachment: PendingAttachment, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+            .background(TetherAccent.copy(alpha = 0.14f))
+            .padding(start = Spacing.sm, end = Spacing.xs, top = Spacing.xs, bottom = Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Lucide.Paperclip,
+            contentDescription = null,
+            tint = TetherAccent,
+            modifier = Modifier.size(12.dp),
+        )
+        Text(
+            text = attachment.name,
+            style = TetherDataStyle,
+            color = TetherTextPrimary,
+            maxLines = 1,
+        )
+        if (attachment.sizeBytes > 0) {
+            Text(
+                text = attachment.sizeLabel,
+                style = TetherDataStyle,
+                color = TetherTextSecondary,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .size(20.dp)
+                .clip(RoundedCornerShape(percent = 50))
+                .clickable(onClick = onRemove)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "Retirer ${attachment.name}"
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Lucide.X,
+                contentDescription = null,
+                tint = TetherTextSecondary,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+    }
+}
 
 /**
  * Rayon de la barre de saisie : **24 dp**.

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Activity
+import com.composables.icons.lucide.FolderOpen
 import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
@@ -80,6 +81,8 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit = {},
     /** Les arbres de travail isoles : essayer sans risquer le depot. */
     onOpenWorktrees: () -> Unit = {},
+    /** L'explorateur de fichiers : verifier un chemin avant de l'envoyer. */
+    onOpenFiles: () -> Unit = {},
     onDisconnected: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -185,6 +188,12 @@ fun SettingsScreen(
                             detail = "Essayer sans risquer ton dépôt",
                             icon = Lucide.GitBranch,
                             onClick = onOpenWorktrees,
+                        )
+                        ActionRow(
+                            label = "Fichiers",
+                            detail = "Vérifier un chemin, lire un fichier",
+                            icon = Lucide.FolderOpen,
+                            onClick = onOpenFiles,
                         )
                         ActionRow(
                             label = "À propos",
