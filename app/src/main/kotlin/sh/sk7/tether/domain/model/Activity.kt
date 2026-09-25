@@ -79,6 +79,15 @@ data class SessionActivity(
     val viewedAt: Long? = null,
     /** `session.outcome` brut, pour le détail. */
     val outcome: String? = null,
+    /**
+     * La session dont celle-ci est une délégation (`Session.parentID`), ou `null`.
+     *
+     * ⚠️ **Mesure : 109 sessions sur 200 portent un `parentID`** — plus de la moitié de
+     * l'installation est faite de sous-agents. Sans ce champ, un sous-agent qui tourne était
+     * invisible depuis la liste : il n'apparaissait que comme enfant replié de son parent, et
+     * rien ne disait qu'il travaillait.
+     */
+    val parentID: String? = null,
 ) {
     /**
      * Le tour est-il terminé mais jamais vu ?
@@ -96,6 +105,21 @@ data class SessionActivity(
     /** Vrai si cette session mérite un signal dans la liste. */
     val needsAttention: Boolean
         get() = activity == Activity.Waiting || activity == Activity.Unseen
+
+    /** Vrai si c'est une délégation de sous-agent (`parentID` porté par le serveur). */
+    val isSubagent: Boolean get() = parentID != null
+
+    /**
+     * **Ce sous-agent travaille-t-il, du point de vue du serveur ?**
+     *
+     * ⚠️ La définition est volontairement large : `Running` **ou** `Waiting`. Un sous-agent
+     * bloqué sur une autorisation est présent dans `/api/session/active` et il immobilise un
+     * travail — le ranger avec « calme » parce qu'il n'est pas `running` serait exactement
+     * l'omission qu'on corrige. Un `Waiting` hors exécution (autorisation d'un tour déjà fini)
+     * reste rare et le montrer est bénin ; le cacher serait trompeur.
+     */
+    val isActiveSubagent: Boolean
+        get() = parentID != null && (activity == Activity.Running || activity == Activity.Waiting)
 }
 
 /**
@@ -162,6 +186,46 @@ data class FleetState(
 
     /** Les sessions avec des messages en file. */
     val queued: List<SessionActivity> get() = bySession.values.filter { it.queuedCount > 0 }
+
+    /**
+     * **Tous les sous-agents qui travaillent en ce moment.**
+     *
+     * ⚠️ **La limite, et pourquoi l'app ne peut pas prétendre au-delà.** `/api/session/active`
+     * est une route **globale** : mesure du 2026-09-25, elle n'accepte *aucun* paramètre
+     * `directory` (voir `/openapi.json` : zéro paramètre d'entrée) et renvoie la même carte
+     * quelle que soit la valeur passée — une session créée dans `/tmp/opencode/tether-p12`
+     * y figurait. Le plan supposait l'inverse ; la mesure le démentit.
+     *
+     * Le filtre réel n'est donc **pas** côté serveur mais dans l'app : pour qu'un sous-agent
+     * apparaisse ici, encore faut-il que sa `Session` soit **connue**, c'est-à-dire chargée par
+     * `GET /api/session` sur **le répertoire configuré** (route, elle, bien scopée). Un
+     * sous-agent actif travaillant dans un autre projet est donc *dans* `/active` mais **absent**
+     * de cette liste.
+     *
+     * ⚠️ Conséquence tenue par l'affichage : on ne doit **jamais** écrire « aucun sous-agent
+     * actif », seulement « aucun sous-agent actif dans ce répertoire ». Voir
+     * [SessionListScreen] pour la formulation.
+     */
+    val activeSubagents: List<SessionActivity>
+        get() = bySession.values.filter { it.isActiveSubagent }
+
+    /** Les sous-agents actifs d'un parent donné — ceux à poser sous sa ligne. */
+    fun activeSubagentsOf(parentID: String): List<SessionActivity> =
+        activeSubagents.filter { it.parentID == parentID }
+
+    /** Nombre de sous-agents actifs rattachés à un parent. Zéro n'affiche rien. */
+    fun activeSubagentCount(parentID: String): Int = activeSubagentsOf(parentID).size
+
+    /**
+     * **Les parents qui cachent au moins un sous-agent actif.**
+     *
+     * ⚠️ Sert à **déplier automatiquement** ces branches : un sous-agent qui travaille ne doit
+     * pas rester invisible parce que son parent est replié par défaut (109 sessions sur 200
+     * sont des sous-agents). On ne déplie **que** ces parents-là — déplier tout noierait la
+     * liste, ce qui est précisément la raison du repli par défaut.
+     */
+    val activeSubagentParents: Set<String>
+        get() = activeSubagents.mapNotNull { it.parentID }.toSet()
 
     /** Les shells encore vivants. */
     val liveShells: List<ShellActivity> get() = shells.filter { it.isLive }

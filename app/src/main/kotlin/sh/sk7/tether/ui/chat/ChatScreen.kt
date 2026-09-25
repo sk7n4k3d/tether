@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,7 +57,9 @@ import com.composables.icons.lucide.ChevronUp
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Brain
 import com.composables.icons.lucide.GitCompare
+import com.composables.icons.lucide.Hourglass
 import com.composables.icons.lucide.Layers
+import com.composables.icons.lucide.PanelBottomOpen
 import com.composables.icons.lucide.Copy
 import com.composables.icons.lucide.Undo2
 import com.composables.icons.lucide.Search
@@ -107,6 +110,15 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // ⚠️ L'activité vient du détenteur partagé, pas de la phase SSE : elle sait qu'un tour tourne
+    // même si l'écran vient de s'ouvrir ou si le flux est coupé (voir `sessionActivity`).
+    val sessionActivity by viewModel.sessionActivity.collectAsStateWithLifecycle()
+    // ⚠️ Seuls les états où **un tour tourne** ouvrent l'action : `Running` (le serveur travaille)
+    // et la phase SSE (`Sending`/`Streaming`). Pas `Queued` : un message en attente signifie
+    // justement que rien ne tourne pour lui — proposer de « passer en arrière-plan » n'aurait
+    // aucun objet.
+    val canBackground = state.isBusy ||
+        sessionActivity == sh.sk7.tether.domain.model.Activity.Running
     var draft by remember { mutableStateOf("") }
 
     /** Le selecteur modele/agent est-il ouvert ? */
@@ -273,6 +285,19 @@ fun ChatScreen(
                         IconButton(onClick = { searchOpen = !searchOpen }) {
                             Icon(Lucide.Search, contentDescription = "Rechercher dans la conversation")
                         }
+                        // ⚠️ « Passer en arrière-plan » n'apparaît QUE quand quelque chose tourne.
+                        // La route est un no-op quand rien ne bloque (doc serveur) : l'afficher au
+                        // repos serait proposer une action sans effet, ce qui apprend à ne plus
+                        // croire les boutons. On combine la phase SSE et l'état du serveur, car
+                        // seule la seconde sait qu'un tour tourne déjà à l'ouverture de l'écran.
+                        if (canBackground) {
+                            IconButton(onClick = viewModel::backgroundTools) {
+                                Icon(
+                                    Lucide.PanelBottomOpen,
+                                    contentDescription = "Déplacer les outils en arrière-plan",
+                                )
+                            }
+                        }
                         // ⚠️ Deux actions de plus dans la barre, et elles sont justifiees : les
                         // diffs et le contexte sont les deux informations qu'un client d'agent a
                         // et qu'un client de chat n'a pas. Les enfouir reviendrait a les rendre
@@ -321,15 +346,38 @@ fun ChatScreen(
             // double padding, soit une barre qui flotte trop haut clavier ferme. La saisie est
             // traitee comme un element de **contenu**, pas comme une bottom bar Material.
             //
-            // Ce que ce `bottomBar` porte encore : le message d'erreur, qui doit rester visible
-            // au-dessus de la saisie.
-            state.error?.let { error ->
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TetherAlert,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            // Ce que ce `bottomBar` porte encore : la file d'attente et les messages, qui doivent
+            // rester visibles au-dessus de la saisie.
+            Column {
+                // ⚠️ La file d'attente est au-dessus de la saisie, pas dans la liste : un message
+                // en attente est une **intention en cours**, pas un tour de conversation. Le
+                // noyer dans le fil le ferait lire comme deja envoye. Voir [QueuedBar].
+                QueuedBar(
+                    queued = state.chat.messages.filter { it.isQueued },
+                    cancelling = state.cancelling,
+                    onCancel = viewModel::cancelQueued,
                 )
+                state.notice?.let { notice ->
+                    // ⚠️ Teinte neutre, jamais celle de l'erreur : « l'appel était sans effet » est
+                    // un resultat normal, pas une panne (voir [ChatUiState.notice]).
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TetherTextSecondary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = viewModel::clearNotice)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                state.error?.let { error ->
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TetherAlert,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
             }
         },
     ) { padding ->
@@ -368,7 +416,14 @@ fun ChatScreen(
                         onLoadMore = viewModel::loadOlder,
                     )
                 }
-                itemsIndexed(state.chat.messages, key = { _, m -> m.id }) { _, message ->
+                // ⚠️ **Les messages en file ne sont PAS rendus ici** : ils vivent dans [QueuedBar],
+                // au-dessus de la saisie. Les afficher aux deux endroits serait un doublon, et les
+                // noyer dans le fil les ferait lire comme deja envoyes — alors qu'ils attendent.
+                // C'est une presentation differente parce que c'est un **etat different**.
+                itemsIndexed(
+                    state.chat.messages.filterNot { it.isQueued },
+                    key = { _, m -> m.id },
+                ) { _, message ->
                     MessageBlock(
                         message = message,
                         onCopy = { copied ->
@@ -496,6 +551,117 @@ fun ChatScreen(
             },
             onCancel = { dictating = false },
         )
+    }
+}
+
+/**
+ * **La file d'attente : ce que tu as écrit et qui n'est pas encore parti.**
+ *
+ * ### Pourquoi une barre au-dessus de la saisie, et pas dans le fil
+ * Un message en file n'est **pas** un tour de conversation : c'est une **intention en cours**.
+ * Le rendre comme une bulle ordinaire ferait croire qu'il a été envoyé — et c'est exactement ce
+ * que l'app faisait : elle ajoutait l'item d'inbox dans le fil **sans son mode**, donc impossible
+ * de savoir s'il allait corriger le tour (`steer`) ou attendre son tour (`queue`).
+ *
+ * ⚠️ C'est la distinction que les utilisateurs d'opencode réclamaient (issue #32157, 84 👍) :
+ * « en file » ne dit rien tant qu'on ignore si le message **interrompt** ou **patiente**.
+ *
+ * ### Pourquoi l'annulation est ici
+ * ⚠️ Réponse directe à l'issue #4821 (126 👍) : un message soumis pendant que l'agent tourne part
+ * en file et, sans cette route, **ne peut plus être annulé**. Le bouton est sur la ligne du
+ * message concerné — on annule celui qu'on voit, pas « la file ».
+ */
+@Composable
+private fun QueuedBar(
+    queued: List<ChatMessage>,
+    cancelling: Set<String>,
+    onCancel: (String) -> Unit,
+) {
+    if (queued.isEmpty()) return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Text(
+            text = if (queued.size == 1) "1 message en attente" else "${queued.size} messages en attente",
+            style = TetherDataStyle,
+            color = TetherTextSecondary,
+            fontWeight = FontWeight.SemiBold,
+        )
+        queued.forEach { message ->
+            QueuedRow(
+                message = message,
+                busy = message.id in cancelling,
+                onCancel = { onCancel(message.id) },
+            )
+        }
+    }
+}
+
+/**
+ * Une entrée de la file, **avec son mode dit en clair**.
+ *
+ * ⚠️ Le libellé est **traduit du mode**, jamais deviné : `steer` -> « corrige le tour en cours »,
+ * `queue` -> « attend son tour ». Afficher « en file » pour les deux jetterait précisément
+ * l'information qui explique ce qui va se passer.
+ */
+@Composable
+private fun QueuedRow(
+    message: ChatMessage,
+    busy: Boolean,
+    onCancel: () -> Unit,
+) {
+    val modeLabel = if (message.isSteering) "corrige le tour en cours" else "attend son tour"
+    val tint = if (message.isSteering) TetherAccent else TetherTextSecondary
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(TetherDimensions.cornerMd))
+            .background(TetherComposerSurface)
+            .border(1.dp, TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerMd))
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Lucide.Hourglass,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(13.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = message.text.ifBlank { "Message sans texte" },
+                style = MaterialTheme.typography.bodySmall,
+                color = TetherTextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(text = modeLabel, style = TetherDataStyle, color = tint)
+        }
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+                color = TetherAccent,
+            )
+        } else {
+            // ⚠️ `X` est une icône **universelle** d'annulation, mais sa description dit l'objet
+            // précis : « Annuler ce message », pas « Fermer » — un lecteur d'écran doit savoir ce
+            // qu'il annule.
+            IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Lucide.X,
+                    contentDescription = "Annuler ce message en attente",
+                    tint = TetherTextSecondary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
     }
 }
 

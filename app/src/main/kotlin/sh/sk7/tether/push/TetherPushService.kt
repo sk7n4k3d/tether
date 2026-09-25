@@ -2,14 +2,8 @@ package sh.sk7.tether.push
 
 import java.net.HttpURLConnection
 import java.net.URL
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.PushService
 import org.unifiedpush.android.connector.UnifiedPush
@@ -71,7 +65,7 @@ class TetherPushService : PushService() {
         notify(
             applicationContext,
             visible.ifBlank { "Nouvelle activité sur opencode" },
-            sessionID = sessionID,
+            hintSessionID = sessionID,
         )
     }
 
@@ -88,15 +82,13 @@ class TetherPushService : PushService() {
     companion object {
         private const val TAG = "TetherPush"
 
-        /** Canal de notification. Un seul : les alertes opencode sont de meme nature. */
-        const val CHANNEL_ID = "opencode"
-
         /**
-         * Cree le canal puis affiche la notification.
+         * Délègue à [TetherNotifier], qui porte la règle de notification.
          *
-         * ⚠️ Sur Android 13+, `POST_NOTIFICATIONS` est obligatoire : sans elle,
-         * `NotificationManagerCompat.notify` **ne leve pas**, il ne se passe simplement rien.
-         * On verifie donc explicitement, et on trace — un silence inexplique coute des heures.
+         * ⚠️ Cette méthode n'était qu'un « affiche et oublie ». Elle ne savait ni si l'app était
+         * au premier plan (tâche 2.2), ni si une décision attendait (tâche 2.4), ni où mener le
+         * tap (tâche 2.5). La logique vit désormais dans [TetherNotifier], et la **décision** dans
+         * [decideNotification], testable sans Android.
          */
         /**
          * La ligne que le plugin ajoute au corps du message pour porter la session.
@@ -107,79 +99,27 @@ class TetherPushService : PushService() {
          */
         private val SESSION_MARKER = Regex("tether:session=(\\S+)")
 
-        fun notify(context: Context, text: String, sessionID: String? = null) {
-            val manager = NotificationManagerCompat.from(context)
-            if (!manager.areNotificationsEnabled()) {
-                Log.w(TAG, "notifications desactivees : rien ne s'affichera")
-                return
-            }
-
-            ensureChannel(context)
-
-            // ⚠️ **Le deep link est indispensable, et son absence etait un vrai bug.**
-            //
-            // Avant, l'intent n'emportait rien (« l'app relira l'etat ») : taper une notification
-            // ouvrait l'app sur la **derniere session utilisee**, pas sur celle qui avait
-            // declenche l'alerte. Avec plusieurs sessions en cours, la notification previent
-            // sans dire de quoi — et on peut meme lire la mauvaise conversation en croyant
-            // repondre a l'agent.
-            //
-            // ⚠️ La session arrive par le **corps** du message (`tether:session=...`), pas par un
-            // en-tete : mesure du 2026-09-25, un distributeur UnifiedPush ne transmet a l'app que
-            // la charge utile (2 extras selon la spec Android). Les en-tetes ntfy sont perdus.
-            val intent = Intent(context, sh.sk7.tether.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                if (sessionID != null) {
-                    data = android.net.Uri.parse("opencode://session/$sessionID")
-                }
-            }
-            val pending = PendingIntent.getActivity(
-                context,
-                // ⚠️ Code de requete **distinct par session** : deux notifications de deux
-                // sessions differentes doivent ouvrir leur propre conversation. Un code fige
-                // ferait que la seconde ecraserait l'intent de la premiere (FLAG_UPDATE_CURRENT).
-                sessionID?.hashCode() ?: 0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
-                .setContentTitle("opencode")
-                .setContentText(text)
-                // Texte long replie : une notification tronquee perd l'information utile.
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setContentIntent(pending)
-                .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .build()
-
-            try {
-                manager.notify(NOTIFICATION_ID, notification)
-            } catch (e: SecurityException) {
-                // Cas reel : permission refusee entre-temps par l'utilisateur.
-                Log.w(TAG, "notification refusee par le systeme", e)
-            }
+        /**
+         * Delegue a [TetherNotifier], qui porte la regle de notification.
+         *
+         * ⚠️ Cette methode n'etait qu'un « affiche et oublie ». Elle ne savait ni si l'app etait
+         * au premier plan (tache 2.2), ni si une decision attendait (tache 2.4), ni ou mener le
+         * tap (tache 2.5). La logique vit desormais dans [TetherNotifier], et la **decision** dans
+         * [decideNotification], testable sans Android.
+         *
+         * ⚠️ `hintSessionID` vient du **corps** du message, et n'est qu'un **indice** : le topic
+         * relais accepte des publications anonymes, donc rien n'empeche un tiers d'y ecrire
+         * `tether:session=<n'importe quoi>`. Il n'est jamais cru sur parole — [TetherNotifier] le
+         * confronte aux sessions qu'il connait deja, et ignore un identifiant inconnu.
+         *
+         * Mesure a l'origine : le `Click:` du plugin n'arrive jamais (UnifiedPush ne transmet que
+         * la charge utile). Sans cet indice, taper une notification ouvrait la **derniere session
+         * utilisee** au lieu de celle qui avait declenche l'alerte.
+         */
+        fun notify(context: Context, text: String, hintSessionID: String? = null) {
+            TetherNotifier.show(context, text, hintSessionID)
         }
 
-        private const val NOTIFICATION_ID = 1001
-
-        private fun ensureChannel(context: Context) {
-            val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            if (nm.getNotificationChannel(CHANNEL_ID) != null) return
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "opencode",
-                    // IMPORTANCE_DEFAULT et non HIGH : une alerte opencode informe, elle
-                    // n'exige pas de reaction immediate. Le canal reste modifiable par
-                    // l'utilisateur, qui peut le monter s'il le veut.
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                ).apply {
-                    description = "Alertes des sessions opencode"
-                },
-            )
-        }
     }
 }
 

@@ -257,6 +257,60 @@ class EventReducerTest {
     }
 
     @Test
+    fun `inbox enqueued conserve le mode de livraison`() {
+        // ⚠️ Forme reelle capturee le 2026-09-25 : `item.delivery` vaut `queue`/`steer`. La
+        // distinction corrige le tour en cours vs attend son tour etait jetee par l'app.
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev(
+                "session.inbox.enqueued",
+                """{"inboxID":"msg_q","item":{"type":"user","payload":{"text":"attends"},"delivery":"queue"}}""",
+            ),
+        )
+
+        assertEquals("queue", s.messages.single().delivery)
+        assertEquals(true, s.messages.single().isQueued)
+    }
+
+    @Test
+    fun `inbox delivered retire le marqueur sans retirer le message`() {
+        // ⚠️ Mesure : un message en file n'apparait PAS dans `GET /message` (count 0). Donc la
+        // resync REST ne peut pas retirer le mode : c'est `session.inbox.delivered` qui le fait.
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(
+            s,
+            ev(
+                "session.inbox.enqueued",
+                """{"inboxID":"msg_q","item":{"type":"user","payload":{"text":"attends"},"delivery":"queue"}}""",
+            ),
+        )
+        s = EventReducer.reduce(s, ev("session.inbox.delivered", """{"inboxID":"msg_q"}"""))
+
+        assertEquals(1, s.messages.size, "le message livre reste dans la conversation")
+        assertEquals(null, s.messages.single().delivery, "il n'est plus en file")
+    }
+
+    @Test
+    fun `inbox delivered sans marqueur ne fait rien`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(
+            s,
+            ev("session.inbox.enqueued", """{"inboxID":"msg_u","item":{"type":"user","payload":{"text":"salut"}}}"""),
+        )
+        s = EventReducer.reduce(s, ev("session.inbox.delivered", """{"inboxID":"msg_u"}"""))
+
+        assertEquals(1, s.messages.size)
+    }
+
+    @Test
+    fun `inbox delivered pour un id inconnu ne fait rien`() {
+        val before = SessionUiState(sessionID = "ses_1")
+        val after = EventReducer.reduce(before, ev("session.inbox.delivered", """{"inboxID":"msg_nope"}"""))
+
+        assertEquals(before, after)
+    }
+
+    @Test
     fun `inbox delivered ne duplique pas le message`() {
         var s = SessionUiState(sessionID = "ses_1")
         s = EventReducer.reduce(

@@ -35,6 +35,106 @@ class ChatMessageMapperTest {
         assertEquals("bonjour", ChatMessageMapper.fromDto(dto)?.text)
     }
 
+    // ------------------------------------------------------------------
+    // File d'attente (palier 1.8)
+    // ------------------------------------------------------------------
+
+    private fun inboxItem(
+        id: String,
+        text: String?,
+        delivery: String?,
+    ) = sh.sk7.tether.data.api.InboxItemDto(
+        id = id,
+        type = "user",
+        payload = text?.let { jsonObject("""{"text":"$it"}""") },
+        delivery = delivery,
+    )
+
+    @Test
+    fun `une entree d inbox porte son texte et son mode`() {
+        // ⚠️ Forme reelle capturee le 2026-09-25 : `payload={"text":"…"}`, `delivery` chaine.
+        val message = ChatMessageMapper.fromInbox(inboxItem("msg_q", "attends", "queue"))
+
+        assertEquals("attends", message.text)
+        assertEquals("queue", message.delivery)
+        assertTrue(message.isQueued)
+        assertEquals(false, message.isSteering)
+    }
+
+    @Test
+    fun `steer se distingue de queue`() {
+        // ⚠️ C'est la distinction que l'app jetait (issue #32157) : `steer` corrige le tour en
+        // cours, `queue` attend son tour. Les confondre perd exactement ce qui explique la suite.
+        assertTrue(ChatMessageMapper.fromInbox(inboxItem("msg_s", "corrige", "steer")).isSteering)
+        assertEquals(false, ChatMessageMapper.fromInbox(inboxItem("msg_q", "attends", "queue")).isSteering)
+    }
+
+    @Test
+    fun `une entree d inbox sans texte garde sa charge brute`() {
+        // ⚠️ Piece jointe, `move`, `compaction` : on ne jette pas le message, on garde la charge.
+        val message = ChatMessageMapper.fromInbox(
+            sh.sk7.tether.data.api.InboxItemDto(
+                id = "msg_attach",
+                type = "user",
+                payload = jsonObject("""{"attachment":"photo.png"}"""),
+                delivery = "queue",
+            ),
+        )
+
+        assertNotNull(message.rawFallback)
+        assertEquals("", message.text)
+        assertTrue(message.isQueued)
+    }
+
+    @Test
+    fun `mergeInbox rafraichit le mode d un message deja affiche`() {
+        // ⚠️ Le serveur peut basculer `queue` -> `steer` par `PATCH`. On suit la verite serveur
+        // sans dupliquer la ligne.
+        val existing = listOf(ChatMessageMapper.fromInbox(inboxItem("msg_1", "texte", "queue")))
+        val inbox = listOf(ChatMessageMapper.fromInbox(inboxItem("msg_1", "texte", "steer")))
+
+        val merged = ChatMessageMapper.mergeInbox(existing, inbox)
+
+        assertEquals(1, merged.size)
+        assertEquals("steer", merged.single().delivery)
+    }
+
+    @Test
+    fun `mergeInbox retire le marqueur d un message livre et le conserve`() {
+        // ⚠️ Un message absent de l'inbox n'attend plus : il a ete livre. Le SUPPRIMER ferait
+        // disparaitre un message que l'agent a recu — l'inverse de la verite.
+        val existing = listOf(ChatMessageMapper.fromInbox(inboxItem("msg_1", "texte", "queue")))
+
+        val merged = ChatMessageMapper.mergeInbox(existing, emptyList())
+
+        assertEquals(1, merged.size)
+        assertEquals(null, merged.single().delivery)
+        assertEquals("texte", merged.single().text)
+    }
+
+    @Test
+    fun `mergeInbox ajoute a la fin une entree inconnue`() {
+        val existing = listOf(
+            sh.sk7.tether.domain.model.ChatMessage(id = "msg_a", role = Role.Assistant, text = "reponse"),
+        )
+        val inbox = listOf(ChatMessageMapper.fromInbox(inboxItem("msg_q", "en attente", "queue")))
+
+        val merged = ChatMessageMapper.mergeInbox(existing, inbox)
+
+        assertEquals(listOf("msg_a", "msg_q"), merged.map { it.id })
+    }
+
+    @Test
+    fun `mergeInbox ne touche pas aux messages qui n attendent pas`() {
+        val existing = listOf(
+            sh.sk7.tether.domain.model.ChatMessage(id = "msg_u", role = Role.User, text = "envoye"),
+        )
+
+        val merged = ChatMessageMapper.mergeInbox(existing, emptyList())
+
+        assertEquals(existing, merged)
+    }
+
     @Test
     fun `un message assistant fusionne texte raisonnement et outils`() {
         val dto = MessageDto(

@@ -20,7 +20,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +78,25 @@ fun PermissionsScreen(
     viewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // ⚠️ 2.4 — Quand la file se vide, l'alerte persistante n'a plus d'objet. On la retire **ici**
+    // et non dans le ViewModel : cela evite d'y injecter un `Context` (donc de rendre le ViewModel
+    // dependant d'Android et intestable), et l'ecran est precisement celui ou l'utilisateur vient
+    // de traiter la demande.
+    //
+    // ⚠️ On n'agit **que** sur la transition « il y avait quelque chose -> il n'y a plus rien » :
+    // retirer la notification a chaque recomposition, ou au premier chargement sans rien a
+    // approuver, annulerait une alerte legitime postee alors que l'ecran n'etait pas ouvert.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var hadPending by remember { mutableStateOf(false) }
+    LaunchedEffect(state.hasAny) {
+        if (state.hasAny) {
+            hadPending = true
+        } else if (hadPending) {
+            sh.sk7.tether.push.TetherNotifier.clearOngoing(context)
+            hadPending = false
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         when {

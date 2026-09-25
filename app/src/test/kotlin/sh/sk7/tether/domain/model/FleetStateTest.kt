@@ -261,4 +261,62 @@ class FleetStateTest {
         assertEquals(0, state.waitingCount)
         assertEquals(1, state.queued.size)
     }
+
+    // ------------------------------------------------------------------
+    // Sous-agents actifs (palier 1.7)
+    // ------------------------------------------------------------------
+
+    private fun sub(
+        id: String,
+        parent: String,
+        activity: Activity,
+        idleAt: Long? = null,
+    ) = SessionActivity(sessionID = id, activity = activity, parentID = parent, idleAt = idleAt)
+
+    @Test
+    fun `seuls les sous-agents actifs sont retenus`() {
+        // ⚠️ 109 sessions sur 200 portent un parent. Un sous-agent `Idle`/`Unseen` ne doit pas
+        // apparaitre comme « actif » : le badge annoncerait du travail qui n'existe pas.
+        val state = fleet(
+            sub("s1", "p", Activity.Running),
+            sub("s2", "p", Activity.Unseen, idleAt = 100),
+            sub("s3", "p", Activity.Idle),
+            session("root", Activity.Running),
+        )
+
+        assertEquals(1, state.activeSubagents.size)
+        assertEquals("s1", state.activeSubagents.single().sessionID)
+    }
+
+    @Test
+    fun `un sous-agent qui attend une autorisation compte comme actif`() {
+        // ⚠️ Il est present dans `/api/session/active` et il immobilise un travail : le ranger
+        // avec « calme » serait l'omission qu'on corrige.
+        val state = fleet(sub("s1", "p", Activity.Waiting))
+
+        assertEquals(1, state.activeSubagents.size)
+    }
+
+    @Test
+    fun `une session racine en cours n est pas un sous-agent actif`() {
+        // ⚠️ `parentID == null` : c'est une session principale, elle a sa propre ligne.
+        val state = fleet(session("root", Activity.Running))
+
+        assertTrue(state.activeSubagents.isEmpty())
+    }
+
+    @Test
+    fun `le compte de sous-agents actifs est par parent`() {
+        val state = fleet(
+            sub("s1", "p1", Activity.Running),
+            sub("s2", "p1", Activity.Running),
+            sub("s3", "p2", Activity.Running),
+            sub("s4", "p2", Activity.Idle),
+        )
+
+        assertEquals(2, state.activeSubagentCount("p1"))
+        assertEquals(1, state.activeSubagentCount("p2"))
+        assertEquals(0, state.activeSubagentCount("p3"))
+        assertEquals(setOf("p1", "p2"), state.activeSubagentParents)
+    }
 }

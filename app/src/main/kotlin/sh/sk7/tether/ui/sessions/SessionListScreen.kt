@@ -229,14 +229,25 @@ fun SessionListScreen(
                     // donc l'ensemble des parents OUVERTS (et non l'inverse), pour que le
                     // defaut soit « replie » sans avoir a pre-remplir la liste.
                     var expandedParents by remember { mutableStateOf(emptySet<String>()) }
+                    // ⚠️ **Exception au repli par defaut : un parent dont un sous-agent TRAVAILLE
+                    // est deplie d'office.** Sinon un sous-agent actif resterait invisible tant
+                    // qu'on n'a pas pense a cliquer — et 109 sessions sur 200 sont des
+                    // sous-agents, donc c'est le cas courant, pas l'exception.
+                    //
+                    // ⚠️ On distingue le **repli explicite** de l'utilisateur du repli par defaut :
+                    // sans cela, replier un parent actif le rouvrirait aussitot, ce qui donne un
+                    // controle qui ne repond pas. `collapsedParents` retient ces choix-la seuls.
+                    var collapsedParents by remember { mutableStateOf(emptySet<String>()) }
+                    val activeParents = fleet.activeSubagentParents
+                    val effectiveExpanded = (expandedParents + activeParents) - collapsedParents
                     // ⚠️ ORDRE : on filtre par RECHERCHE **avant** de replier les sous-agents.
                     // L'inverse perdrait les enfants d'un parent qui ne matche pas mais dont un
                     // enfant matche — exactement le cas « je cherche le nom d'un sous-agent ».
                     val searched = remember(items, query) { SessionSearch.filter(items, query) }
                     // Liste rendue : un parent replie masque ses enfants.
-                    val folded = remember(searched, expandedParents) {
+                    val folded = remember(searched, effectiveExpanded) {
                         searched.filter { item ->
-                            item.parentID == null || item.parentID in expandedParents
+                            item.parentID == null || item.parentID in effectiveExpanded
                         }
                     }
                     // ⚠️ Les epinglees remontent EN TETE. Sans ce tri, epingler ne servirait qu'a
@@ -287,14 +298,25 @@ fun SessionListScreen(
                                     // si la session en a (sinon aucun controle inutile).
                                     onToggleSubs = if (item.childCount > 0) {
                                         {
-                                            expandedParents = if (item.id in expandedParents) {
-                                                expandedParents - item.id
+                                            // ⚠️ On tient DEUX ensembles : cliquer replie un parent
+                                            // actif (et ce repli doit tenir malgre l'ouverture
+                                            // automatique), cliquer rouvre un parent replie.
+                                            val shown = item.id in effectiveExpanded
+                                            if (shown) {
+                                                expandedParents = expandedParents - item.id
+                                                collapsedParents = collapsedParents + item.id
                                             } else {
-                                                expandedParents + item.id
+                                                collapsedParents = collapsedParents - item.id
+                                                expandedParents = expandedParents + item.id
                                             }
                                         }
                                     } else null,
-                                    subsExpanded = item.id in expandedParents,
+                                    subsExpanded = item.id in effectiveExpanded,
+                                    // ⚠️ Le nombre de sous-agents **actifs** est distinct du
+                                    // nombre d'enfants : il dit qu'il se passe quelque chose
+                                    // meme quand la branche est repliee. C'est la reponse
+                                    // a « est-ce que ma delegation tourne ? ».
+                                    activeSubs = fleet.activeSubagentCount(item.id),
                                     onClick = { onOpenSession(item.id) },
                                     // Options de session : chaque action ouvre une route qui
                                     // existe cote serveur (PATCH, fork, interrupt, compact,
@@ -816,6 +838,23 @@ private fun FleetHeader(fleet: FleetState) {
             if (fleet.running.isNotEmpty()) Counter("${fleet.running.size} en cours", TetherAccent)
             if (fleet.queued.isNotEmpty()) Counter("${fleet.queued.size} en file", TetherTextSecondary)
             if (fleet.liveShells.isNotEmpty()) Counter("${fleet.liveShells.size} shell", TetherTextSecondary)
+            // ⚠️ **La limite est dite, pas cachée.** `/api/session/active` est globale (aucun
+            // paramètre `directory`, mesuré) : un sous-agent actif y figure toujours, mais il
+            // n'apparaît ici **que si sa session a été chargée**, c'est-à-dire si elle travaille
+            // dans le répertoire configuré. On écrit donc « ici » plutôt qu'un « aucun
+            // sous-agent actif » qui serait faux dès qu'un autre projet tourne.
+            if (fleet.activeSubagents.isNotEmpty()) {
+                Counter(
+                    "${fleet.activeSubagents.size} sous-agent" +
+                        if (fleet.activeSubagents.size > 1) "s actifs ici" else " actif ici",
+                    TetherAccent,
+                )
+            } else if (fleet.running.isNotEmpty()) {
+                // ⚠️ Formulation **exacte** : elle porte sur ce qu'on sait, pas sur le serveur
+                // entier. Sans le mot « ici », l'écran affirmerait un fait qu'on ne peut pas
+                // connaître (voir la limite mesurée ci-dessus).
+                Counter("aucun sous-agent actif ici", TetherTextSecondary)
+            }
         }
 
         // ⚠️ On dit l'erreur d'interrogation au lieu de la taire : un état figé qui a l'air à jour

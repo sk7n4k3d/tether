@@ -1,13 +1,25 @@
 package sh.sk7.tether
 
 import android.app.Application
+import sh.sk7.tether.push.ForegroundState
 import sh.sk7.tether.push.registerForPush
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
 class TetherApp : Application() {
+
+    /**
+     * ⚠️ Injecté sur l'`Application` (et non lu au moment du push) : le suivi du premier plan doit
+     * être branché **avant** tout affichage, sinon le premier message reçu pourrait croire que
+     * l'app est en arrière-plan alors qu'elle est ouverte.
+     */
+    @Inject
+    lateinit var foregroundState: ForegroundState
+
     override fun onCreate() {
         super.onCreate()
+        foregroundState.register(this)
         // ⚠️ L'enregistrement UnifiedPush est **idempotent** : le refaire a chaque demarrage
         // est le comportement attendu par la bibliotheque. Il echoue proprement (et sans bruit
         // pour l'utilisateur) si aucun distributeur n'est installe : l'app reste utilisable,

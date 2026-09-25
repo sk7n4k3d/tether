@@ -121,6 +121,9 @@ class PermissionsViewModel @Inject constructor(
                 replying = it.replying + request.id,
             )
         }
+        // ⚠️ Si c'etait la derniere, l'alerte persistante n'a plus de raison d'etre : c'est
+        // l'ecran qui la retire en observant `hasAny` (voir [PermissionsScreen]) — le ViewModel
+        // reste ainsi sans dependance Android, donc testable.
         scope.launch {
             val settings = store.current()
             runCatching {

@@ -81,6 +81,14 @@ fun SessionRow(
     /** `null` = pas de sous-agents : le nœud n'est pas cliquable (rien a ouvrir). */
     onToggleSubs: (() -> Unit)? = null,
     subsExpanded: Boolean = false,
+    /**
+     * **Nombre de sous-agents qui travaillent en ce moment**, sous ce parent.
+     *
+     * ⚠️ Distinct de [SessionItem.childCount] : celui-ci compte les enfants connus, celui-là dit
+     * combien **tournent**. Sur 109 sous-agents pour 200 sessions, savoir qu'une branche repliée
+     * contient du travail en cours est exactement ce qui manquait.
+     */
+    activeSubs: Int = 0,
     onPin: (() -> Unit)? = null,
     pinned: Boolean = false,
     onRename: (() -> Unit)? = null,
@@ -336,6 +344,20 @@ fun SessionRow(
                 // ⚠️ Le statut est place AVANT le menu, donc toujours visible sans ouvrir quoi que
                 // ce soit. C'est la reponse directe a « je ne sais pas si tu tournes ».
                 activity?.let { ActivityBadge(it) }
+                // ⚠️ « N actif(s) » n'apparait que s'il y a du travail, et **seulement** sur un
+                // parent : un sous-agent n'a pas de sous-agents. Le libellé dit « actifs », pas
+                // « enfants » — le total connu est déjà porté par le chevron.
+                if (!isSub && activeSubs > 0) {
+                    Text(
+                        text = "$activeSubs actif" + if (activeSubs > 1) "s" else "",
+                        style = TetherDataStyle,
+                        color = TetherAccent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                            .background(TetherAccent.copy(alpha = 0.12f))
+                            .padding(horizontal = Spacing.xs, vertical = 1.dp),
+                    )
+                }
                 SessionOptionsMenu(
                     onPin = onPin,
                     pinned = pinned,
