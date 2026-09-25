@@ -94,6 +94,7 @@ fun SessionListScreen(
     val create by viewModel.create.collectAsStateWithLifecycle()
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
     val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
+    val pinnedIds by viewModel.pinnedIds.collectAsStateWithLifecycle()
     // ⚠️ La requete vit **hors** de la branche `Loaded` : si elle mourait au passage a l'etat
     // d'erreur ou de chargement, un rafraichissement rate effacerait la recherche en cours.
     var query by remember { mutableStateOf("") }
@@ -202,10 +203,17 @@ fun SessionListScreen(
                     // enfant matche — exactement le cas « je cherche le nom d'un sous-agent ».
                     val searched = remember(items, query) { SessionSearch.filter(items, query) }
                     // Liste rendue : un parent replie masque ses enfants.
-                    val visible = remember(searched, expandedParents) {
+                    val folded = remember(searched, expandedParents) {
                         searched.filter { item ->
                             item.parentID == null || item.parentID in expandedParents
                         }
+                    }
+                    // ⚠️ Les epinglees remontent EN TETE. Sans ce tri, epingler ne servirait qu'a
+                    // afficher une punaise : l'interet est de retrouver vite une session qu'on
+                    // suit. Le tri est **stable** (les non-epinglees gardent leur ordre par date)
+                    // et ne separe jamais un parent de ses enfants ouverts.
+                    val visible = remember(folded, pinnedIds) {
+                        folded.sortedByDescending { it.id in pinnedIds }
                     }
 
                     // Rafraichissement au **geste** : tirer vers le bas. C'est le geste naturel
@@ -256,6 +264,8 @@ fun SessionListScreen(
                                     // Options de session : chaque action ouvre une route qui
                                     // existe cote serveur (PATCH, fork, interrupt, compact,
                                     // DELETE).
+                                    onPin = { viewModel.togglePin(item.id) },
+                                    pinned = item.id in pinnedIds,
                                     onRename = { renaming = item },
                                     onFork = { viewModel.forkSession(item.id) },
                                     onInterrupt = { viewModel.interruptSession(item.id) },

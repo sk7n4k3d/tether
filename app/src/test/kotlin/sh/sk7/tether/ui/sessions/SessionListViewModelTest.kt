@@ -33,6 +33,7 @@ import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.domain.model.UsageStats
 import sh.sk7.tether.data.settings.ConnectionSettings
+import sh.sk7.tether.data.settings.PinnedSessions
 import sh.sk7.tether.data.settings.ConnectionStore
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -213,7 +214,22 @@ class SessionListViewModelTest {
     private fun viewModel(
         gateway: FakeGateway,
         settings: ConnectionSettings = ConnectionSettings(password = "x", directory = "/home/utilisateur"),
-    ) = SessionListViewModel(realStore(settings), gateway, Dispatchers.Unconfined)
+    ) = SessionListViewModel(
+        realStore(settings),
+        gateway,
+        // Un vrai DataStore sur un fichier temporaire : l'epinglage ne fait pas partie de ce que
+        // ces tests exercent, mais le ViewModel en depend desormais pour son tri.
+        PinnedSessions(testDataStore()),
+        Dispatchers.Unconfined,
+    )
+
+    /** DataStore jetable, isole par test. */
+    private fun testDataStore(): DataStore<Preferences> {
+        val dir = File(System.getProperty("java.io.tmpdir"), "tether-pins-test").apply { mkdirs() }
+        val file = File(dir, "pins-${UUID.randomUUID()}.preferences_pb")
+        files += file
+        return PreferenceDataStoreFactory.create(scope = scope) { file }
+    }
 
     /**
      * Attend que l'etat quitte [SessionListUiState.Loading] ou que le dialogue de creation

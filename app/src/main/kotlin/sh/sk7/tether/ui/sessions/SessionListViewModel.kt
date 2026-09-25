@@ -19,6 +19,7 @@ import sh.sk7.tether.data.api.ModelRef
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.settings.ConnectionSettings
+import sh.sk7.tether.data.settings.PinnedSessions
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
@@ -92,6 +93,7 @@ data class CreateSessionState(
 class SessionListViewModel @Inject constructor(
     private val store: ConnectionStore,
     private val gateway: OpenCodeGateway,
+    private val pinned: PinnedSessions,
     @param:IoDispatcher
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -134,6 +136,25 @@ class SessionListViewModel @Inject constructor(
      */
     private val _pendingApprovals = MutableStateFlow(0)
     val pendingApprovals: StateFlow<Int> = _pendingApprovals.asStateFlow()
+
+    /**
+     * Identifiants des sessions epinglees.
+     *
+     * ⚠️ Expose a l'UI pour qu'elle puisse **remonter** les epingles en tete de liste. Un
+     * epinglage qui ne change pas l'ordre ne sert a rien : l'interet est de retrouver vite.
+     */
+    val pinnedIds: StateFlow<Set<String>> = pinned.ids
+        .let { flow ->
+            MutableStateFlow<Set<String>>(emptySet()).also { state ->
+                scope.launch { flow.collect { state.value = it } }
+            }
+        }
+        .asStateFlow()
+
+    /** Epingle ou depingle une session. */
+    fun togglePin(sessionID: String) {
+        scope.launch { pinned.toggle(sessionID) }
+    }
 
     init {
         refresh()

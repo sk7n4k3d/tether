@@ -1,5 +1,9 @@
 package sh.sk7.tether.ui.sessions
 
+import androidx.compose.material3.Icon
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pin
+
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -69,6 +73,8 @@ fun SessionRow(
     /** `null` = pas de sous-agents : le nœud n'est pas cliquable (rien a ouvrir). */
     onToggleSubs: (() -> Unit)? = null,
     subsExpanded: Boolean = false,
+    onPin: (() -> Unit)? = null,
+    pinned: Boolean = false,
     onRename: (() -> Unit)? = null,
     onFork: (() -> Unit)? = null,
     onInterrupt: (() -> Unit)? = null,
@@ -247,6 +253,15 @@ fun SessionRow(
             // Titre + menu sur la MEME ligne. Le menu se cale a droite, et suit le titre
             // (donc il se decale avec lui sur une sous-session).
             Row(verticalAlignment = Alignment.Top) {
+                if (pinned) {
+                    Icon(
+                        imageVector = Lucide.Pin,
+                        contentDescription = "Épinglée",
+                        tint = TetherTextSecondary,
+                        modifier = Modifier.size(11.dp),
+                    )
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(Spacing.xs))
+                }
                 Text(
                     text = item.title,
                     style = if (isSub) {
@@ -260,6 +275,8 @@ fun SessionRow(
                     modifier = Modifier.weight(1f),
                 )
                 SessionOptionsMenu(
+                    onPin = onPin,
+                    pinned = pinned,
                     onRename = onRename,
                     onFork = onFork,
                     onInterrupt = onInterrupt,

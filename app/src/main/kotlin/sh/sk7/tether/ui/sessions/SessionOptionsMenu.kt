@@ -20,6 +20,7 @@ import com.composables.icons.lucide.EllipsisVertical
 import com.composables.icons.lucide.GitFork
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pencil
+import com.composables.icons.lucide.Pin
 import com.composables.icons.lucide.Scissors
 import com.composables.icons.lucide.Square
 import com.composables.icons.lucide.Trash2
@@ -50,6 +51,8 @@ import sh.sk7.tether.ui.theme.TetherTypography
  */
 @Composable
 fun SessionOptionsMenu(
+    onPin: (() -> Unit)? = null,
+    pinned: Boolean = false,
     onRename: (() -> Unit)? = null,
     onFork: (() -> Unit)? = null,
     onInterrupt: (() -> Unit)? = null,
@@ -58,6 +61,16 @@ fun SessionOptionsMenu(
     modifier: Modifier = Modifier,
 ) {
     val actions = listOfNotNull(
+        // ⚠️ « Epingler » est en PREMIER : c'est le geste le plus frequent, et le libelle dit
+        // l'etat courant (« Epingler » / « Détacher ») plutot qu'un verbe ambigu comme
+        // « Favori ». Un utilisateur doit savoir ce que le tap va faire, pas ce qu'il a fait.
+        onPin?.let {
+            SessionAction(
+                label = if (pinned) "Détacher" else "Épingler",
+                icon = Lucide.Pin,
+                onClick = it,
+            )
+        },
         onRename?.let { SessionAction("Renommer", Lucide.Pencil, it) },
         onFork?.let { SessionAction("Dupliquer (fork)", Lucide.GitFork, it) },
         onInterrupt?.let { SessionAction("Interrompre", Lucide.Square, it) },
