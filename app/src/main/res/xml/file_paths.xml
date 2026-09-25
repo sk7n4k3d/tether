@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Chemins partageables par le FileProvider.
+
+  ⚠️ Seul le **cache** est expose, et volontairement : c'est la ou sont ecrits les exports
+  Markdown, et le systeme nettoie ce repertoire de lui-meme. Exposer `filesDir` ou le stockage
+  externe donnerait acces a bien plus que ce qu'on partage.
+
+  ⚠️ `path="."` sur le cache entier (et non un sous-dossier) : Android cree deja un
+  sous-repertoire par usage dans `cacheDir`, et restreindre davantage ferait echouer l'ecriture
+  du fichier sans message clair.
+-->
+<paths>
+    <cache-path name="exports" path="." />
+</paths>

@@ -75,6 +75,23 @@
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
+        <!--
+          FileProvider : necessaire pour partager un export Markdown.
+
+          ⚠️ Sans lui, `FileProvider.getUriForFile` leve une exception et l'export echoue en
+          silence (l'erreur est seulement tracee). Un `content://` est la SEULE facon de donner
+          un fichier a une autre app sans permission de stockage : passer un `file://` ferait
+          planter le receveur sur Android 7+ (FileUriExposedException).
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

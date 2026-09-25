@@ -1,5 +1,7 @@
 package sh.sk7.tether.ui.chat
 
+import com.composables.icons.lucide.Download
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -93,6 +95,20 @@ fun ChatScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    // L'export produit un fichier puis ouvre la feuille de partage du systeme : l'utilisateur
+    // choisit sa destination (fichiers, mail, depot, note…). On n'impose pas un chemin.
+    var exporting by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(exporting) {
+        if (!exporting) return@LaunchedEffect
+        val markdown = SessionExporter.toMarkdown(
+            title = state.title ?: "Conversation",
+            sessionID = state.sessionID,
+            state = state.chat,
+        )
+        shareMarkdown(context, state.title ?: "conversation", markdown)
+        exporting = false
+    }
 
     // Auto-scroll pendant le stream.
     //
@@ -198,6 +214,14 @@ fun ChatScreen(
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Lucide.ArrowLeft, contentDescription = "Retour")
+                        }
+                    },
+                    actions = {
+                        // ⚠️ L'export est une action d'ECRAN, pas de message : on exporte la
+                        // conversation entiere. Le mettre dans le menu d'un message laisserait
+                        // croire qu'on n'exporte que lui.
+                        IconButton(onClick = { exporting = true }) {
+                            Icon(Lucide.Download, contentDescription = "Exporter la conversation")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -611,5 +635,50 @@ private fun RawFallback(raw: String) {
             color = TetherTextSecondary,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+/**
+ * **Partage d'un export Markdown** via la feuille du systeme.
+ *
+ * ### Pourquoi un fichier et pas juste du texte
+ * ⚠️ Un long export depose dans le presse-papiers est inutilisable sur mobile : on ne peut pas
+ * le coller utilement, et il disparait au redemarrage. Un **fichier** se range, s'envoie et
+ * s'ouvre — c'est ce que l'utilisateur veut faire d'un export.
+ *
+ * ⚠️ `Intent.createChooser` est obligatoire : sans lui, Android prend l'application par defaut
+ * et l'utilisateur ne choisit rien. Le partage doit toujours passer par la feuille de choix.
+ *
+ * ⚠️ Le fichier est ecrit dans le **cache** de l'app : c'est le seul repertoire partageable sans
+ * permission de stockage, et le systeme le nettoie de lui-meme.
+ */
+private fun shareMarkdown(
+    context: android.content.Context,
+    title: String,
+    markdown: String,
+) {
+    runCatching {
+        // Nom de fichier assaini : une barre oblique dans un titre ferait echouer l'ecriture.
+        val safe = title.replace(Regex("[^\\p{L}\\p{N} _-]"), "").trim().take(40)
+            .ifBlank { "conversation" }
+        val file = java.io.File(context.cacheDir, "$safe.md")
+        file.writeText(markdown)
+
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/markdown"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, title)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            android.content.Intent.createChooser(intent, "Partager la conversation"),
+        )
+    }.onFailure {
+        android.util.Log.w("TetherChat", "export impossible", it)
     }
 }
