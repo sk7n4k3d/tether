@@ -76,7 +76,16 @@ sealed interface SessionListUiState {
         val refreshing: Boolean = false,
     ) : SessionListUiState
 
-    data class Error(val message: String) : SessionListUiState
+    /**
+     * @param unauthorized vrai si le serveur a **refuse les identifiants**, faux s'il est
+     *        injoignable. ⚠️ Le fait est porte par l'etat, pas redevine par l'UI en testant le
+     *        texte du message : c'est ce qui rend la distinction fiable. Les confondre envoie
+     *        l'utilisateur chercher un probleme reseau quand son mot de passe est faux.
+     */
+    data class Error(
+        val message: String,
+        val unauthorized: Boolean = false,
+    ) : SessionListUiState
 }
 
 /** Etat du dialogue de creation de session. */
@@ -212,7 +221,7 @@ class SessionListViewModel @Inject constructor(
                 _state.value = loaded.copy(refreshing = false)
                 val message = ConnectionErrors.describe(e)
                 _sessionError.value = message
-                monitor.markOffline(message, unauthorized = isUnauthorized(message))
+                monitor.markOffline(message, unauthorized = ConnectionErrors.isUnauthorized(e))
             }
         }
     }
@@ -235,8 +244,9 @@ class SessionListViewModel @Inject constructor(
                 )
             } catch (e: Exception) {
                 val message = ConnectionErrors.describe(e)
-                monitor.markOffline(message, unauthorized = isUnauthorized(message))
-                _state.value = SessionListUiState.Error(message)
+                val unauthorized = ConnectionErrors.isUnauthorized(e)
+                monitor.markOffline(message, unauthorized = unauthorized)
+                _state.value = SessionListUiState.Error(message, unauthorized = unauthorized)
             }
         }
     }
@@ -247,9 +257,6 @@ class SessionListViewModel @Inject constructor(
      * ⚠️ La distinction change ce qu'on dit a l'utilisateur : « verifie ton mot de passe » contre
      * « la machine est peut-etre eteinte ». Les confondre l'enverrait chercher au mauvais endroit.
      */
-    private fun isUnauthorized(message: String): Boolean =
-        message.contains("401") || message.contains("403")
-
     /** La version du serveur, quand on peut l'obtenir. Un echec rend `null`, jamais une erreur. */
     private suspend fun _healthVersion(settings: ConnectionSettings): String? =
         runCatching { gateway.info(settings).version }.getOrNull()
@@ -313,9 +320,19 @@ class SessionListViewModel @Inject constructor(
      * la selection vide dans le menu deroulant.
      */
     private fun defaultModel(sessions: List<Session>, models: List<Model>): ModelRef? {
-        val matching = sessions.firstNotNullOfOrNull { session ->
-            session.model?.let { ref -> models.firstOrNull { it.matches(ref) } }
-        }
+        // ⚠️ **On trie AVANT de prendre le premier.** Sans le tri, `firstNotNullOfOrNull` prend
+        // la premiere session dans l'ordre **du serveur** — or cet ordre n'est pas contractuel, et
+        // le commentaire de cette fonction annoncait « la session la plus recente ». Le test
+        // existant passait parce que son faux ne rendait qu'une seule session : il validait un
+        // comportement que la production ne garantissait pas.
+        //
+        // ⚠️ `time.updated` peut etre absent : on trie sur ce qu'on a, en mettant les sessions
+        // sans horodatage en dernier, plutot qu'en les excluant (elles portent un modele valide).
+        val matching = sessions
+            .sortedByDescending { it.time?.updated ?: it.time?.created ?: 0L }
+            .firstNotNullOfOrNull { session ->
+                session.model?.let { ref -> models.firstOrNull { it.matches(ref) } }
+            }
         return (matching ?: models.firstOrNull())?.toRef()
     }
 

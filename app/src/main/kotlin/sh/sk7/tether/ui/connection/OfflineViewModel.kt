@@ -91,7 +91,11 @@ class OfflineViewModel @Inject constructor(
                 _state.update { it.copy(checking = false) }
             } catch (e: Exception) {
                 val message = ConnectionErrors.describe(e)
-                val unauthorized = message.contains("401") || message.contains("403", ignoreCase = true)
+                // ⚠️ On teste le TYPE de l'erreur, jamais le texte : le message est une
+                // traduction d'affichage, elle peut changer sans que la cause change. C'est
+                // exactement le bug qu'on corrige ici (l'ancien test sur « 401 » etait toujours
+                // faux, puisque `describe` n'ecrit pas les chiffres).
+                val unauthorized = ConnectionErrors.isUnauthorized(e)
                 monitor.markOffline(message, unauthorized)
                 _state.update { it.copy(checking = false) }
             }

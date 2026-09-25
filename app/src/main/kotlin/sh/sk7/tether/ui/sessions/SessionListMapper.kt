@@ -63,13 +63,32 @@ data class SessionItem(
      */
     val branchActive: Boolean = false,
 ) {
-    /** Etat du nœud sur le fil (voir [sh.sk7.tether.ui.theme.TetherRail]). */
+    /**
+     * Etat du nœud sur le fil (voir [sh.sk7.tether.ui.theme.TetherRail]).
+     *
+     * ### ⚠️ Ce champ ne dit PAS si la session tourne
+     * Il dit **ce que le serveur a annonce du dernier tour** : un `outcome` absent signifie
+     * seulement « pas de verdict enregistre ». Mesure sur une capture reelle de 50 sessions :
+     * **10 ont `outcome == null`** sans tourner pour autant.
+     *
+     * ⚠️ Confondre les deux faisait pulser 10 nœuds « en cours » sur des sessions au repos — et
+     * l'utilisateur apprend a ignorer le signal, ce qui detruit la valeur de tout l'ecran.
+     *
+     * **La seule source d'etat d'execution est `/api/session/active`**, lue par
+     * [sh.sk7.tether.data.activity.ActivityMonitor] et exposee en `FleetState`. L'apparence qui
+     * depend de l'activite doit venir de la, jamais d'ici.
+     *
+     * ⚠️ On garde ce champ pour ce qu'il sait vraiment : **afficher l'issue** d'un tour termine
+     * (succes, echec, interruption). C'est une information differente et legitime.
+     */
     val nodeState: NodeState
-        get() = when {
-            outcome == null -> NodeState.Active          // pas d'outcome = tour en cours
-            outcome == "succeeded" -> NodeState.Done
-            outcome == "interrupted" -> NodeState.Failed
-            outcome == "failed" -> NodeState.Failed
+        get() = when (outcome) {
+            "succeeded" -> NodeState.Done
+            "interrupted" -> NodeState.Failed
+            "failed" -> NodeState.Failed
+            // ⚠️ `null` (aucun verdict enregistre) n'est PAS « en cours » : c'est « on ne sait
+            // pas », et un etat inconnu se dessine comme un etat neutre, pas comme une activite.
+            null -> NodeState.Idle
             else -> NodeState.Done
         }
 }

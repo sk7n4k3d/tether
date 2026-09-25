@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Activity
+import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide

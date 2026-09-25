@@ -51,6 +51,18 @@ object NetworkModule {
     @Singleton
     fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
         configureTether()
+        // ⚠️ **INDISPENSABLE, ET SON ABSENCE ETAIT UN BUG MAJEUR.** Ktor 2.x a
+        // `expectSuccess = false` par defaut : un 4xx/5xx ne leve **rien**, la reponse est
+        // simplement rendue telle quelle. Or TOUT le traitement d'erreur de l'app repose sur
+        // `ClientRequestException` (`ConnectionErrors.describe`, `isUnauthorized`) : sans ce
+        // reglage, aucune de ces branches n'etait atteinte.
+        //
+        // Ce qui se passait reellement avec un mauvais mot de passe : le serveur rend **401 avec
+        // un corps vide** (verifie), le client essaie de le deserialiser, et echoue avec une
+        // **erreur de decodage JSON**. L'utilisateur voyait « Echec de la connexion :
+        // JsonConvertException. » — un message incomprehensible, qui ne dit ni que le mot de passe
+        // est faux, ni qu'il faut le changer.
+        expectSuccess = true
         install(HttpTimeout) {
             connectTimeoutMillis = 5_000
             requestTimeoutMillis = 20_000
