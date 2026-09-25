@@ -16,6 +16,7 @@ import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.domain.model.SessionUiState
 import sh.sk7.tether.domain.model.ToolCall
+import sh.sk7.tether.domain.model.ToolPayload
 import sh.sk7.tether.domain.model.ToolStatus
 
 /**
@@ -294,12 +295,22 @@ object EventReducer {
     // ------------------------------------------------------------------
 
     /**
-     * Traitement **provisoire** des evenements d'outil.
+     * Traitement des evenements d'outil.
      *
-     * ⚠️ Aucune capture reelle n'existe : ni les noms d'evenements, ni les noms de champs
-     * ne sont mesures. On accepte donc plusieurs identifiants plausibles et, si aucun
-     * n'est un texte non vide, on renvoie l'etat **inchange** (jamais d'entree corrompue).
-     * A confirmer par capture reelle en Phase 2.
+     * ⚠️ **Formes desormais MESUREES** (capture du flux du 2026-09-25), elles ne sont plus
+     * supposees. Un tour reel produit, dans cet ordre :
+     *  - `session.tool.input.started` : `{id, name}` — l'outil est choisi, sans entree ;
+     *  - `session.tool.input.ended`   : `{id, text}` — l'entree, en **chaine JSON** ;
+     *  - `session.tool.called`        : `{id, input:{…}, executed}` — l'entree, en **objet** ;
+     *  - `session.tool.progress`      : `{id, metadata:{shellID}}` ;
+     *  - `session.tool.success`       : `{id, content:[{type,text}], metadata:{status,exit}}`.
+     *
+     * ⚠️ **Ce qui manquait, et pourquoi c'etait visible** : la sortie et le resume n'etaient
+     * remplis que par le chemin REST ([sh.sk7.tether.ui.chat.ChatMessageMapper]). Pendant un tour,
+     * rien ne les remplissait — la carte affichait « shell  en cours » **sans dire ce que
+     * l'outil avait recu ni produit**. C'est le reproche exact de Bastien sur l'affichage en
+     * direct. Les regles de lecture vivent maintenant dans
+     * [sh.sk7.tether.domain.model.ToolPayload], partagees par les deux chemins.
      */
     private fun onToolEvent(state: SessionUiState, data: JsonObject, status: ToolStatus, at: Long?): SessionUiState {
         val id = data.str("toolCallID")
@@ -316,11 +327,18 @@ object EventReducer {
         } else {
             status
         }
+        // ⚠️ Le resume et la sortie se **cumulent** au fil des evenements : chaque type n'en
+        // porte qu'une partie (`called` l'entree, `success` le resultat). On garde ce qui est
+        // deja connu quand l'evenement courant ne dit rien, sinon la carte se viderait au
+        // passage de `called` a `success`.
+        val input = ToolPayload.extractInput(data)
         val updated = ToolCall(
             id = id,
             name = name,
             status = effective,
             raw = data.toJsonString(),
+            summary = input?.let(ToolPayload::summarizeInput) ?: existing?.summary,
+            output = ToolPayload.extractOutput(data) ?: existing?.output,
             // A la creation on retient le debut ; sinon on conserve celui deja connu.
             startedAt = existing?.startedAt ?: at,
         )

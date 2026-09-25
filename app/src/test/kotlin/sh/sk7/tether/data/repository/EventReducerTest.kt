@@ -445,6 +445,66 @@ class EventReducerTest {
         assertTrue(s.streamingTools.isEmpty())
     }
 
+    // ---------------------------------------------------------------------
+    // Ce que l'outil a RECU et PRODUIT, pendant le tour
+    //
+    // ⚠️ Ces tests portent sur des charges **capturees du flux reel** (2026-09-25). Avant,
+    // seuls les messages termines (chemin REST) remplissaient `summary`/`output` : pendant un
+    // tour, la carte affichait « shell  en cours » sans rien dire de plus. C'est le reproche
+    // exact de Bastien sur l'affichage en direct.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `session tool called remplit le resume depuis l'objet input`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.tool.input.started", """{"sessionID":"ses_1","id":"call_8p","name":"shell"}"""))
+        s = EventReducer.reduce(
+            s,
+            ev("session.tool.called", """{"id":"call_8p","input":{"command":"uname -a; echo \"---\"; hostname"},"executed":false}"""),
+        )
+        // Le resume EST ce que l'outil a recu : sans lui, « shell ok » ne dit rien.
+        assertEquals("uname -a; echo \"---\"; hostname", s.streamingTools.single().summary)
+    }
+
+    @Test
+    fun `session tool input ended remplit le resume depuis la chaine JSON`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.tool.input.started", """{"id":"call_8p","name":"shell"}"""))
+        // ⚠️ Forme reelle : l'entree arrive en **chaine JSON** sous `text`, PAS en objet.
+        s = EventReducer.reduce(s, ev("session.tool.input.ended", """{"id":"call_8p","text":"{\"command\":\"ls -la /tmp\"}"}"""))
+        assertEquals("ls -la /tmp", s.streamingTools.single().summary)
+    }
+
+    @Test
+    fun `session tool success remplit la sortie et ne perd pas le resume`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.tool.called", """{"id":"call_8p","name":"shell","input":{"command":"wc -l f"}}"""))
+        s = EventReducer.reduce(
+            s,
+            ev(
+                "session.tool.success",
+                """{"id":"call_8p","content":[{"type":"text","text":"42 f"},{"type":"text","text":"ok"}],"metadata":{"status":"completed","exit":0}}""",
+            ),
+        )
+        val tool = s.streamingTools.single()
+        // La sortie du depliage doit montrer le TEXTE rendu, pas le JSON du flux.
+        assertEquals("42 f\nok", tool.output)
+        // ⚠️ Et le resume SURVIT : `success` ne porte pas l'entree, l'ecraser viderait la carte.
+        assertEquals("wc -l f", tool.summary)
+        assertEquals(ToolStatus.Succeeded, tool.status)
+    }
+
+    @Test
+    fun `un resume de chemin garde la fin du chemin, seule partie qui identifie le fichier`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(
+            s,
+            ev("session.tool.called", """{"id":"call_r","name":"read","input":{"path":"/home/utilisateur/.claude/projects/-home-utilisateur/memory/user_sebastien.md"}}"""),
+        )
+        // Tronque par le debut : trois fichiers differents s'affichaient « /home/sk7n4k… ».
+        assertEquals("…/memory/user_sebastien.md", s.streamingTools.single().summary)
+    }
+
     @Test
     fun `un statut terminal ne se degrade pas par un evenement tardif`() {
         var s = SessionUiState(sessionID = "ses_1")

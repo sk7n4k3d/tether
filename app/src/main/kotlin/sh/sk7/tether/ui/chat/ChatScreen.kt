@@ -740,27 +740,7 @@ private fun MessageBlock(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBehind {
-                val railX = ChatRail.width.toPx() / 2f
-                val color = if (isUser) {
-                    TetherTextSecondary.copy(alpha = 0.18f)
-                } else {
-                    TetherAccent.copy(alpha = 0.22f)
-                }
-                // Le fil : toujours, sur toute la hauteur, quel que soit l'acteur.
-                drawLine(
-                    color = color,
-                    start = Offset(railX, 0f),
-                    end = Offset(railX, size.height),
-                    strokeWidth = TetherDimensions.threadWidth.toPx(),
-                )
-                // Le nœud : teal si c'est l'agent (ce qui pense), gris si c'est toi.
-                drawCircle(
-                    color = if (isUser) TetherTextSecondary.copy(alpha = 0.5f) else TetherAccent,
-                    radius = (if (isUser) 4.dp else 5.dp).toPx(),
-                    center = Offset(railX, ChatRail.nodeY.toPx()),
-                )
-            },
+            .thread(isUser),
         verticalAlignment = Alignment.Top,
     ) {
         // Reserve la largeur du rail : le contenu commence apres le fil, jamais dessous.
@@ -914,6 +894,42 @@ private object ChatRail {
 }
 
 /**
+ * **Dessine le fil et son nœud**, sur toute la hauteur de l'item qui l'applique.
+ *
+ * ⚠️ **Pourquoi c'est un helper et plus un `drawBehind` en ligne.** Le direct
+ * ([StreamingBlock]) et l'historique ([MessageBlock]) sont deux items voisins de la meme
+ * liste : si un seul porte le fil, le fil **s'interrompt** au milieu de la conversation. Et
+ * c'est exactement ce qui se voyait : pendant un tour, le bloc en cours s'affichait colle au
+ * bord gauche, sans rail, sans marge — « tout condense, moche, il manque des informations »
+ * (constat de Bastien sur le Pixel, 2026-09-25).
+ *
+ * ⚠️ Declaree au **niveau du fichier** et non dans [ChatRail] : une extension membre d'un objet
+ * ne se resout pas implicitement chez ses voisins, il faudrait un `with(ChatRail) { … }` a
+ * chaque appel — trois sites a se rappeler, donc trois occasions d'en oublier un.
+ */
+private fun Modifier.thread(isUser: Boolean): Modifier = drawBehind {
+    val railX = ChatRail.width.toPx() / 2f
+    val color = if (isUser) {
+        TetherTextSecondary.copy(alpha = 0.18f)
+    } else {
+        TetherAccent.copy(alpha = 0.22f)
+    }
+    // Le fil : toujours, sur toute la hauteur, quel que soit l'acteur.
+    drawLine(
+        color = color,
+        start = Offset(railX, 0f),
+        end = Offset(railX, size.height),
+        strokeWidth = TetherDimensions.threadWidth.toPx(),
+    )
+    // Le nœud : teal si c'est l'agent (ce qui pense), gris si c'est toi.
+    drawCircle(
+        color = if (isUser) TetherTextSecondary.copy(alpha = 0.5f) else TetherAccent,
+        radius = (if (isUser) 4.dp else 5.dp).toPx(),
+        center = Offset(railX, ChatRail.nodeY.toPx()),
+    )
+}
+
+/**
  * **Le bout du fil** : ce qui est charge, et ce qui reste.
  *
  * ### Pourquoi cette ligne existe
@@ -1031,7 +1047,20 @@ private suspend fun LazyListState.animateScrollToBottom() {
  */
 private const val SCROLL_TO_BOTTOM_OFFSET_PX = 100_000
 
-/** Bloc transitoire du tour en cours : raisonnement, texte, outils. */
+/**
+ * Bloc transitoire du tour en cours : raisonnement, texte, outils.
+ *
+ * ⚠️ **Il doit se dessiner comme un message d'agent, parce que c'en est un.**
+ *
+ * Il ne l'etait pas : pas de rail, pas de marge, contenu colle au bord gauche, alors que le
+ * message juste au-dessus (une fois le tour termine) est indente et porte le fil. Resultat sur
+ * le Pixel : des qu'un tour tournait, la conversation changeait de mise en page — « tout
+ * condense, moche » — et le fil s'interrompait. Le meme tour **sautait** visuellement a la fin,
+ * quand son contenu passait de [StreamingBlock] a un message normal.
+ *
+ * ⚠️ Le `Spacer(ChatRail.width)` et les marges reprennent **les memes valeurs** que la branche
+ * agent de [MessageBlock] : toute divergence recreerait le saut a la fin du tour.
+ */
 @Composable
 private fun StreamingBlock(chat: sh.sk7.tether.domain.model.SessionUiState) {
     val hasReasoning = !chat.streamingReasoning.isNullOrBlank()
@@ -1039,19 +1068,32 @@ private fun StreamingBlock(chat: sh.sk7.tether.domain.model.SessionUiState) {
     val hasTools = chat.streamingTools.isNotEmpty()
     if (!hasReasoning && !hasText && !hasTools) return
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // ⚠️ Meme fil que les messages : sans lui, la ligne se couperait pendant le tour.
+            .thread(isUser = false),
+        verticalAlignment = Alignment.Top,
     ) {
-        // Le raisonnement se replie : c'est de l'information secondaire, elle ne doit pas
-        // noyer la reponse (constat sur le Pixel : jusqu'a 2 ecrans de bloc gris).
-        chat.streamingReasoning?.takeIf { it.isNotBlank() }?.let {
-            ReasoningBlock(text = it, durationLabel = chat.reasoningDurationLabel)
+        // Reserve la largeur du rail : le contenu commence apres le fil, jamais dessous.
+        Spacer(Modifier.width(ChatRail.width))
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = Spacing.sm, end = Spacing.md, top = Spacing.sm, bottom = Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            // Le raisonnement se replie : c'est de l'information secondaire, elle ne doit pas
+            // noyer la reponse (constat sur le Pixel : jusqu'a 2 ecrans de bloc gris).
+            chat.streamingReasoning?.takeIf { it.isNotBlank() }?.let {
+                ReasoningBlock(text = it, durationLabel = chat.reasoningDurationLabel)
+            }
+            chat.streamingTools.forEach { call ->
+                ToolCard(call = call, durationLabel = chat.toolDurations[call.id])
+            }
+            chat.streamingText?.takeIf { it.isNotBlank() }?.let { MarkdownBody(it) }
         }
-        chat.streamingTools.forEach { call ->
-            ToolCard(call = call, durationLabel = chat.toolDurations[call.id])
-        }
-        chat.streamingText?.takeIf { it.isNotBlank() }?.let { MarkdownBody(it) }
     }
 }
 
