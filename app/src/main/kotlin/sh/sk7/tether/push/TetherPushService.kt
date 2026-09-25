@@ -2,8 +2,13 @@ package sh.sk7.tether.push
 
 import java.net.HttpURLConnection
 import java.net.URL
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.PushService
 import org.unifiedpush.android.connector.UnifiedPush
@@ -208,6 +213,293 @@ object PushEndpointRelay {
             }
         }.start()
     }
+}
+
+/**
+ * **L'etat des notifications, tel que l'UI peut le dire sans mentir.**
+ *
+ * ### Pourquoi cette lecture est separee de la decision
+ * L'ecran Reglages doit afficher trois faits **distincts**, et la tentation est de les fondre en
+ * un seul « connecte / pas connecte » — ce qui serait faux dans la plupart des cas :
+ *
+ *  1. **Un distributeur est-il installe ?** (`null` = aucun). Sans distributeur, aucune
+ *     notification ne peut arriver, quelle que soit la configuration : c'est le fait le plus
+ *     important, et il doit se dire en clair.
+ *  2. **L'app est-elle enregistree aupres de lui ?** Un distributeur installe ne signifie pas
+ *     qu'un enregistrement a abouti (il peut avoir echoue, ou l'app peut avoir ete reinstallee).
+ *  3. **L'endpoint est-il connu ?** C'est la preuve que la boucle est fermee : sans endpoint,
+ *     le serveur opencode n'a rien a publier, meme avec un distributeur et un enregistrement.
+ *
+ * ⚠️ **Ne PAS confondre `savedDistributor != null` avec « enregistre ».** Mesure a l'origine du
+ * projet : avec `registerApp` et un `savedDistributor` a `null` (installation neuve), l'appel ne
+ * levait pas et l'endpoint n'arrivait **jamais**. Un distributeur retenu n'est donc qu'une
+ * **capacite**, pas une **reussite**.
+ *
+ * ⚠️ L'endpoint est relu depuis le meme `SharedPreferences` que [PushEndpointRelay] : c'est la
+ * valeur **reellement transmise** au serveur, donc l'etat le moins mensonger possible. Sa
+ * presence prouve qu'un `onNewEndpoint` a eu lieu au moins une fois.
+ */
+data class PushStatus(
+    /** Identifiant de package du distributeur retenu, ou `null` si aucun n'est installe. */
+    val distributor: String?,
+    /** Vrai si la permission `POST_NOTIFICATIONS` est accordee (vrai avant Android 13). */
+    val notificationsAllowed: Boolean,
+    /** L'endpoint enregistre aupres du distributeur, ou `null` si on n'en connait aucun. */
+    val endpoint: String?,
+) {
+    /** Un distributeur est installe : condition **necessaire** a toute notification. */
+    val hasDistributor: Boolean get() = distributor != null
+
+    /**
+     * La boucle est-elle fermee ?
+     *
+     * ⚠️ On exige **les trois** : un distributeur, la permission, et un endpoint. Deux sur trois
+     * ne suffisent pas a recevoir une notification, et l'annoncer « connecte » serait exactement
+     * le mensonge que le projet s'interdit.
+     */
+    val isReady: Boolean get() = hasDistributor && notificationsAllowed && endpoint != null
+}
+
+/** Le nom de fichier partage avec [PushEndpointRelay] : une seule source, pas deux. */
+private const val PUSH_PREFS = "tether-push"
+
+/** Duree de vie volontairement courte : l'endpoint est peu expose et change rarement. */
+private const val ENDPOINT_DISPLAY_LENGTH = 24
+
+/**
+ * **Lit l'etat courant des notifications**, sans rien modifier.
+ *
+ * ⚠️ Fonction **pure vis-a-vis de l'exterieur** : aucune ecriture, aucun appel reseau. Elle peut
+ * donc etre appelee a chaque recomposition d'ecran sans effet de bord.
+ *
+ * ⚠️ L'endpoint n'est **jamais** affiche en entier par l'UI (voir [PushStatus.endpoint]) : c'est
+ * une capacite d'ecriture, on n'en met qu'un fragment a l'ecran (voir l'appelant). On le retourne
+ * complet ici pour que l'appelant decide, mais on ne le journalise pas.
+ */
+fun pushStatus(context: Context): PushStatus {
+    val distributor = UnifiedPush.getSavedDistributor(context)
+    val allowed = notificationsAllowed(context)
+    val endpoint = context
+        .getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+        .getString("last-endpoint", null)
+    return PushStatus(
+        distributor = distributor,
+        notificationsAllowed = allowed,
+        endpoint = endpoint,
+    )
+}
+
+/**
+ * La permission de notifier est-elle accordee ?
+ *
+ * ⚠️ On ne demande **rien** en dessous d'Android 13 : la permission n'existe pas, et
+ * `checkSelfPermission` renverrait faux a tort — l'ecran afficherait une alerte pour un probleme
+ * inexistant.
+ */
+fun notificationsAllowed(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.POST_NOTIFICATIONS,
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+/**
+ * **Ce qu'un enregistrement a donne.** Trois cas, pas deux.
+ *
+ * ⚠️ Le troisieme (`NoDistributor`) est indispensable : le confondre avec `Failed` ferait croire a
+ * une erreur passagere alors qu'il manque une **application** a installer. Ce ne sont pas les
+ * memes gestes, et le message doit le dire.
+ */
+enum class PushRegistrationResult {
+    /** Un distributeur a ete retenu et l'enregistrement demande. */
+    Requested,
+
+    /** Aucun distributeur UnifiedPush n'est installe (ntfy manquant). */
+    NoDistributor,
+
+    /** Un distributeur existe mais la resolution ou l'enregistrement a echoue. */
+    Failed,
+}
+
+/**
+ * **Le resultat d'un enregistrement, a partir des deux seuls faits disponibles.**
+ *
+ * ⚠️ Fonction pure, et pas un branchement en ligne : c'est ici que se joue la distinction entre
+ * « il manque une application » et « le distributeur a refuse » — deux situations que
+ * `registerForPush` confond dans un seul `Boolean`. Un test la verrouille sans Android.
+ */
+fun registrationOutcome(hasDistributor: Boolean, success: Boolean): PushRegistrationResult = when {
+    !hasDistributor -> PushRegistrationResult.NoDistributor
+    success -> PushRegistrationResult.Requested
+    else -> PushRegistrationResult.Failed
+}
+
+/**
+ * **Enregistre l'app aupres du distributeur, et rend le resultat a l'UI.**
+ *
+ * ⚠️ On delegue a [registerForPush], qui porte deja la logique **mesuree** :
+ * `tryUseCurrentOrDefaultDistributor` puis `registerApp`, et non `registerApp` seul (voir la
+ * justification sur cette fonction). On ne duplique pas la sequence, on la nomme.
+ *
+ * ⚠️ **On teste le distributeur AVANT d'appeler** : `registerForPush` signale « pas de
+ * distributeur » et « echec » par le meme `false`, donc l'appelant ne pourrait pas les distinguer.
+ * Or ce ne sont pas les memes situations : l'une demande d'installer ntfy, l'autre de reessayer.
+ * C'est [registrationOutcome] qui porte cette relecture.
+ *
+ * ⚠️ Le callback de la bibliotheque peut etre invoque **de facon asynchrone** ; [onResult] l'est
+ * donc aussi. L'appelant doit afficher un etat « en cours » puis le resultat **reel**, jamais un
+ * succes suppose.
+ *
+ * @param onResult appele exactement **une fois**, avec un des trois cas ci-dessus.
+ */
+fun requestPushRegistration(context: Context, onResult: (PushRegistrationResult) -> Unit) {
+    val hasDistributor = UnifiedPush.getDistributors(context).isNotEmpty()
+    if (!hasDistributor) {
+        // ⚠️ On ne passe pas par `registerForPush` : il rendrait `false` et l'UI afficherait
+        // « echec » alors qu'il manque une application a installer. Deux gestes differents.
+        Log.w("TetherPush", "aucun distributeur UnifiedPush installe")
+        onResult(registrationOutcome(hasDistributor = false, success = false))
+        return
+    }
+    registerForPush(context) { success ->
+        onResult(registrationOutcome(hasDistributor = true, success = success))
+    }
+}
+
+/**
+ * L'endpoint, **tronque pour l'affichage**.
+ *
+ * ⚠️ L'endpoint est une **capacite d'ecriture** : qui le connait peut publier sur le topic. On
+ * n'en montre qu'un prefixe a l'ecran (assez pour reconnaitre qu'il existe et a change, pas assez
+ * pour le reutiliser), et on ne le journalise jamais.
+ */
+fun PushStatus.endpointHint(): String? = endpoint?.let { value ->
+    if (value.length <= ENDPOINT_DISPLAY_LENGTH) value
+    else value.take(ENDPOINT_DISPLAY_LENGTH) + "…"
+}
+
+/**
+ * **Ce que la section notifications doit dire, en mots — calcul pur et testable.**
+ *
+ * ### Pourquoi hors du composable
+ * La regle « ne jamais annoncer connecte quand ca ne l'est pas » est la seule chose vraiment
+ * delicate de cette section. Ecrite dans le `when` du composable, elle ne serait pas testable ;
+ * ecrite ici, elle se verifie par un test unitaire sans Android. C'est la meme separation que
+ * celle qui a fait sortir `decideNotification` du service (voir `PushPolicy.kt`).
+ */
+enum class PushTone {
+    /** Tout est en place : accent teal. */
+    Ready,
+
+    /** Quelque chose manque ou a echoue : ambre. */
+    Blocked,
+
+    /** Un etat intermediaire qui n'est ni un succes ni une panne : gris. */
+    Pending,
+}
+
+/**
+ * Le cas structurel, pour que l'UI sache **quelle action** proposer.
+ *
+ * ⚠️ On ne se sert **pas** du libelle pour decider de l'action : un libelle est fait pour changer,
+ * et le jour ou on le reformule, l'action proposee disparaitrait sans que rien ne le signale.
+ * C'est le meme piege que de router sur un texte d'erreur.
+ */
+enum class PushStateKind {
+    /** Aucune application distributrice installee. */
+    NoDistributor,
+
+    /** Permission `POST_NOTIFICATIONS` refusee : rien ne peut s'afficher. */
+    PermissionDenied,
+
+    /** Distributeur et permission presents, mais aucun endpoint connu. */
+    AwaitingEndpoint,
+
+    /** Tout est en place. */
+    Ready,
+}
+
+/**
+ * Le verdict, decompose en ce qu'on affiche.
+ *
+ * @param kind le cas structurel, qui decide de l'action proposee.
+ * @param label l'etat, en un mot.
+ * @param detail ce qui manque ou ce qui est vrai — jamais une formule vague.
+ * @param tone la teinte, qui **ne remplace pas** [label] (un daltonien doit lire l'etat).
+ * @param retryable faut-il proposer « Reconnecter » ? Faux quand rien ne peut aboutir.
+ */
+data class PushVerdict(
+    val kind: PushStateKind,
+    val label: String,
+    val detail: String,
+    val tone: PushTone,
+    val retryable: Boolean,
+)
+
+/**
+ * **Traduit [PushStatus] en verdict affichable.**
+ *
+ * ⚠️ L'ordre des cas **est** la logique : la permission manquante prime sur tout le reste, parce
+ * que sans elle aucun `notify()` ne s'affiche (et Android ne dit rien). Un endpoint present ne
+ * rend pas l'app « prete » si les notifications systeme sont coupees — c'est le piege que cette
+ * fonction existe pour fermer.
+ */
+fun describePushStatus(status: PushStatus): PushVerdict = when {
+    !status.hasDistributor -> PushVerdict(
+        kind = PushStateKind.NoDistributor,
+        label = "aucun distributeur",
+        // ⚠️ On nomme l'application attendue : « aucun distributeur UnifiedPush » seul ne dit pas
+        // quoi installer, et c'est **la** question que se pose l'utilisateur devant cet etat.
+        detail = "Installe une application distributrice (ntfy) pour recevoir des notifications.",
+        tone = PushTone.Blocked,
+        // Rien a reessayer tant qu'aucune application distributrice n'est installee.
+        retryable = false,
+    )
+
+    !status.notificationsAllowed -> PushVerdict(
+        kind = PushStateKind.PermissionDenied,
+        label = "notifications bloquées",
+        detail = "Android bloque les notifications : autorise-les pour que l'alerte s'affiche.",
+        tone = PushTone.Blocked,
+        retryable = false,
+    )
+
+    status.endpoint == null -> PushVerdict(
+        kind = PushStateKind.AwaitingEndpoint,
+        label = "en attente d'endpoint",
+        // ⚠️ Un distributeur retenu et la permission accordee ne suffisent pas : sans endpoint,
+        // le serveur opencode n'a rien a publier. On le dit, plutot que d'afficher « connecté ».
+        detail = "Le distributeur n'a pas encore annoncé d'endpoint : reconnecte, puis réessaie.",
+        tone = PushTone.Pending,
+        retryable = true,
+    )
+
+    else -> PushVerdict(
+        kind = PushStateKind.Ready,
+        label = "connecté",
+        detail = "Endpoint enregistré : les alertes opencode peuvent arriver.",
+        tone = PushTone.Ready,
+        retryable = true,
+    )
+}
+
+/**
+ * **Ce qu'on répond à l'utilisateur après un enregistrement.**
+ *
+ * ⚠️ Une fonction, pas trois chaines en ligne dans le composable : le cas « pas de distributeur »
+ * doit **nommer l'application à installer**, et c'est une décision de contenu qu'un test peut
+ * verrouiller. Une chaine oubliée dans un `when` ne se voit pas à la relecture.
+ */
+fun registrationMessage(result: PushRegistrationResult): String = when (result) {
+    PushRegistrationResult.Requested ->
+        "Enregistrement demandé au distributeur."
+
+    PushRegistrationResult.NoDistributor ->
+        "Aucun distributeur UnifiedPush installé : installe ntfy, puis reconnecte."
+
+    PushRegistrationResult.Failed ->
+        "L'enregistrement a échoué. Réessaie dans un instant."
 }
 
 /**

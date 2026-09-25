@@ -173,6 +173,61 @@ object TetherNotifier {
     }
 
     /**
+     * **Identifiant de la notification de test.**
+     *
+     * ⚠️ Distinct de [TRANSIENT_ID] et [ONGOING_ID] : un test ne doit **jamais** écraser une vraie
+     * alerte opencode, ni être écrasé par elle. Sinon, tester les notifications pourrait faire
+     * disparaître une décision qui attend.
+     */
+    private const val TEST_ID = 1003
+
+    /**
+     * **Affiche une notification de test, volontairement, même app au premier plan.**
+     *
+     * ### Pourquoi une fonction séparée, et pas un paramètre de [show]
+     * ⚠️ [show] applique la règle « ne pas notifier ce qu'on regarde » (tâche 2.2) : appelée
+     * depuis les Réglages, elle retournerait `Skip` et **rien ne s'afficherait**. Le bouton
+     * « Tester la notification » ferait alors semblant de marcher — exactement le « contrôle qui
+     * ne peut pas fonctionner » que le projet s'interdit. Ici on **veut** afficher : c'est un test
+     * explicite, l'utilisateur regarde l'écran et demande la notification.
+     *
+     * ⚠️ Ce chemin **ne contourne que** la suppression au premier plan. Il ne saute pas la
+     * vérification de permission : sans elle, `notify()` ne lève pas et rien ne s'affiche. On rend
+     * donc le fait, pour que l'UI puisse le dire au lieu de rester muette.
+     *
+     * ⚠️ On réutilise [ensureChannel] et le même canal : tester sur un canal différent ne
+     * prouverait rien sur les vraies notifications.
+     *
+     * @return `true` si une notification a été remise au système, `false` si les notifications
+     *   sont désactivées ou refusées — jamais un succès supposé.
+     */
+    fun showTest(context: Context, text: String): Boolean {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) {
+            Log.w(TAG, "test de notification impossible : notifications desactivees")
+            return false
+        }
+        ensureChannel(context)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
+            .setContentTitle("Notification de test")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pendingIntent(context, PushTarget.App, TEST_ID))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        return try {
+            manager.notify(TEST_ID, notification)
+            true
+        } catch (e: SecurityException) {
+            // Cas réel : permission refusée entre-temps par l'utilisateur.
+            Log.w(TAG, "test de notification refuse par le systeme", e)
+            false
+        }
+    }
+
+    /**
      * Compte les décisions en attente, ou `0` si on ne peut pas le savoir.
      *
      * ⚠️ Un échec donne **0**, donc une notification ordinaire : on ne bloque pas une alerte sur

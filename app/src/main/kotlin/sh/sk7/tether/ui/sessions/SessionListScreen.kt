@@ -73,7 +73,6 @@ import com.composables.icons.lucide.Activity
 import com.composables.icons.lucide.ShieldCheck
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
-import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Server
 import com.composables.icons.lucide.Settings
 import com.composables.icons.lucide.WifiOff
@@ -151,9 +150,6 @@ fun SessionListScreen(
                             contentDescription = "Approbations en attente",
                             tint = pendingTint,
                         )
-                    }
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Lucide.RefreshCw, contentDescription = "Recharger")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Lucide.Settings, contentDescription = "Réglages")
@@ -692,7 +688,12 @@ private fun SearchField(
             tint = TetherTextSecondary,
             modifier = Modifier.size(15.dp),
         )
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier.weight(1f),
+            // ⚠️ Le placeholder et le champ sont empiles dans cette boite : sans centrage, allonger
+            // le champ (voir plus bas) ferait remonter le texte en haut de la zone.
+            contentAlignment = Alignment.Center,
+        ) {
             if (value.isEmpty()) {
                 Text(
                     text = "Rechercher une session",
@@ -716,7 +717,15 @@ private fun SearchField(
                 // depart. Le tap tombait alors sur le placeholder (un `Text` non cliquable), et
                 // le champ ne recevait **jamais** le focus : impossible de taper quoi que ce soit.
                 // `fillMaxWidth` lui donne la surface entiere a capturer.
-                modifier = Modifier.fillMaxWidth(),
+                //
+                // ⚠️ `heightIn(min = 48 dp)` est **sur le champ lui-meme**, et pas sur la `Row`
+                // qui l'entoure : une hauteur minimale posee sur la ligne ne changerait pas les
+                // bornes du `BasicTextField`, qui resterait a ~21 dp (la hauteur du texte) — soit
+                // sous le seuil de 48 dp, et même sous le plancher AA de 24 dp. La zone sensible
+                // est celle de l'enfant qui capte le tap, pas celle du conteneur.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = TetherDimensions.touchTarget),
             )
         }
         if (value.isNotEmpty()) {

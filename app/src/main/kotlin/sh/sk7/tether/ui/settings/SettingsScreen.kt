@@ -1,5 +1,7 @@
 package sh.sk7.tether.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,12 +33,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Activity
 import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.Bell
 import com.composables.icons.lucide.FolderOpen
 import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
@@ -44,7 +49,18 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.LogOut
 import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Server
+import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.ShieldAlert
+import com.composables.icons.lucide.TriangleAlert
+import sh.sk7.tether.push.PushRegistrationResult
+import sh.sk7.tether.push.PushStateKind
+import sh.sk7.tether.push.PushTone
+import sh.sk7.tether.push.TetherNotifier
+import sh.sk7.tether.push.describePushStatus
+import sh.sk7.tether.push.endpointHint
+import sh.sk7.tether.push.pushStatus
+import sh.sk7.tether.push.registrationMessage
+import sh.sk7.tether.push.requestPushRegistration
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
@@ -208,6 +224,10 @@ fun SettingsScreen(
                 }
             }
 
+            item(key = "notifications") {
+                NotificationsSection()
+            }
+
             item(key = "account") {
                 Block(title = "Compte") {
                     ActionRow(
@@ -362,5 +382,209 @@ private fun ActionRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * **La section Notifications : l'etat reel, puis les deux actions.**
+ *
+ * ### Pourquoi cette section existe
+ * La chaine UnifiedPush peut echouer a **trois** endroits distincts (pas de distributeur, permission
+ * refusee, pas d'endpoint), et sans cette section l'utilisateur ne le decouvre qu'en constatant
+ * qu'il ne recoit rien — c'est-a-dire jamais, puisqu'il ne sait pas ce qui devrait arriver.
+ *
+ * ### Ce que cette section NE fait PAS
+ * ⚠️ Elle n'affiche **jamais** « connecté » sur la seule presence d'un distributeur. L'etat vient
+ * de [describePushStatus], qui exige les trois faits. C'est la regle du projet : un `null` ne
+ * s'affiche pas comme un `0`, et un distributeur retenu n'est pas un abonnement reussi.
+ *
+ * ### L'activation de la permission
+ * ⚠️ Sur Android 13+, sans `POST_NOTIFICATIONS`, `notify()` **ne leve pas** et rien ne s'affiche.
+ * On ne demande pas la permission d'office ici : on l'explique, et le bouton propose de demander
+ * quand elle manque. C'est le seul cas ou un bouton ouvre une demande systeme.
+ */
+@Composable
+private fun NotificationsSection() {
+    val context = LocalContext.current
+    // ⚠️ On relit l'etat localement (`remember` + relecture), pas via le ViewModel : ces faits
+    // viennent du systeme (permission, distributeur, SharedPreferences), pas du serveur opencode.
+    // Les melanger au `SettingsViewModel` ferait croire qu'ils se rafraichissent avec la connexion.
+    var status by remember { mutableStateOf(pushStatus(context)) }
+    var registering by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    // ⚠️ On retient si le message dit une erreur, pour le teinter : un « enregistrement demandé »
+    // en ambre ferait croire a un echec.
+    var messageIsError by remember { mutableStateOf(false) }
+
+    // ⚠️ L'enregistrement et l'octroi de permission sont **asynchrones** : on relit l'etat au
+    // retour dans l'ecran (la permission se donne dans une boite systeme, l'endpoint arrive d'un
+    // service). Sans cette relecture, l'ecran afficherait un etat perime juste apres une action.
+    LifecycleResumeEffect(Unit) {
+        status = pushStatus(context)
+        onPauseOrDispose { }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        status = pushStatus(context)
+        messageIsError = !granted
+        message = if (granted) {
+            "Notifications autorisées."
+        } else {
+            "Permission refusée : les alertes ne s'afficheront pas."
+        }
+    }
+
+    val verdict = describePushStatus(status)
+
+    Block(title = "Notifications") {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PushStateRow(
+                tone = verdict.tone,
+                label = verdict.label,
+                detail = verdict.detail,
+            )
+
+            InfoLine("Distributeur", status.distributor ?: "aucun")
+            InfoLine("Endpoint", status.endpointHint() ?: "aucun")
+            InfoLine(
+                "Autorisation",
+                if (status.notificationsAllowed) "accordée" else "refusée",
+            )
+
+            // ⚠️ La demande de permission n'apparait QUE quand elle manque. L'afficher toujours
+            // proposerait une action sans effet sur un telephone ou elle est deja accordee.
+            if (!status.notificationsAllowed) {
+                ActionRow(
+                    label = "Autoriser les notifications",
+                    detail = "Android les bloque : sans ça, rien ne s'affiche",
+                    icon = Lucide.Bell,
+                    tint = TetherAlert,
+                    enabled = true,
+                    onClick = { permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) },
+                )
+            }
+
+            // ⚠️ « Reconnecter » n'est propose que si l'action peut aboutir
+            // ([PushStateKind.NoDistributor] ne le permet pas) : un bouton qui ne peut pas marcher
+            // est pire que pas de bouton.
+            if (registering) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = TetherAccent,
+                    )
+                    Text("Enregistrement…", style = TetherDataStyle, color = TetherTextSecondary)
+                }
+            } else if (verdict.retryable) {
+                ActionRow(
+                    label = if (verdict.kind == PushStateKind.Ready) "Reconnecter" else "Se connecter",
+                    detail = "Enregistre l'app auprès du distributeur",
+                    icon = Lucide.RefreshCw,
+                    onClick = {
+                        registering = true
+                        message = null
+                        // ⚠️ Le callback est asynchrone : on ne suppose rien entre le clic et le
+                        // resultat. C'est exactement le point que le brief signale.
+                        requestPushRegistration(context) { result ->
+                            registering = false
+                            status = pushStatus(context)
+                            messageIsError = result != PushRegistrationResult.Requested
+                            message = registrationMessage(result)
+                        }
+                    },
+                )
+            }
+
+            ActionRow(
+                label = "Tester la notification",
+                detail = "Vérifie l'affichage sans attendre un événement",
+                icon = Lucide.Send,
+                onClick = {
+                    // ⚠️ On affiche meme si l'app est au premier plan (c'est un test demande).
+                    // ⚠️ `showTest` rend le fait : sans permission, `notify()` ne leve pas et rien
+                    // ne s'affiche — on le dit, on ne laisse pas un bouton muet.
+                    val shown = TetherNotifier.showTest(
+                        context,
+                        "Notification de test depuis les Réglages.",
+                    )
+                    messageIsError = !shown
+                    message = if (shown) {
+                        "Notification de test envoyée."
+                    } else {
+                        "Rien n'a pu s'afficher : autorise les notifications."
+                    }
+                },
+            )
+
+            message?.let { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (messageIsError) TetherAlert else TetherTextSecondary,
+                )
+            }
+
+            // ⚠️ Avertissement explicite quand rien ne peut marcher : on explique POURQUOI plutot
+            // que de laisser l'utilisateur cliquer sur des boutons sans effet.
+            if (verdict.kind == PushStateKind.NoDistributor) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                        .background(TetherAlert.copy(alpha = 0.12f))
+                        .padding(Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        imageVector = Lucide.TriangleAlert,
+                        contentDescription = null,
+                        tint = TetherAlert,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = "Aucune application distributrice (ntfy) n'est installée : " +
+                            "les notifications ne peuvent pas arriver.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TetherAlert,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * **L'etat des notifications, en un mot et une phrase.**
+ *
+ * ⚠️ Le libelle **et** la teinte : une pastille de couleur seule ne se lit ni par un daltonien, ni
+ * en contraste eleve. Le mot porte l'information, la couleur ne fait que la rendre trouvable —
+ * meme regle que les statuts de serveur MCP.
+ */
+@Composable
+private fun PushStateRow(tone: PushTone, label: String, detail: String) {
+    val tint = when (tone) {
+        PushTone.Ready -> TetherAccent
+        PushTone.Blocked -> TetherAlert
+        PushTone.Pending -> TetherTextSecondary
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Text(
+            text = label,
+            style = TetherDataStyle,
+            color = tint,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = TetherTextSecondary,
+        )
     }
 }
