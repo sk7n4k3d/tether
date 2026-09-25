@@ -863,15 +863,30 @@ private fun MessageBlock(
                 .padding(start = Spacing.sm, end = Spacing.md, top = Spacing.sm, bottom = Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            androidx.compose.foundation.text.selection.SelectionContainer {
+            // ⚠️ **`SelectionContainer` ne dispose PAS ses enfants** : il les empile tous au
+            // meme point. Mesure du 2026-09-26 sur le Pixel : avec les quatre blocs dedans, le
+            // texte de l'assistant se SUPERPOSAIT aux cartes d'outil — illisible.
+            //
+            // Il enveloppe donc **chaque bloc de lecture separement** : la selection marche dans
+            // chacun, et le Column continue de les espacer normalement.
             message.reasoning.takeIf { it.isNotBlank() }?.let { reasoning ->
-                ReasoningBlock(reasoning, durationLabel = message.reasoningDurationLabel)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    ReasoningBlock(reasoning, durationLabel = message.reasoningDurationLabel)
+                }
             }
-            if (message.text.isNotBlank()) MarkdownBody(message.text)
+            if (message.text.isNotBlank()) {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    MarkdownBody(message.text)
+                }
+            }
+            // ⚠️ Les cartes d'outil ne sont PAS dans un SelectionContainer : leur sortie se
+            // selectionne deja en depliant la carte, et un appui long y entrerait en conflit avec
+            // le `clickable` de pliage.
             message.tools.forEach { ToolCard(it) }
             message.rawFallback?.takeIf { it.isNotBlank() }?.let { raw ->
-                RawFallback(raw)
-            }
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    RawFallback(raw)
+                }
             }
             MessageActions(
                 message = message,
