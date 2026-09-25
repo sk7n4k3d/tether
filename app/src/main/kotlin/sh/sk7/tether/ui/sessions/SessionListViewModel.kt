@@ -18,6 +18,7 @@ import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.PinnedSessions
 import sh.sk7.tether.data.settings.ConnectionStore
@@ -94,6 +95,7 @@ class SessionListViewModel @Inject constructor(
     private val store: ConnectionStore,
     private val gateway: OpenCodeGateway,
     private val pinned: PinnedSessions,
+    private val monitor: ConnectionMonitor,
     @param:IoDispatcher
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -186,11 +188,14 @@ class SessionListViewModel @Inject constructor(
             try {
                 val fresh = load(settings) as? SessionListUiState.Loaded
                 _state.value = fresh?.copy(refreshing = false) ?: fresh ?: loaded.copy(refreshing = false)
+                monitor.markOnline(version = _healthVersion(settings))
             } catch (e: Exception) {
                 // ⚠️ On CONSERVE la liste : un rafraichissement rate ne doit pas faire
                 // disparaitre ce qu'on lisait. L'erreur se dit a part.
                 _state.value = loaded.copy(refreshing = false)
-                _sessionError.value = ConnectionErrors.describe(e)
+                val message = ConnectionErrors.describe(e)
+                _sessionError.value = message
+                monitor.markOffline(message, unauthorized = isUnauthorized(message))
             }
         }
     }
@@ -206,11 +211,31 @@ class SessionListViewModel @Inject constructor(
             _state.value = SessionListUiState.Loading
             try {
                 _state.value = load(settings)
+                // ⚠️ On marque l'etat sur un appel **reel** qui a reussi : c'est du vecu, pas une
+                // supposition. C'est ce qui alimente l'ecran hors-connexion sans sonde periodique.
+                monitor.markOnline(
+                    version = runCatching { gateway.info(settings).version }.getOrNull(),
+                )
             } catch (e: Exception) {
-                _state.value = SessionListUiState.Error(ConnectionErrors.describe(e))
+                val message = ConnectionErrors.describe(e)
+                monitor.markOffline(message, unauthorized = isUnauthorized(message))
+                _state.value = SessionListUiState.Error(message)
             }
         }
     }
+
+    /**
+     * La panne est-elle un **refus d'identifiants** plutot qu'une injoignabilite ?
+     *
+     * ⚠️ La distinction change ce qu'on dit a l'utilisateur : « verifie ton mot de passe » contre
+     * « la machine est peut-etre eteinte ». Les confondre l'enverrait chercher au mauvais endroit.
+     */
+    private fun isUnauthorized(message: String): Boolean =
+        message.contains("401") || message.contains("403")
+
+    /** La version du serveur, quand on peut l'obtenir. Un echec rend `null`, jamais une erreur. */
+    private suspend fun _healthVersion(settings: ConnectionSettings): String? =
+        runCatching { gateway.info(settings).version }.getOrNull()
 
     private suspend fun load(settings: ConnectionSettings): SessionListUiState {
         val sessions = gateway.allSessions(settings)

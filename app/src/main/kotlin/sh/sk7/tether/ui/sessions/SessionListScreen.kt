@@ -87,6 +87,14 @@ fun SessionListScreen(
     onOpenServer: () -> Unit = {},
     /** Approbations en attente. */
     onOpenPermissions: () -> Unit = {},
+    /**
+     * L'ecran hors-connexion : il explique la panne et propose d'agir.
+     *
+     * ⚠️ On y mene depuis l'erreur de la liste, parce que c'est **la** que la panne se decouvre.
+     * L'erreur de liste dit le fait ; l'ecran dedie dit quoi faire. Un simple bouton « reessayer »
+     * laisserait l'utilisateur boucler sans jamais pouvoir corriger son adresse.
+     */
+    onOpenOffline: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SessionListViewModel = hiltViewModel(),
 ) {
@@ -184,10 +192,17 @@ fun SessionListScreen(
                 is SessionListUiState.Error -> Centered {
                     InfoBlock(
                         icon = { Icon(Lucide.WifiOff, contentDescription = null, tint = TetherAlert) },
-                        title = "Connexion impossible",
+                        // ⚠️ Le titre **qualifie la panne** au lieu de dire « connexion
+                        // impossible » a tout le monde : « refusés » et « injoignable » n'appellent
+                        // pas le meme geste, et les confondre envoie chercher au mauvais endroit.
+                        title = if (isUnauthorized(current.message)) {
+                            "Identifiants refusés"
+                        } else {
+                            "Serveur injoignable"
+                        },
                         body = current.message,
-                        action = "Réessayer",
-                        onAction = viewModel::refresh,
+                        action = "Ouvrir l'écran hors connexion",
+                        onAction = onOpenOffline,
                     )
                 }
                 is SessionListUiState.Loaded -> {
@@ -712,3 +727,13 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
         )
     }
 }
+
+/**
+ * La panne est-elle un refus d'identifiants ?
+ *
+ * ⚠️ On regarde les **codes** et non le texte : le message est produit par `ConnectionErrors` et
+ * peut changer de formulation sans que la cause change. Un 401/403 signifie « mot de passe », le
+ * reste signifie « reseau ou adresse ».
+ */
+private fun isUnauthorized(message: String): Boolean =
+    message.contains("401") || message.contains("403")

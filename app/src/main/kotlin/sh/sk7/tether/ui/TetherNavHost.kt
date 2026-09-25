@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavHostController
@@ -34,6 +35,8 @@ import sh.sk7.tether.ui.sessions.SessionListScreen
 import sh.sk7.tether.ui.settings.AboutScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
 import sh.sk7.tether.ui.settings.SettingsScreen
+import sh.sk7.tether.ui.connection.OfflineScreen
+import sh.sk7.tether.ui.connection.StartRouterViewModel
 import sh.sk7.tether.ui.diff.DiffScreen
 import sh.sk7.tether.ui.context.SessionContextScreen
 import sh.sk7.tether.ui.stats.StatsScreen
@@ -59,6 +62,15 @@ object Routes {
 
     /** Connexion, en mode premiere ouverture (sans retour, avec guidage). */
     const val ONBOARDING = "onboarding"
+
+    /**
+     * Hors connexion : le serveur ne repond pas, on explique et on propose d'agir.
+     *
+     * ⚠️ C'est une **route a part entiere**, pas un bandeau : quand le serveur est injoignable, il
+     * n'y a rien d'autre a montrer — une liste vide avec un bandeau ferait croire a une absence de
+     * sessions, alors que la verite est qu'on n'a pas pu demander.
+     */
+    const val OFFLINE = "offline"
 
     /**
      * Diffs d'une session : ce que l'agent a reellement change.
@@ -112,8 +124,20 @@ fun sessionIDFromIntent(intent: Intent?): String? {
 @Composable
 fun TetherNavHost(
     navController: NavHostController = rememberNavController(),
-    startDestination: String = Routes.SESSIONS,
+    /**
+     * La destination d'ouverture, decidee par [StartRouterViewModel].
+     *
+     * ⚠️ `null` = la lecture des reglages n'est pas finie. On n'affiche alors **rien** plutot
+     * qu'un ecran par defaut : ouvrir sur les sessions avant de savoir si l'app est configuree
+     * ferait apparaitre « aucun serveur configure » pendant une fraction de seconde a chaque
+     * lancement, puis basculer sur l'ecran de connexion — un clignotement a chaque demarrage.
+     */
+    startDestination: String?,
+    @Suppress("UNUSED_PARAMETER") router: StartRouterViewModel = hiltViewModel(),
 ) {
+    // ⚠️ Tant que la decision n'est pas prise, on ne compose pas de NavHost. Le cout est une frame
+    // vide, invisible, contre un clignotement systematique.
+    if (startDestination == null) return
     // Demande d'autorisation de notifier : sans elle, la chaine UnifiedPush fonctionne
     // (endpoint recu, message recu) mais rien ne s'affiche, et Android ne le dit pas.
     NotificationPermissionRequest()
@@ -148,6 +172,7 @@ fun TetherNavHost(
                 onOpenStats = { navController.navigate(Routes.STATS) },
                 onOpenServer = { navController.navigate(Routes.SERVER) },
                 onOpenPermissions = { navController.navigate(Routes.PERMISSIONS) },
+                onOpenOffline = { navController.navigate(Routes.OFFLINE) },
             )
         }
         composable(
@@ -219,6 +244,17 @@ fun TetherNavHost(
                         // ⚠️ On vide la pile : apres une deconnexion, revenir en arriere ne doit
                         // pas ramener sur des ecrans qui exigent une connexion.
                         popUpTo(Routes.SESSIONS) { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable(Routes.OFFLINE) {
+            OfflineScreen(
+                onOpenSettings = {
+                    navController.navigate(Routes.ONBOARDING) {
+                        // ⚠️ Depuis l'ecran hors-connexion, les reglages remplacent la pile : y
+                        // revenir apres avoir corrige l'adresse n'a pas de sens.
+                        popUpTo(Routes.OFFLINE) { inclusive = true }
                     }
                 },
             )

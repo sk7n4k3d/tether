@@ -34,6 +34,7 @@ import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.domain.model.UsageStats
+import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.PinnedSessions
 import sh.sk7.tether.data.settings.ConnectionStore
@@ -187,6 +188,9 @@ class SessionListViewModelTest {
         // Un vrai DataStore sur un fichier temporaire : l'epinglage ne fait pas partie de ce que
         // ces tests exercent, mais le ViewModel en depend desormais pour son tri.
         PinnedSessions(testDataStore()),
+        // Le monitor partage : les tests n'exercent pas l'etat de connexion, mais le ViewModel
+        // en depend pour le signaler sur du vecu.
+        ConnectionMonitor(realStore(settings)),
         Dispatchers.Unconfined,
     )
 
