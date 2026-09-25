@@ -194,10 +194,14 @@ open class NeutralGateway : OpenCodeGateway {
 
     override suspend fun createWorktree(
         settings: ConnectionSettings,
-        branch: String?,
-    ): WorktreeInfoDto = WorktreeInfoDto(directory = branch.orEmpty())
+        name: String?,
+    ): WorktreeInfoDto = WorktreeInfoDto(directory = name.orEmpty())
 
-    override suspend fun removeWorktree(settings: ConnectionSettings, directory: String): Boolean = true
+    override suspend fun removeWorktree(
+        settings: ConnectionSettings,
+        directory: String,
+        force: Boolean,
+    ): Boolean = true
 
     override suspend fun setSessionModel(
         settings: ConnectionSettings,

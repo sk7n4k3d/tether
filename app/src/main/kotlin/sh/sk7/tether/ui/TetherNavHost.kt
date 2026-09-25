@@ -36,6 +36,7 @@ import sh.sk7.tether.ui.settings.AboutScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
 import sh.sk7.tether.ui.settings.SettingsScreen
 import sh.sk7.tether.ui.connection.OfflineScreen
+import sh.sk7.tether.ui.worktree.WorktreeScreen
 import sh.sk7.tether.ui.connection.StartRouterViewModel
 import sh.sk7.tether.ui.diff.DiffScreen
 import sh.sk7.tether.ui.context.SessionContextScreen
@@ -62,6 +63,9 @@ object Routes {
 
     /** Connexion, en mode premiere ouverture (sans retour, avec guidage). */
     const val ONBOARDING = "onboarding"
+
+    /** Arbres de travail isoles : essayer sans risquer le depot. */
+    const val WORKTREES = "worktrees"
 
     /**
      * Hors connexion : le serveur ne repond pas, on explique et on propose d'agir.
@@ -239,6 +243,7 @@ fun TetherNavHost(
                 onOpenServer = { navController.navigate(Routes.SERVER) },
                 onOpenStats = { navController.navigate(Routes.STATS) },
                 onOpenAbout = { navController.navigate(Routes.ABOUT) },
+                onOpenWorktrees = { navController.navigate(Routes.WORKTREES) },
                 onDisconnected = {
                     navController.navigate(Routes.ONBOARDING) {
                         // ⚠️ On vide la pile : apres une deconnexion, revenir en arriere ne doit
@@ -247,6 +252,11 @@ fun TetherNavHost(
                     }
                 },
             )
+        }
+        composable(Routes.WORKTREES) {
+            ScreenScaffold(title = "Arbres de travail", onBack = { navController.popBackStack() }) {
+                WorktreeScreen()
+            }
         }
         composable(Routes.OFFLINE) {
             OfflineScreen(

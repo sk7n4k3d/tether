@@ -319,11 +319,27 @@ interface OpenCodeGateway {
     /** Les arbres de travail isoles (`GET /api/worktree`). */
     suspend fun worktrees(settings: ConnectionSettings): List<WorktreeDirDto>
 
-    /** Cree un arbre de travail isole. */
-    suspend fun createWorktree(settings: ConnectionSettings, branch: String?): WorktreeInfoDto
+    /**
+     * Cree un arbre de travail isole.
+     *
+     * ⚠️ `name`, jamais un nom de branche : mesure du 2026-09-25, `branch` designe un arbre
+     * **existant** a rattacher, pas une branche a creer. Envoyer `"probe-tether"` rend
+     * `400 référence invalide`.
+     */
+    suspend fun createWorktree(settings: ConnectionSettings, name: String?): WorktreeInfoDto
 
-    /** Retire un arbre de travail. */
-    suspend fun removeWorktree(settings: ConnectionSettings, directory: String): Boolean
+    /**
+     * Retire un arbre de travail.
+     *
+     * ⚠️ `force` est **expose** et non fige a `true` : un arbre avec des modifications non
+     * commitees ne se retire pas sans forcer, et cet arbitrage appartient a l'utilisateur — c'est
+     * potentiellement du travail perdu.
+     */
+    suspend fun removeWorktree(
+        settings: ConnectionSettings,
+        directory: String,
+        force: Boolean,
+    ): Boolean
 
     /** Change le modele d'une session. */
     suspend fun setSessionModel(settings: ConnectionSettings, sessionID: String, model: ModelRef): Boolean
@@ -597,15 +613,19 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun createWorktree(
         settings: ConnectionSettings,
-        branch: String?,
+        name: String?,
     ): WorktreeInfoDto {
-        val id = projectID(settings) ?: error("Aucun projet identifie pour ce repertoire")
-        return client(settings).createWorktree(id, branch)
+        val id = projectID(settings) ?: error("Aucun projet identifié pour ce répertoire")
+        return client(settings).createWorktree(id, name)
     }
 
-    override suspend fun removeWorktree(settings: ConnectionSettings, directory: String): Boolean {
+    override suspend fun removeWorktree(
+        settings: ConnectionSettings,
+        directory: String,
+        force: Boolean,
+    ): Boolean {
         val id = projectID(settings) ?: return false
-        return client(settings).removeWorktree(id, directory)
+        return client(settings).removeWorktree(id, directory, force)
     }
 
     override suspend fun setSessionModel(

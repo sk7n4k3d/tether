@@ -478,25 +478,44 @@ class OpenCodeClient(
         }.body<List<WorktreeDirDto>>()
     }
 
-    /** `POST /api/worktree` : cree un arbre de travail isole. */
-    suspend fun createWorktree(projectID: String, branch: String?): WorktreeInfoDto {
+    /**
+     * `POST /api/worktree` : cree un arbre de travail isole.
+     *
+     * ⚠️ `projectID` va dans le **corps** (`Worktree.CreateInput` le declare `required`), pas en
+     * query. Le passer en parametre rend `400 Missing key at ["projectID"]`.
+     */
+    suspend fun createWorktree(
+        projectID: String,
+        name: String?,
+        directory: String? = null,
+    ): WorktreeInfoDto {
         val credentials = credentialsProvider.credentials()
         return http.post("$baseUrl/api/worktree") {
             auth(credentials)
             contentType(ContentType.Application.Json)
-            parameter("projectID", projectID)
-            setBody(WorktreeCreateBody(branch = branch))
+            setBody(WorktreeCreateBody(projectID = projectID, name = name, directory = directory))
         }.body<WorktreeInfoDto>()
     }
 
-    /** `DELETE /api/worktree` : retire un arbre de travail. */
-    suspend fun removeWorktree(projectID: String, directory: String): Boolean {
+    /**
+     * `DELETE /api/worktree` : retire un arbre de travail.
+     *
+     * ⚠️ `projectID`, `directory` ET `force` sont les trois `required` de `Worktree.RemoveInput`.
+     * `force` est expose plutot que fige : un arbre avec des modifications non commitees **ne peut
+     * pas** etre retire sans forcer, et cet arbitrage appartient a l'utilisateur.
+     */
+    suspend fun removeWorktree(projectID: String, directory: String, force: Boolean): Boolean {
         val credentials = credentialsProvider.credentials()
         val response = http.delete("$baseUrl/api/worktree") {
             auth(credentials)
             contentType(ContentType.Application.Json)
-            parameter("projectID", projectID)
-            setBody(WorktreeRemoveBody(directory = directory))
+            setBody(
+                WorktreeRemoveBody(
+                    projectID = projectID,
+                    directory = directory,
+                    force = force,
+                ),
+            )
         }
         return response.status.isSuccess()
     }

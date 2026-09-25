@@ -325,15 +325,32 @@ data class WorktreeInfoDto(val directory: String = "")
 /** Corps de `POST /api/worktree`. */
 @Serializable
 data class WorktreeCreateBody(
-    /** Nom de branche a creer, ou branche existante a rattacher. */
+    /**
+     * ⚠️ **Dans le CORPS**, pas en query : `Worktree.CreateInput` le declare `required`. Le passer
+     * en parametre rend `400 Missing key at ["projectID"]` — verifie sur le serveur.
+     */
+    val projectID: String,
+    /** Point de depart : une branche ou un commit existant. */
+    val from: String? = null,
+    /** Nom de la nouvelle branche a creer. */
     val branch: String? = null,
-    /** Repertoire de depart. */
+    /** Chemin souhaite pour l'arbre. */
     val directory: String? = null,
+    val name: String? = null,
 )
 
-/** Corps de `DELETE /api/worktree`. */
+/**
+ * Corps de `DELETE /api/worktree`.
+ *
+ * ⚠️ Les **trois** champs sont `required` dans `Worktree.RemoveInput` — y compris `force`. Ne pas
+ * l'envoyer rend un 400 (schema verifie sur `/openapi.json`).
+ */
 @Serializable
-data class WorktreeRemoveBody(val directory: String)
+data class WorktreeRemoveBody(
+    val projectID: String,
+    val directory: String,
+    val force: Boolean,
+)
 
 /** Corps de `POST /api/session/{id}/model` — changer le modele d'une session. */
 @Serializable

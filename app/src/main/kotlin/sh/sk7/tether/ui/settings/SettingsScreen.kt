@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Activity
+import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.LogOut
@@ -77,6 +78,8 @@ fun SettingsScreen(
     onOpenServer: () -> Unit = {},
     onOpenStats: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    /** Les arbres de travail isoles : essayer sans risquer le depot. */
+    onOpenWorktrees: () -> Unit = {},
     onDisconnected: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -176,6 +179,12 @@ fun SettingsScreen(
                             detail = "Coût, tokens, activité, modèles",
                             icon = Lucide.Activity,
                             onClick = onOpenStats,
+                        )
+                        ActionRow(
+                            label = "Arbres de travail",
+                            detail = "Essayer sans risquer ton dépôt",
+                            icon = Lucide.GitBranch,
+                            onClick = onOpenWorktrees,
                         )
                         ActionRow(
                             label = "À propos",
