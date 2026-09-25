@@ -55,6 +55,8 @@ import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Brain
 import com.composables.icons.lucide.GitCompare
 import com.composables.icons.lucide.Layers
+import com.composables.icons.lucide.Copy
+import com.composables.icons.lucide.Undo2
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Square
@@ -112,6 +114,13 @@ fun ChatScreen(
      * dialogue systeme se prepare.
      */
     var dictating by remember { mutableStateOf(false) }
+
+    /** Retour en arriere prepare, en attente de confirmation. */
+    var revertTarget by remember { mutableStateOf<String?>(null) }
+
+    /** Confirmation de copie : un retour visible, sinon le geste semble ignore. */
+    var copiedNotice by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     val listState = rememberLazyListState()
     // L'export produit un fichier puis ouvre la feuille de partage du systeme : l'utilisateur
@@ -325,7 +334,19 @@ fun ChatScreen(
                     )
                 }
                 itemsIndexed(state.chat.messages, key = { _, m -> m.id }) { _, message ->
-                    MessageBlock(message)
+                    MessageBlock(
+                        message = message,
+                        onCopy = { copied ->
+                            // ⚠️ On copie le TEXTE, pas le markdown source : ce qu'on veut coller
+                            // ailleurs est ce qu'on lit a l'ecran.
+                            clipboard.setText(androidx.compose.ui.text.AnnotatedString(copied.text))
+                            copiedNotice = true
+                        },
+                        // ⚠️ On retient le message vise, et le dialogue `RevertDialog` fait le
+                        // `stage` lui-meme : il porte son propre ViewModel, donc c'est lui qui a
+                        // acces a l'etat de retour en arriere.
+                        onRevert = { target -> revertTarget = target.id },
+                    )
                 }
                 item(key = "streaming") {
                     StreamingBlock(state.chat)
@@ -410,6 +431,20 @@ fun ChatScreen(
         }
     }
 
+    // Le retour en arriere : le dialogue fait le `stage` puis attend confirmation. Il n'est monte
+    // que lorsqu'un message a ete vise, donc aucun appel serveur n'a lieu sans intention.
+    revertTarget?.let { target ->
+        RevertDialog(
+            sessionID = viewModel.sessionID,
+            messageID = target,
+            onDone = {
+                revertTarget = null
+                viewModel.resync()
+            },
+            onDismiss = { revertTarget = null },
+        )
+    }
+
     // ⚠️ La dictee est un effet, pas un composable : elle lance un intent systeme et rend son
     // resultat. Le `LaunchedEffect` est la seule facon d'avoir un lanceur dont la duree de vie
     // suit la composition.
@@ -443,7 +478,11 @@ fun ChatScreen(
  * continuite visuelle vient de ce que les blocs sont jointifs (aucun espacement de liste).
  */
 @Composable
-private fun MessageBlock(message: ChatMessage) {
+private fun MessageBlock(
+    message: ChatMessage,
+    onCopy: (ChatMessage) -> Unit,
+    onRevert: ((ChatMessage) -> Unit)?,
+) {
     val isUser = message.role == Role.User
 
     Row(
@@ -507,6 +546,12 @@ private fun MessageBlock(message: ChatMessage) {
                         .padding(horizontal = Spacing.md, vertical = Spacing.sm),
                 )
             }
+                MessageActions(
+                    message = message,
+                    onCopy = onCopy,
+                    onRevert = onRevert,
+                    alignEnd = true,
+                )
             return@Row
         }
 
@@ -528,7 +573,80 @@ private fun MessageBlock(message: ChatMessage) {
             message.rawFallback?.takeIf { it.isNotBlank() }?.let { raw ->
                 RawFallback(raw)
             }
+            MessageActions(
+                message = message,
+                onCopy = onCopy,
+                onRevert = onRevert,
+                alignEnd = false,
+            )
         }
+    }
+}
+
+
+/**
+ * **Les actions d'un message : copier, et revenir a ce point.**
+ *
+ * ### Ce qui n'est PAS la, et pourquoi
+ * Pas de « regenerer » au sens d'un client de chat (reecrire la meme reponse). L'API d'opencode
+ * n'a pas cette notion : on ne rejoue pas un tour, on **revient** a un point et on relance.
+ * Inventer un bouton « regenerer » qui ferait autre chose que ce qu'il annonce serait exactement
+ * le mensonge qu'on s'interdit.
+ *
+ * ⚠️ « Revenir ici » n'apparait que sur les messages de l'**agent**, et **jamais** sur un message
+ * encore optimiste : son identifiant n'existe pas cote serveur, donc l'action echouerait a coup
+ * sur. Une action qui ne peut pas marcher est pire que pas d'action.
+ *
+ * ⚠️ Pas de 👍/👎 : les utilisateurs ne savent pas ce que fait ce bouton, et la doc d'OpenAI
+ * indique que la conversation peut servir a l'entrainement. Ici, un bouton de satisfaction qui ne
+ * ferait rien de verifiable serait un mensonge de plus.
+ */
+@Composable
+private fun MessageActions(
+    message: ChatMessage,
+    onCopy: (ChatMessage) -> Unit,
+    onRevert: ((ChatMessage) -> Unit)?,
+    alignEnd: Boolean,
+) {
+    Row(
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MessageAction("Copier", Lucide.Copy) { onCopy(message) }
+        if (onRevert != null && message.role == Role.Assistant && !message.id.startsWith("local_")) {
+            MessageAction("Revenir ici", Lucide.Undo2) { onRevert(message) }
+        }
+    }
+}
+
+@Composable
+private fun MessageAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+            // ⚠️ Cible tactile : la ligne fait ~28 dp de haut, sous les 48 dp recommandes. Le
+            // `padding` porte la zone sensible a une taille confortable sans elargir le bouton a
+            // l'oeil — c'est la meme technique que les autres controles discrets de l'app.
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = TetherTextSecondary.copy(alpha = 0.75f),
+            modifier = Modifier.size(12.dp),
+        )
+        Text(
+            text = label,
+            style = TetherDataStyle,
+            color = TetherTextSecondary.copy(alpha = 0.75f),
+        )
     }
 }
 
