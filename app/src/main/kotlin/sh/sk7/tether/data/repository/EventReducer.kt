@@ -121,7 +121,21 @@ object EventReducer {
             // --- Attention : formes jamais capturees, par repli prudent ---
             "permission.asked" -> onPermissionAsked(state, event.data)
             "permission.replied" -> state.copy(pendingPermission = null)
-            "form.created" -> state.copy(pendingForm = FormRequest(id = event.data.str("id"), raw = event.data))
+            // --- Formulaires : forme MESUREE (capture du 2026-09-26) ---
+            //
+            // ⚠️ **La charge est IMBRIQUEE sous `form`**, et le code lisait la racine.
+            //
+            // Mesure reelle, en creant un formulaire :
+            //   form.created -> {"form":{"id":"frm_…","sessionID":"ses_…","title":"…","fields":[…]}}
+            //
+            // Le code faisait `event.data.str("id")` : la cle n'existe pas a la racine, donc
+            // `FormRequest.id` valait **toujours `null`**, et ni le titre ni les champs ni la
+            // session n'etaient portes. Un formulaire ne pouvait donc **jamais** etre affiche ni
+            // rempli — la fonctionnalite etait morte a la source, pas seulement non cablee.
+            //
+            // ⚠️ `sessionID` peut valoir **`"global"`** (elicitation MCP, mesure) : ce n'est pas
+            // une session. On le conserve tel quel, c'est `FormInfoDto.isGlobal` qui tranche.
+            "form.created" -> onFormCreated(state, event.data)
             "form.replied", "form.cancelled" -> state.copy(pendingForm = null)
 
             // Tout type non traite (server.connected, session.created, ...) : ignore proprement.
@@ -397,6 +411,32 @@ object EventReducer {
             delta < 60_000 -> "${delta / 1_000} s"
             else -> "${delta / 60_000} min ${(delta % 60_000) / 1_000} s"
         }
+    }
+
+    /**
+     * **Un formulaire vient d'etre cree** — on le decode depuis la bonne cle.
+     *
+     * ⚠️ Mesure du 2026-09-26 : la charge est `{"form":{"id","sessionID","title","fields",…}}`.
+     * L'ancien code lisait `id` a la racine, ce qui rendait `FormRequest.id` **toujours `null`**.
+     * Le formulaire etait donc stocke sans identifiant — impossible a rendre ou a remplir.
+     *
+     * ⚠️ On conserve la charge **brute** (`raw`) en plus des champs decodes : un formulaire est
+     * du texte non fiable, et si une forme evolue on veut pouvoir la lire au lieu de la perdre.
+     * C'est la meme regle que `rawFallback` pour les messages.
+     *
+     * ⚠️ Un `form.created` **sans** objet `form` (forme inattendue) laisse l'etat inchange
+     * plutot que de creer un formulaire fantome sans identifiant : on ne fabrique pas de donnee.
+     */
+    private fun onFormCreated(state: SessionUiState, data: JsonObject): SessionUiState {
+        val form = data["form"] as? JsonObject ?: return state
+        return state.copy(
+            pendingForm = FormRequest(
+                id = form.str("id"),
+                sessionID = form.str("sessionID"),
+                title = form.str("title"),
+                raw = form,
+            ),
+        )
     }
 
     private fun ToolStatus.isTerminal(): Boolean =

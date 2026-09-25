@@ -13,6 +13,7 @@ import sh.sk7.tether.domain.model.ToolCall
 import sh.sk7.tether.domain.model.ToolStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -445,6 +446,54 @@ class EventReducerTest {
         assertTrue(s.streamingTools.isEmpty())
     }
 
+
+    // ---------------------------------------------------------------------
+    // Formulaires : la charge est IMBRIQUEE sous `form`
+    //
+    // ⚠️ Test ecrit sur la reponse **reellement capturee** le 2026-09-26, en creant un
+    // formulaire sur une session. Avant le correctif, le reducer lisait `id` a la racine
+    // de `data` : la cle n'existe pas, donc `FormRequest.id` valait toujours `null` et le
+    // formulaire etait impossible a afficher ou remplir.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `form created decode la charge imbriquee sous form`() {
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev(
+                "form.created",
+                """{"form":{"id":"frm_0dacf167b001lQnLKr0NkCRi5d","sessionID":"ses_1","title":"Probe Tether","fields":[{"key":"nom","title":"Nom","type":"string"}]}}""",
+            ),
+        )
+        val form = s.pendingForm
+        assertNotNull(form, "un form.created doit creer une demande en attente")
+        assertEquals("frm_0dacf167b001lQnLKr0NkCRi5d", form.id, "l'id vit sous `form`, pas a la racine")
+        assertEquals("ses_1", form.sessionID)
+        assertEquals("Probe Tether", form.title)
+        // ⚠️ La charge brute est conservee : un formulaire evolue, on veut pouvoir le relire.
+        assertTrue(form.raw.containsKey("fields"))
+    }
+
+    @Test
+    fun `un formulaire global porte sessionID global, sans session derriere`() {
+        // ⚠️ Mesure : une elicitation MCP a `sessionID == "global"`. Ce n'est PAS une session :
+        // le code ne doit jamais supposer qu'il y en a une derriere.
+        val s = EventReducer.reduce(
+            SessionUiState(sessionID = "ses_1"),
+            ev("form.created", """{"form":{"id":"frm_x","sessionID":"global","title":"MCP","fields":[]}}"""),
+        )
+        assertEquals("global", s.pendingForm?.sessionID)
+    }
+
+    @Test
+    fun `un form created sans objet form ne cree pas de formulaire fantome`() {
+        // ⚠️ Forme inattendue : on n'invente pas de donnee. Un formulaire sans identifiant serait
+        // pire qu'aucun formulaire — il s'afficherait sans pouvoir etre rempli.
+        val before = SessionUiState(sessionID = "ses_1")
+        val after = EventReducer.reduce(before, ev("form.created", """{"id":"frm_racine","title":"Faux"}"""))
+        assertNull(after.pendingForm)
+    }
+
     // ---------------------------------------------------------------------
     // Ce que l'outil a RECU et PRODUIT, pendant le tour
     //
@@ -611,10 +660,17 @@ class EventReducerTest {
 
     @Test
     fun `form created conserve la charge brute puis replied la retire`() {
-        val payload = """{"id":"form_1","questions":[{"x":1}]}"""
+        // ⚠️ **Charge reelle** (capture du 2026-09-26) : elle est imbriquee sous `form`.
+        // Le test precedent utilisait une forme PLATE inventee (`{"id":"form_1",...}`) — donc il
+        // validait le bug au lieu de le detecter : `raw` gardait ce qu'on lui donnait, et personne
+        // ne verifiait que l'ID etait decodable.
+        val payload =
+            """{"form":{"id":"frm_1","sessionID":"ses_1","title":"T","fields":[{"key":"x","type":"string"}]}}"""
         var s = SessionUiState(sessionID = "ses_1")
         s = EventReducer.reduce(s, ev("form.created", payload))
-        assertEquals(payload, s.pendingForm!!.raw.toString())
+        val form = s.pendingForm!!
+        assertEquals("frm_1", form.id, "l'id doit etre DECODE, pas seulement conserve en brut")
+        assertTrue(form.raw.containsKey("fields"), "la charge brute est conservee en entier")
 
         s = EventReducer.reduce(s, ev("form.replied", "{}"))
         assertNull(s.pendingForm)
@@ -659,8 +715,11 @@ class EventReducerTest {
         assertEquals(SessionStatus.Running, s.status)        // le seul effet attendu
         s = EventReducer.reduce(s, ev("session.message.content.updated"))
         assertEquals(1, s.messages.size)                     // repli brut, jamais d'exception
+        // ⚠️ Un `form.created` **sans** objet `form` (charge vide, ou forme inattendue) ne
+        // cree **rien** : un formulaire sans identifiant s'afficherait sans pouvoir etre rempli,
+        // donc on ne fabrique pas de donnee. Le test attendait l'inverse sur une forme inventee.
         s = EventReducer.reduce(s, ev("form.created"))
-        assertTrue(s.pendingForm != null)                    // conserve la charge (vide) telle quelle
+        assertNull(s.pendingForm, "pas de formulaire fantome sans identifiant")
     }
 
     @Test

@@ -128,8 +128,34 @@ enum class ToolStatus { Running, Succeeded, Failed }
  * Formulaire en attente. Forme de `form.created` **jamais capturee** : on conserve
  * la charge brute sans l'interpreter.
  */
+/**
+ * **Formulaire en attente d'une reponse** (`form.created`).
+ *
+ * ⚠️ **La forme est desormais MESUREE** (capture du 2026-09-26) : elle n'est plus une supposition.
+ * La charge est `data.form`, et non la racine de `data` :
+ *
+ * ```
+ * {"form":{"id":"frm_…","sessionID":"ses_…","title":"Probe Tether","fields":[…]}}
+ * ```
+ *
+ * L'ancien code lisait `id` a la racine — donc **toujours `null`**, et le formulaire etait stocke
+ * sans identifiant, sans titre, sans session. Il n'etait ni affichable ni remplissable. Un
+ * formulaire qui attend bloque l'agent, exactement comme une permission : c'est ce qui rendait ce
+ * bug couteux.
+ *
+ * ⚠️ [raw] garde la charge complete : un formulaire est du texte **non fiable**, et si une forme
+ * evolue on veut pouvoir la relire au lieu de la jeter.
+ */
 data class FormRequest(
     val id: String? = null,
+    /**
+     * La session a qui le formulaire appartient, telle que le serveur la donne.
+     *
+     * ⚠️ Peut valoir **`"global"`** (elicitation MCP) : ce n'est **pas** une session. Ne jamais
+     * supposer qu'il existe une session derriere — voir `FormInfoDto.isGlobal`.
+     */
+    val sessionID: String? = null,
+    val title: String? = null,
     val raw: JsonObject = JsonObject(emptyMap()),
 )
 
