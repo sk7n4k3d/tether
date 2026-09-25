@@ -100,11 +100,32 @@ fun ChatScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
+
+    /** Le selecteur modele/agent est-il ouvert ? */
+    var pickerOpen by remember { mutableStateOf(false) }
+
+    /**
+     * La dictee est-elle en cours ?
+     *
+     * ⚠️ C'est un etat et pas seulement un lancement : il faut pouvoir **dire** a l'utilisateur que
+     * l'app attend, sinon il appuie sur le micro et rien ne se passe a l'ecran pendant que le
+     * dialogue systeme se prepare.
+     */
+    var dictating by remember { mutableStateOf(false) }
+
     val listState = rememberLazyListState()
     // L'export produit un fichier puis ouvre la feuille de partage du systeme : l'utilisateur
     // choisit sa destination (fichiers, mail, depot, note…). On n'impose pas un chemin.
     var exporting by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    /**
+     * La dictee est-elle possible sur cet appareil ?
+     *
+     * ⚠️ Verifie une fois a la composition : le `PackageManager` n'est pas consultable a chaque
+     * frappe, et la reponse ne change pas — installer un moteur demande de quitter l'app.
+     */
+    val voiceAvailable = remember { isVoiceInputAvailable(context) }
     LaunchedEffect(exporting) {
         if (!exporting) return@LaunchedEffect
         val markdown = SessionExporter.toMarkdown(
@@ -310,18 +331,101 @@ fun ChatScreen(
                     StreamingBlock(state.chat)
                 }
             }
+            val commands by viewModel.commands.collectAsStateWithLifecycle()
+            val models by viewModel.models.collectAsStateWithLifecycle()
+            val agents by viewModel.agents.collectAsStateWithLifecycle()
+
+            // ⚠️ La palette n'apparait que si une commande est EN COURS DE FRAPPE (voir
+            // `SlashInput`). La logique est testee a part parce qu'elle a trois faux positifs
+            // reels — dont un chemin de fichier qui commence par `/`.
+            val slash = SlashInput.parse(draft)
+            if (slash.visible) {
+                SlashPalette(
+                    commands = SlashInput.filter(commands, slash.query),
+                    onPick = { command -> draft = SlashInput.apply(command) },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+
+            if (pickerOpen) {
+                ModelAgentPicker(
+                    models = models.map { it.id },
+                    agents = agents.map { it.id },
+                    currentModel = state.meta?.model,
+                    currentAgent = state.meta?.agent,
+                    onPickModel = { id ->
+                        pickerOpen = false
+                        models.firstOrNull { it.id == id }?.let { picked ->
+                            viewModel.setModel(
+                                sh.sk7.tether.data.api.ModelRef(
+                                    id = picked.modelID ?: picked.id,
+                                    providerID = picked.providerID.orEmpty(),
+                                ),
+                            )
+                        }
+                    },
+                    onPickAgent = { id ->
+                        pickerOpen = false
+                        viewModel.setAgent(id)
+                    },
+                    onDismiss = { pickerOpen = false },
+                )
+            }
+
             Composer(
                 value = draft,
                 busy = state.isBusy,
+                // ⚠️ Le micro n'est PAS dans la barre d'actions : il est dans le composer, a cote
+                // du bouton d'envoi, parce que c'est une facon d'ECRIRE. Le mettre ailleurs en
+                // ferait une fonction a part, alors que c'est la meme intention.
+                // ⚠️ `null` masque le micro quand l'appareil ne peut pas dicter. Mesure sur le
+                // Pixel de test : aucun moteur installe (GrapheneOS ne livre pas ceux de Google).
+                // Un micro visible mais inerte serait un mensonge visuel.
+                onVoice = if (voiceAvailable) {
+                    { dictating = true }
+                } else {
+                    null
+                },
+                listening = dictating,
                 onValueChange = { draft = it },
+                // ⚠️ Le selecteur est accessible par le bouton d'envoi lui-meme quand le champ est
+                // vide : choisir un modele ne demande rien d'ecrire, et c'est le moment ou on le
+                // fait — avant de composer.
+                onPickModelAgent = { pickerOpen = true },
                 onSend = {
                     val text = draft
+                    // ⚠️ On verifie d'abord si c'est une COMMANDE valide. Le serveur valide le nom
+                    // contre sa liste : envoyer `/review` comme texte de prompt ne declencherait
+                    // rien du tout, l'agent le lirait comme une phrase.
+                    val asCommand = SlashInput.toCommand(text, commands)
                     draft = ""
-                    viewModel.send(text)
+                    if (asCommand != null) {
+                        viewModel.runCommand(asCommand.first, asCommand.second)
+                    } else {
+                        viewModel.send(text)
+                    }
                 },
                 onStop = viewModel::stop,
             )
         }
+    }
+
+    // ⚠️ La dictee est un effet, pas un composable : elle lance un intent systeme et rend son
+    // resultat. Le `LaunchedEffect` est la seule facon d'avoir un lanceur dont la duree de vie
+    // suit la composition.
+    if (dictating) {
+        VoiceInput(
+            onResult = { spoken ->
+                dictating = false
+                // ⚠️ On AJOUTE a la saisie en cours au lieu de la remplacer : dicter au milieu
+                // d'une phrase deja ecrite est le cas courant, et ecraser le travail deja fait
+                // serait violent.
+                if (spoken.isNotBlank()) {
+                    draft = if (draft.isBlank()) spoken else "$draft $spoken"
+                }
+            },
+            onCancel = { dictating = false },
+        )
     }
 }
 

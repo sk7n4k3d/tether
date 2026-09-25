@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.ArrowUp
 import com.composables.icons.lucide.CircleStop
+import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Paperclip
 import sh.sk7.tether.ui.theme.Spacing
@@ -103,6 +104,18 @@ fun Composer(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    /** Lance la dictee vocale. `null` masque le micro (aucun moteur, ou contexte sans dictee). */
+    onVoice: (() -> Unit)? = null,
+    /** Dictee en cours : le micro le dit, sinon le geste semble ignore. */
+    listening: Boolean = false,
+    /**
+     * Ouvre le selecteur modele/agent. Attache au bouton d'envoi quand le champ est vide.
+     *
+     * ⚠️ Sur le bouton d'envoi, et pas une icone a part : choisir un modele ne demande rien a
+     * ecrire, c'est une action **au repos**. Une icone dediee prendrait une place permanente dans
+     * une barre ou chaque pixel coute au champ de saisie.
+     */
+    onPickModelAgent: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val hasText = value.isNotBlank()
@@ -253,7 +266,41 @@ fun Composer(
                 }
             }
 
-            // ------------------------------------------------ L'ACTION, DANS LA MEME SURFACE
+            // ------------------------------------------------ LE MICRO, DANS LA MEME SURFACE
+          //
+          // ⚠️ Le micro vit **dans** la surface de saisie, a cote du bouton d'envoi, parce que
+          // dicter est une facon d'ECRIRE. Le mettre dans une barre d'outils en ferait une
+          // fonction a part, alors que c'est la meme intention.
+          if (onVoice != null) {
+              Box(
+                  modifier = Modifier
+                      .minimumInteractiveComponentSize()
+                      .size(30.dp)
+                      .clip(RoundedCornerShape(percent = 50))
+                      // ⚠️ La teinte dit l'etat d'ecoute : sans elle, appuyer sur le micro ne
+                      // produirait aucun retour local, et l'utilisateur ne saurait pas si le geste
+                      // a ete pris en compte avant l'ouverture du dialogue systeme.
+                      .background(
+                          if (listening) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
+                      )
+                      .clickable(enabled = !listening, onClick = onVoice)
+                      .semantics {
+                          role = Role.Button
+                          contentDescription =
+                              if (listening) "Dictée en cours" else "Dicter le message"
+                      },
+                  contentAlignment = Alignment.Center,
+              ) {
+                  Icon(
+                      imageVector = Lucide.Mic,
+                      contentDescription = null,
+                      tint = if (listening) TetherAccent else TetherTextSecondary,
+                      modifier = Modifier.size(16.dp),
+                  )
+              }
+          }
+
+          // ------------------------------------------------ L'ACTION, DANS LA MEME SURFACE
             //
             // ⚠️ `minimumInteractiveComponentSize` : le bouton fait 30-34 dp a l'ecran, mais
             // Material garantit une **cible tactile de 48 dp** en etirant la zone sensible
@@ -265,8 +312,19 @@ fun Composer(
                     .size(buttonSize)
                     .clip(RoundedCornerShape(percent = 50))
                     .background(buttonColor)
-                    .clickable(enabled = showStop || hasText) {
-                        if (showStop) onStop() else onSend()
+                    .clickable(
+                        enabled = showStop || hasText || onPickModelAgent != null,
+                    ) {
+                        when {
+                            showStop -> onStop()
+                            hasText -> onSend()
+                            // ⚠️ Champ vide et rien en cours : le bouton n'a rien a envoyer, donc
+                            // il propose le reglage qui sert **avant** d'ecrire — le modele et
+                            // l'agent. Sans ce cas, le bouton resterait inerte et l'utilisateur
+                            // n'aurait aucun point d'entree vers le selecteur.
+                            onPickModelAgent != null -> onPickModelAgent.invoke()
+                            else -> Unit
+                        }
                     }
                     .semantics {
                         // ⚠️ `role` : sans lui, TalkBack ne dit pas « double-tap pour activer ».
@@ -277,6 +335,7 @@ fun Composer(
                         contentDescription = when {
                             showStop -> "Arrêter l'exécution"
                             hasText -> "Envoyer le message"
+                            onPickModelAgent != null -> "Modèle et agent"
                             else -> "Envoyer (aucun texte)"
                         }
                         // ⚠️ `liveRegion` : l'etat change sans que le focus bouge, donc sans

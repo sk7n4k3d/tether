@@ -19,6 +19,10 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import sh.sk7.tether.data.api.Agent
+import sh.sk7.tether.data.api.CommandDto
+import sh.sk7.tether.data.api.Model
+import sh.sk7.tether.data.api.ModelRef
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.event.ConnectionState
 import sh.sk7.tether.data.event.EventSource
@@ -72,6 +76,18 @@ data class ChatUiState(
      * ligne « charger plus » qui ne charge rien, ce qui est un echec benin ; l'inverse (croire
      * qu'il n'y a plus rien) ferait disparaitre l'historique.
      */
+    /**
+     * Le modele choisi par l'utilisateur dans cette session.
+     *
+     * ⚠️ Affiche **a cote** du modele reel de l'en-tete, jamais a sa place : le modele reel vient
+     * du serveur et fait foi. Afficher l'override seul ferait disparaitre ce que la session
+     * utilise vraiment si le changement a echoue.
+     */
+    val modelOverride: String? = null,
+
+    /** L'agent choisi dans cette session, meme regle que [modelOverride]. */
+    val agentOverride: String? = null,
+
     val hasOlder: Boolean = false,
     /** Un chargement de messages anciens est en cours (indicateur en haut de la liste). */
     val loadingOlder: Boolean = false,
@@ -124,6 +140,28 @@ class ChatViewModel @Inject constructor(
     )
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
+    /**
+     * **Les commandes slash du serveur** (`GET /api/command`, 28 mesurees).
+     *
+     * ⚠️ Chargees une seule fois, pas a chaque frappe : la liste ne change pas pendant une
+     * conversation, et la redemander a chaque caractere `/` serait un appel reseau par touche.
+     * Un echec est **silencieux** : ne pas avoir les commandes ne doit pas empecher d'ecrire.
+     */
+    private val _commands = MutableStateFlow<List<CommandDto>>(emptyList())
+    val commands: StateFlow<List<CommandDto>> = _commands.asStateFlow()
+
+    /**
+     * Les modeles et agents disponibles, pour le selecteur d'envoi.
+     *
+     * ⚠️ Meme regle que les commandes : charge une fois, echec silencieux. Un selecteur vide
+     * degrade l'experience, il ne la casse pas.
+     */
+    private val _models = MutableStateFlow<List<Model>>(emptyList())
+    val models: StateFlow<List<Model>> = _models.asStateFlow()
+
+    private val _agents = MutableStateFlow<List<Agent>>(emptyList())
+    val agents: StateFlow<List<Agent>> = _agents.asStateFlow()
+
     private var settings: ConnectionSettings? = null
     private var graceJob: Job? = null
 
@@ -151,6 +189,10 @@ class ChatViewModel @Inject constructor(
     private val preexistingUserIds = mutableMapOf<String, Set<String>>()
 
     init {
+        // ⚠️ Charge avant tout envoi : l'utilisateur peut taper `/` des la premiere seconde, et
+        // un selecteur vide a ce moment-la ferait croire que le serveur n'a aucune commande.
+        loadReferenceData()
+
         start()
     }
 
@@ -304,6 +346,83 @@ class ChatViewModel @Inject constructor(
      *
      * Les optimistes sont ensuite reconcilies par [dedupeOptimistic] (par id).
      */
+    /**
+     * Charge les listes **de reference** de l'ecran : commandes, modeles, agents.
+     *
+     * ⚠️ Chaque appel est isole (`runCatching`) : un serveur qui ne repond pas a `/api/agent` ne
+     * doit pas priver l'utilisateur de ses commandes slash. Les trois listes sont independantes.
+     */
+    private fun loadReferenceData() {
+        scope.launch {
+            val current = settings ?: store.current().also { settings = it }
+            runCatching { gateway.commands(current) }.onSuccess { _commands.value = it }
+            runCatching { gateway.models(current) }.onSuccess { _models.value = it }
+            runCatching { gateway.agents(current) }.onSuccess { _agents.value = it }
+        }
+    }
+
+    /**
+     * Lance une **commande slash**, plutot que de l'envoyer comme texte.
+     *
+     * ⚠️ La distinction est reelle : le serveur valide le **nom** contre sa liste (28 mesurees).
+     * Envoyer `/review` comme texte de prompt ne declenche rien du tout — l'agent le lirait comme
+     * une phrase. C'est pour ca que ce chemin est separe de [send].
+     */
+    fun runCommand(name: String, text: String = "") {
+        scope.launch {
+            try {
+                val current = settings ?: store.current().also { settings = it }
+                val ok = gateway.runCommand(current, sessionID, name, text)
+                if (!ok) {
+                    _state.update { it.copy(error = "Commande « /$name » refusée par le serveur.") }
+                    return@launch
+                }
+                // L'effet de la commande arrive par le flux, comme un prompt normal.
+                _state.update { if (it.phase == UiPhase.Idle) it.copy(phase = UiPhase.Awaiting) else it }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = ConnectionErrors.describe(e)) }
+            }
+        }
+    }
+
+    /**
+     * Change le **modele de cette session** (`POST /session/{id}/model`).
+     *
+     * ⚠️ Le changement est **persistant** cote serveur : il vaut pour les tours suivants, pas
+     * seulement pour le prochain message. C'est ce qui distingue ce reglage d'une selection
+     * ponctuelle, et c'est pour ca qu'on le dit a l'utilisateur au lieu de le faire en silence.
+     */
+    fun setModel(model: ModelRef) {
+        scope.launch {
+            try {
+                val current = settings ?: store.current().also { settings = it }
+                if (gateway.setSessionModel(current, sessionID, model)) {
+                    _state.update { it.copy(modelOverride = model.id) }
+                } else {
+                    _state.update { it.copy(error = "Le serveur a refusé le changement de modèle.") }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = ConnectionErrors.describe(e)) }
+            }
+        }
+    }
+
+    /** Change l'**agent de cette session** (`POST /session/{id}/agent`). */
+    fun setAgent(agent: String) {
+        scope.launch {
+            try {
+                val current = settings ?: store.current().also { settings = it }
+                if (gateway.setSessionAgent(current, sessionID, agent)) {
+                    _state.update { it.copy(agentOverride = agent) }
+                } else {
+                    _state.update { it.copy(error = "Le serveur a refusé le changement d'agent.") }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = ConnectionErrors.describe(e)) }
+            }
+        }
+    }
+
     fun resync() {
         val current = settings ?: return
         scope.launch {
