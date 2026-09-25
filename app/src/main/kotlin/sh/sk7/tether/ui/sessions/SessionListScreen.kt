@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -142,6 +143,7 @@ fun SessionListScreen(
                 }
                 is SessionListUiState.Loaded -> {
                     val items = current.items
+                    val refreshing = current.refreshing
                     // ⚠️ Sous-agents **REPLIES PAR DEFAUT** : avec 297 sous-agents sur 437
                     // sessions, les afficher tous noie les sessions principales. On retient
                     // donc l'ensemble des parents OUVERTS (et non l'inverse), pour que le
@@ -153,48 +155,59 @@ fun SessionListScreen(
                             item.parentID == null || item.parentID in expandedParents
                         }
                     }
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = 96.dp,
-                        ),
-                        // ⚠️ AUCUN espacement vertical ici : un `spacedBy` creerait des trous
-                        // que le rail ne traverserait pas, coupant le fil entre les lignes.
-                        // L'aeration vit dans le padding interne de chaque SessionRow.
-                    ) {
-                        // En-tete : ce que l'app consomme. Toujours visible, jamais demande.
-                        current.usage?.let { usage ->
-                            item(key = "usage-header") { UsageHeader(usage) }
-                        }
 
-                        items(visible, key = { it.id }) { item ->
-                            SessionRow(
-                                item = item,
-                                // Chevron : ouvre/ferme les sous-agents. Present seulement
-                                // si la session en a (sinon aucun controle inutile).
-                                onToggleSubs = if (item.childCount > 0) {
-                                    {
-                                        expandedParents = if (item.id in expandedParents) {
-                                            expandedParents - item.id
-                                        } else {
-                                            expandedParents + item.id
+                    // Rafraichissement au **geste** : tirer vers le bas. C'est le geste naturel
+                    // sur mobile, et il ne remplace rien — le bouton de la barre reste, pour
+                    // ceux qui ne connaissent pas le geste.
+                    PullToRefreshBox(
+                        isRefreshing = refreshing,
+                        onRefresh = viewModel::startRefresh,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = Spacing.lg, end = Spacing.lg, top = Spacing.sm, bottom = 96.dp,
+                            ),
+                            // ⚠️ AUCUN espacement vertical ici : un `spacedBy` creerait des trous
+                            // que le rail ne traverserait pas, coupant le fil entre les lignes.
+                            // L'aeration vit dans le padding interne de chaque SessionRow.
+                        ) {
+                            // En-tete : ce que l'app consomme. Toujours visible, jamais demande.
+                            current.usage?.let { usage ->
+                                item(key = "usage-header") { UsageHeader(usage) }
+                            }
+
+                            items(visible, key = { it.id }) { item ->
+                                SessionRow(
+                                    item = item,
+                                    // Chevron : ouvre/ferme les sous-agents. Present seulement
+                                    // si la session en a (sinon aucun controle inutile).
+                                    onToggleSubs = if (item.childCount > 0) {
+                                        {
+                                            expandedParents = if (item.id in expandedParents) {
+                                                expandedParents - item.id
+                                            } else {
+                                                expandedParents + item.id
+                                            }
                                         }
-                                    }
-                                } else null,
-                                subsExpanded = item.id in expandedParents,
-                                onClick = { onOpenSession(item.id) },
-                                // Options de session : chaque action ouvre une route qui existe
-                                // cote serveur (PATCH, fork, interrupt, compact, DELETE).
-                                onRename = { renaming = item },
-                                onFork = { viewModel.forkSession(item.id) },
-                                onInterrupt = { viewModel.interruptSession(item.id) },
-                                onCompact = { viewModel.compactSession(item.id) },
-                                onDelete = { deleting = item },
-                                // ⚠️ Animation de depliage : les enfants apparaissent avec
-                                // un glissement, pas d'un coup. C'est ce qui rend un arbre
-                                // lisible plutot que brutal.
-                                modifier = Modifier.animateItem(),
-                            )
+                                    } else null,
+                                    subsExpanded = item.id in expandedParents,
+                                    onClick = { onOpenSession(item.id) },
+                                    // Options de session : chaque action ouvre une route qui
+                                    // existe cote serveur (PATCH, fork, interrupt, compact,
+                                    // DELETE).
+                                    onRename = { renaming = item },
+                                    onFork = { viewModel.forkSession(item.id) },
+                                    onInterrupt = { viewModel.interruptSession(item.id) },
+                                    onCompact = { viewModel.compactSession(item.id) },
+                                    onDelete = { deleting = item },
+                                    // ⚠️ Animation de depliage : les enfants apparaissent
+                                    // avec un glissement, pas d'un coup. C'est ce qui rend un
+                                    // arbre lisible plutot que brutal.
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
                         }
                     }
                 }

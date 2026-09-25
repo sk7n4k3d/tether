@@ -93,6 +93,47 @@ interface OpenCodeGateway {
         return all
     }
 
+    /**
+     * **Les N derniers messages**, dans l'ordre chronologique, charges en une requete.
+     *
+     * ### Pourquoi cette methode existe
+     * `allMessages` pagine **tout** l'historique depuis le debut. Mesure : les sessions lourdes
+     * font **810 messages en moyenne**, jusqu'a 2 040. Charger tout pour n'en afficher que la fin
+     * est un gaspillage pur, a chaque ouverture et a chaque reconnexion.
+     *
+     * ⚠️ **`order = "desc"` est indispensable ici, et c'est contre-intuitif** : on veut la FIN
+     * de la conversation, donc les messages **les plus recents**. Demander `asc` avec une limite
+     * renverrait les **premiers** — c'est-a-dire l'inverse exact de ce qu'on cherche. On repasse
+     * ensuite la liste a l'endroit pour l'affichage.
+     *
+     * ⚠️ Une seule page, volontairement : demander `order` **avec** un curseur rend un
+     * **400** (verifie sur le serveur). Si la page est pleine, on renvoie ce qu'on a — le reste
+     * se chargera en remontant.
+     */
+    suspend fun recentMessages(
+        settings: ConnectionSettings,
+        sessionID: String,
+        limit: Int,
+    ): List<MessageDto>
+
+    /**
+     * Messages **anterieurs** a un message donne, dans l'ordre chronologique.
+     *
+     * Sert au scroll vers le haut : on remonte depuis un point connu, pas depuis un index local —
+     * celui-ci ne correspond pas a la position serveur, puisque les marqueurs de tour (`idle`,
+     * `synthetic`…) ne produisent pas de bulle et sont filtres a l'affichage.
+     *
+     * ⚠️ On ne peut PAS combiner `order` et `cursor` (**400** verifie) : l'ordre est encode par
+     * le curseur lui-meme. On part donc de la tranche recente en `desc`, puis on remonte avec le
+     * curseur `previous` qu'elle expose, jusqu'a croiser le message de reference.
+     */
+    suspend fun messagesBefore(
+        settings: ConnectionSettings,
+        sessionID: String,
+        beforeMessageID: String,
+        limit: Int,
+    ): List<MessageDto>
+
     suspend fun messagesPage(
         settings: ConnectionSettings,
         sessionID: String,
@@ -192,6 +233,64 @@ class KtorOpenCodeGateway @Inject constructor(
         cursor: String?,
         order: String?,
     ): CursorPage<MessageDto> = client(settings).messagesPage(sessionID, limit, cursor, order)
+
+    /** `desc` : on veut la FIN de la conversation, puis on remet la tranche a l'endroit. */
+    override suspend fun recentMessages(
+        settings: ConnectionSettings,
+        sessionID: String,
+        limit: Int,
+    ): List<MessageDto> =
+        client(settings)
+            .messagesPage(sessionID, limit, cursor = null, order = "desc")
+            .data
+            .reversed()
+
+    /**
+     * Remonte l'historique depuis un message connu.
+     *
+     * ⚠️ **Le bug qui a mordu ici** : la reference est presque toujours **deja dans la premiere
+     * page** (c'est le message le plus ancien de la fenetre courante). La boucle s'arretait donc
+     * immediatement, et `subList(index + 1, size)` renvoyait une liste **vide** — le chargement
+     * ne ramenait jamais rien. Symptome mesure : `first=0`, `hasOlder=true`, et `msgs` bloque.
+     *
+     * Le critere d'arret correct n'est pas « la reference est trouvee » mais « la reference est
+     * trouvee **et il reste des messages apres elle** » dans ce qu'on a collecte.
+     *
+     * ⚠️ En ordre `desc`, le curseur **`next`** mene vers les messages **plus anciens**, et
+     * `previous` est vide (verifie sur le serveur). On ne peut pas non plus combiner `order` et
+     * `cursor` (**400**) : l'ordre est encode dans le curseur.
+     */
+    override suspend fun messagesBefore(
+        settings: ConnectionSettings,
+        sessionID: String,
+        beforeMessageID: String,
+        limit: Int,
+    ): List<MessageDto> {
+        val http = client(settings)
+        val recent = http.messagesPage(sessionID, limit, cursor = null, order = "desc")
+        val collected = mutableListOf<MessageDto>()
+        collected += recent.data
+        var olderCursor = recent.next
+        var pages = 0
+
+        while (pages < OpenCodeGateway.MAX_MESSAGE_PAGES) {
+            val index = collected.indexOfFirst { it.id == beforeMessageID }
+            // On s'arrete des qu'on a la reference ET au moins un message plus ancien qu'elle.
+            if (index >= 0 && index < collected.size - 1) break
+            // Reference absente du tout : on a epuise l'historique.
+            if (olderCursor == null) break
+            val older = http.messagesPage(sessionID, limit, cursor = olderCursor, order = null)
+            if (older.data.isEmpty()) break
+            collected += older.data
+            olderCursor = older.next
+            pages++
+        }
+
+        val index = collected.indexOfFirst { it.id == beforeMessageID }
+        // Tout ce qui suit la reference dans l'ordre `desc` = tout ce qui est plus ANCIEN.
+        val older = if (index >= 0) collected.subList(index + 1, collected.size) else collected
+        return older.reversed()
+    }
 
     override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean =
         client(settings).interrupt(sessionID)

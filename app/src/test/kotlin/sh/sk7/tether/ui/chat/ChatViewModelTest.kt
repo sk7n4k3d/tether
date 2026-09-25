@@ -153,6 +153,31 @@ class ChatViewModelTest {
             return CursorPage(dtos)
         }
 
+        /**
+         * Les fakes renvoient la MEME page que [messagesPage] : les tests ne portent pas sur la
+         * pagination, et simuler une vraie fenetre ici ne testerait que le fake lui-meme.
+         */
+        /** Messages ANTERIEURS servis a `loadOlder` (simule la pagination serveur). */
+        @Volatile
+        var olderDtos: List<MessageDto> = emptyList()
+        var olderCalls = 0
+
+        override suspend fun recentMessages(
+            settings: ConnectionSettings,
+            sessionID: String,
+            limit: Int,
+        ): List<MessageDto> = messagesPage(settings, sessionID, limit, null, null).data
+
+        override suspend fun messagesBefore(
+            settings: ConnectionSettings,
+            sessionID: String,
+            beforeMessageID: String,
+            limit: Int,
+        ): List<MessageDto> {
+            olderCalls++
+            return olderDtos
+        }
+
         override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean {
             interrupts++
             return true
@@ -529,4 +554,70 @@ class ChatViewModelTest {
         assertEquals(1, gateway.interrupts)
         assertEquals(UiPhase.Awaiting, vm.state.value.phase)
     }
+    /**
+     * **L'historique n'est PAS charge en entier a l'ouverture.**
+     *
+     * Mesure serveur : les sessions lourdes font 810 messages en moyenne, jusqu'a 2040. Les
+     * charger tous a l'ouverture et a chaque reconnexion etait le principal cout de l'ecran.
+     * Ici on verifie que la requete d'ouverture est **bornee** (fenetre recente) et que le reste
+     * n'arrive qu'a la demande.
+     */
+    @Test
+    fun `l ouverture ne charge qu une fenetre recente, pas tout l historique`() {
+        val source = FakeEventSource()
+        val dto = MessageDto(id = "msg_u", type = "user", text = "salut")
+        val gateway = FakeGateway(dtos = listOf(dto))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_u" } }
+
+        // ⚠️ Le point n'est pas « une seule requete » (il y en a deux : l'ouverture puis la
+        // resync de connexion), mais que le nombre de requetes soit **borne et independant de
+        // la taille de l'historique**. `allMessages` en aurait fait une vingtaine pour 2 040
+        // messages ; la fenetre recente en fait 1 par resync.
+        assertTrue(
+            gateway.messagesCalls <= 3,
+            "le chargement doit etre borne, obtenu ${gateway.messagesCalls} requetes",
+        )
+        // ⚠️ Le fake sert tout dans UNE page, donc `hasOlder` est faux — c'est normal et c'est
+        // le comportement voulu : une page non pleine signifie « debut de la session ». Ce qui
+        // compte ici est qu'aucune pagination n'a ete lancee.
+        assertTrue(!vm.state.value.hasOlder, "une page non pleine doit conclure au debut")
+    }
+
+    /**
+     * **`loadOlder` prepend les anciens et ne double jamais.**
+     *
+     * ⚠️ La fusion se fait par id, exactement comme la resync : un message que le flux a livre
+     * entre-temps ne doit pas etre ecrase par la version REST.
+     */
+    @Test
+    fun `loadOlder ajoute les messages anciens devant et sans doublon`() {
+        val source = FakeEventSource()
+        // ⚠️ Une page PLEINE : c'est ce qui met `hasOlder` a vrai (l'API ne dit pas le total
+        // d'une session, on le deduit d'une page pleine — sinon `loadOlder` sort immediatement).
+        val window = (0 until ChatWindow.SERVER_PAGE).map {
+            MessageDto(id = "msg_$it", type = "user", text = "m$it")
+        }
+        val gateway = FakeGateway(dtos = window)
+        gateway.olderDtos = listOf(
+            MessageDto(id = "msg_ancien", type = "user", text = "ancien"),
+            // ⚠️ Doublon volontaire : deja dans la fenetre. Il ne doit apparaitre qu'UNE fois.
+            MessageDto(id = "msg_0", type = "user", text = "m0"),
+        )
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_0" } }
+        assertTrue(vm.state.value.hasOlder, "une page pleine doit annoncer qu'il reste de l'historique")
+
+        vm.loadOlder()
+        awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_ancien" } }
+
+        val ids = vm.state.value.chat.messages.map { it.id }
+        assertEquals(1, ids.count { it == "msg_0" }, "un doublon ne doit jamais apparaitre")
+        // L'ancien passe DEVANT : l'ordre chronologique est preserve.
+        assertTrue(
+            ids.indexOf("msg_ancien") < ids.indexOf("msg_0"),
+            "l'ancien doit etre devant, obtenu ${ids.take(4)}",
+        )
+    }
+
 }

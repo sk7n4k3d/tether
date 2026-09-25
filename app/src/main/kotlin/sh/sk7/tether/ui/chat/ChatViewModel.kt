@@ -54,9 +54,43 @@ data class ChatUiState(
     val chat: SessionUiState,
     val phase: UiPhase = UiPhase.Idle,
     val error: String? = null,
+    /**
+     * **L'en-tete d'instrument** : modele, agent, provider, date de debut.
+     *
+     * ⚠️ Le `design-soul.md` §5 l'exige : « En-tete de session : modele, agent, cout cumule en
+     * direct, tokens, statut ». La liste des sessions le montre deja ; le chat l'oubliait, alors
+     * que c'est l'ecran ou l'on passe le plus de temps. Un cockpit qui ne dit ce qu'il pilote
+     * que sur la page d'accueil n'est pas un cockpit.
+     */
+    val meta: SessionMeta? = null,
+    /**
+     * Il reste des messages **plus anciens** non charges sur le serveur.
+     *
+     * ⚠️ On ne peut pas le savoir de facon exacte : l'API ne dit pas le total d'une session. On
+     * l'**deduit** d'une page pleine — si le serveur a rendu exactement la taille demandee, il y
+     * a probablement une suite. C'est une heuristique, et quand elle se trompe on affiche une
+     * ligne « charger plus » qui ne charge rien, ce qui est un echec benin ; l'inverse (croire
+     * qu'il n'y a plus rien) ferait disparaitre l'historique.
+     */
+    val hasOlder: Boolean = false,
+    /** Un chargement de messages anciens est en cours (indicateur en haut de la liste). */
+    val loadingOlder: Boolean = false,
 ) {
     val isBusy: Boolean get() = phase == UiPhase.Sending || phase == UiPhase.Streaming
 }
+
+/**
+ * Metadonnees d'affichage d'une session, **telles que le serveur les donne**.
+ *
+ * ⚠️ Volontairement pauvre et sans calcul : chaque champ est un fait du serveur, jamais une
+ * deduction. Un champ absent reste absent (on n'affiche pas « 0,00 $ » pour faire joli).
+ */
+data class SessionMeta(
+    val model: String? = null,
+    val provider: String? = null,
+    val agent: String? = null,
+    val startedAt: Long? = null,
+)
 
 /**
  * Detient l'etat de l'ecran de chat et l'alimente de deux sources :
@@ -274,15 +308,28 @@ class ChatViewModel @Inject constructor(
         val current = settings ?: return
         scope.launch {
             try {
-                val dtos = gateway.allMessages(current, sessionID)
+                // ⚠️ **Fenetre recente, pas tout l'historique.** `allMessages` pagine depuis le
+                // debut : mesure sur le serveur, les sessions lourdes font **810 messages en
+                // moyenne** et jusqu'a **2 040**. Charger tout a chaque ouverture et a chaque
+                // reconnexion etait le principal cout de cet ecran. On demande donc les N
+                // derniers, et le reste vient au scroll ([loadOlder]).
+                val dtos = gateway.recentMessages(current, sessionID, ChatWindow.SERVER_PAGE)
                 val fromRest = ChatMessageMapper.fromDtos(dtos)
                 val restIds = fromRest.map { it.id }.toHashSet()
                 _state.update { state ->
-                    val absentFromRest = state.chat.messages.filter { it.id !in restIds }
-                    val merged = state.chat.copy(messages = fromRest + absentFromRest)
-                    state.copy(chat = dedupeOptimistic(merged))
+                    // ⚠️ On ne remplace PAS tout : les messages plus anciens deja charges par
+                    // [loadOlder] doivent survivre a une resync, sinon remonter puis perdre la
+                    // connexion effacerait l'historique qu'on vient de charger.
+                    // ⚠️ Ordre : [anciens charges] + [fenetre recente du REST]. Les anciens
+                    // sont ceux que [loadOlder] a remontes ; ils gardent leur place en tete.
+                    val alreadyOlder = state.chat.messages.filter { it.id !in restIds }
+                    val merged = state.chat.copy(messages = alreadyOlder + fromRest)
+                    state.copy(
+                        chat = dedupeOptimistic(merged),
+                        hasOlder = state.hasOlder || dtos.size >= ChatWindow.SERVER_PAGE,
+                    )
                 }
-                loadTitle(current)
+                loadMeta(current)
             } catch (e: Exception) {
                 // Une resync ratee ne doit pas effacer ce qui est deja affiche.
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
@@ -290,13 +337,67 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadTitle(current: ConnectionSettings) {
-        if (_state.value.title != null) return
+    /**
+     * Charge les metadonnees de session (titre + en-tete d'instrument).
+     *
+     * ⚠️ **Un seul appel** pour les deux : `loadTitle` faisait deja ce `GET` et jetait tout sauf
+     * le titre. Le cout en direct, lui, vient du flux (`session.usage.updated`), pas d'ici.
+     */
+    private suspend fun loadMeta(current: ConnectionSettings) {
         runCatching { gateway.session(current, sessionID) }
             .getOrNull()
-            ?.title
-            ?.takeIf { it.isNotBlank() }
-            ?.let { title -> _state.update { it.copy(title = title) } }
+            ?.let { session ->
+                _state.update {
+                    it.copy(
+                        title = session.title?.takeIf { t -> t.isNotBlank() } ?: it.title,
+                        meta = SessionMeta(
+                            model = session.model?.id,
+                            provider = session.model?.providerID,
+                            agent = session.agent,
+                            startedAt = session.time?.created,
+                        ),
+                    )
+                }
+            }
+    }
+
+    /**
+     * Charge les **messages plus anciens** que ce qui est affiche (scroll vers le haut).
+     *
+     * ⚠️ On remonte depuis l'**id du message le plus ancien deja charge**, jamais depuis un
+     * index : l'index local ne correspond pas a la position serveur, parce que les marqueurs de
+     * tour (`idle`, `synthetic`…) ne produisent pas de bulle et sont filtres par le mapper.
+     * Utiliser un index decalerait la fenetre a chaque cran.
+     *
+     * ⚠️ On **prepend** les anciens et on conserve le reste : la fusion se fait par id, comme la
+     * resync, pour qu'un message arrive par le flux entre-temps ne soit jamais perdu.
+     */
+    fun loadOlder() {
+        val current = _state.value
+        if (current.loadingOlder || !current.hasOlder) return
+        val oldest = current.chat.messages.firstOrNull() ?: return
+        val settings = settings ?: return
+
+        _state.update { it.copy(loadingOlder = true) }
+        scope.launch {
+            try {
+                val dtos = gateway.messagesBefore(settings, sessionID, oldest.id, ChatWindow.SERVER_PAGE)
+                val older = ChatMessageMapper.fromDtos(dtos)
+                _state.update { state ->
+                    // Fusion par id : les anciens passent DEVANT, les existants sont conserves.
+                    val known = state.chat.messages.map { it.id }.toHashSet()
+                    val fresh = older.filter { it.id !in known }
+                    state.copy(
+                        chat = state.chat.copy(messages = fresh + state.chat.messages),
+                        // Une tranche vide ou incomplete = on a atteint le debut de la session.
+                        hasOlder = dtos.size >= ChatWindow.SERVER_PAGE,
+                        loadingOlder = false,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(loadingOlder = false, error = ConnectionErrors.describe(e)) }
+            }
+        }
     }
 
     // ------------------------------------------------------------------

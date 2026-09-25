@@ -60,6 +60,16 @@ sealed interface SessionListUiState {
         val createAgent: String? = null,
         /** Modele choisi ; **obligatoire** a la creation (contrainte API). */
         val createModel: ModelRef? = null,
+        /**
+         * Un rafraichissement est en cours **alors que la liste est deja affichee**.
+         *
+         * ⚠️ **Distinct de [Loading]** et c'est essentiel : `Loading` remplace la liste par une
+         * roue — acceptable au premier chargement, insupportable sur un tirer-pour-rafraichir,
+         * ou l'on perd l'ecran qu'on etait en train de lire. Ici la liste **reste a l'ecran**,
+         * seule l'indicateur du geste tourne. C'est la difference entre « je charge » et
+         * « j'actualise ».
+         */
+        val refreshing: Boolean = false,
     ) : SessionListUiState
 
     data class Error(val message: String) : SessionListUiState
@@ -117,6 +127,37 @@ class SessionListViewModel @Inject constructor(
 
     override fun onCleared() {
         scope.cancel()
+    }
+
+    /**
+     * Rafraichit **sans vider l'ecran** : la liste reste affichee pendant le chargement.
+     *
+     * ⚠️ C'est ce qui branche le geste « tirer vers le bas ». Passer par [refresh] ferait
+     * disparaitre la liste pour une roue centree — on perdrait l'ecran qu'on etait en train de
+     * lire, pour un geste dont tout l'interet est d'etre **non destructif**.
+     * L'erreur eventuelle est remontee dans [sessionError], pas en remplacant la liste.
+     */
+    fun startRefresh() {
+        val loaded = _state.value as? SessionListUiState.Loaded
+        if (loaded == null) {
+            // Rien a preserver (premier chargement ou etat d'erreur) : le chemin normal suffit.
+            refresh()
+            return
+        }
+        if (loaded.refreshing) return
+        _state.value = loaded.copy(refreshing = true)
+        scope.launch {
+            val settings = store.current()
+            try {
+                val fresh = load(settings) as? SessionListUiState.Loaded
+                _state.value = fresh?.copy(refreshing = false) ?: fresh ?: loaded.copy(refreshing = false)
+            } catch (e: Exception) {
+                // ⚠️ On CONSERVE la liste : un rafraichissement rate ne doit pas faire
+                // disparaitre ce qu'on lisait. L'erreur se dit a part.
+                _state.value = loaded.copy(refreshing = false)
+                _sessionError.value = ConnectionErrors.describe(e)
+            }
+        }
     }
 
     /** Recharge la liste des sessions, les modeles et les agents depuis le REST. */

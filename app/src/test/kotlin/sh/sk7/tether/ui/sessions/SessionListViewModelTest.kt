@@ -127,6 +127,23 @@ class SessionListViewModelTest {
             return CursorPage(emptyList())
         }
 
+        /**
+         * Les fakes renvoient la MEME page que [messagesPage] : les tests ne portent pas sur la
+         * pagination, et simuler une vraie fenetre ici ne testerait que le fake lui-meme.
+         */
+        override suspend fun recentMessages(
+            settings: ConnectionSettings,
+            sessionID: String,
+            limit: Int,
+        ): List<MessageDto> = messagesPage(settings, sessionID, limit, null, null).data
+
+        override suspend fun messagesBefore(
+            settings: ConnectionSettings,
+            sessionID: String,
+            beforeMessageID: String,
+            limit: Int,
+        ): List<MessageDto> = emptyList()
+
         override suspend fun interrupt(settings: ConnectionSettings, sessionID: String): Boolean {
             failure?.let { throw it }
             return true
