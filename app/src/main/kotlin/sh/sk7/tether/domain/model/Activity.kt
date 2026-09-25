@@ -130,6 +130,21 @@ data class FleetState(
     /** Les sessions terminées et pas vues. */
     val unseen: List<SessionActivity> get() = bySession.values.filter { it.isUnseen }
 
+    /**
+     * **Les sessions terminées depuis un instant de reference.**
+     *
+     * ⚠️ Distinction indispensable a l'affichage, et c'est une mesure qui l'a imposee : sur ce
+     * serveur, **110 sessions sur 200** sont « pas vues » — jamais rouvertes depuis des jours. Les
+     * compter toutes en tete d'ecran produit un chiffre exact et **inutilisable** : un arriere
+     * historique n'est pas une information, c'est du bruit qui noie les deux lignes qui comptent.
+     *
+     * ⚠️ Ce n'est **pas** un mensonge sur l'etat : la pastille de chaque ligne continue d'utiliser
+     * `isUnseen` (la verite du serveur). C'est une **vue** differente de la meme donnee, adaptee a
+     * la question « qu'est-ce qui s'est passe pendant que j'etais ailleurs ? ».
+     */
+    fun unseenSince(reference: Long): List<SessionActivity> =
+        bySession.values.filter { it.isUnseen && (it.idleAt ?: 0) > reference }
+
     /** Les sessions en cours d'exécution. */
     val running: List<SessionActivity> get() = bySession.values.filter { it.activity == Activity.Running }
 
@@ -160,6 +175,22 @@ data class FleetState(
             bySession.values.any { it.activity == Activity.Failed } -> Activity.Failed
             else -> Activity.Idle
         }
+
+    /**
+     * L'etat global, **rapporte a la session de l'utilisateur**.
+     *
+     * ⚠️ Meme logique que [unseenSince] : « 110 pas vu » n'est pas une raison de regarder l'ecran,
+     * « 2 termines pendant que tu etais ailleurs » en est une. C'est cette version qui doit
+     * s'afficher en tete.
+     */
+    fun summarySince(reference: Long): Activity = when {
+        waiting.isNotEmpty() -> Activity.Waiting
+        unseenSince(reference).isNotEmpty() -> Activity.Unseen
+        running.isNotEmpty() -> Activity.Running
+        queued.isNotEmpty() -> Activity.Queued
+        bySession.values.any { it.activity == Activity.Failed } -> Activity.Failed
+        else -> Activity.Idle
+    }
 
     /** Y a-t-il **quelque chose** à signaler ? */
     val hasAnything: Boolean

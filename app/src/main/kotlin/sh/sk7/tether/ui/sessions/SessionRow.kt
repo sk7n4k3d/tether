@@ -1,5 +1,13 @@
 package sh.sk7.tether.ui.sessions
 
+import androidx.compose.ui.draw.clip
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+
+import androidx.compose.foundation.background
+
+import sh.sk7.tether.domain.model.Activity
+
 import androidx.compose.material3.Icon
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pin
@@ -80,6 +88,14 @@ fun SessionRow(
     onInterrupt: (() -> Unit)? = null,
     onCompact: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    /**
+     * L'etat vivant de cette session, tel que le serveur le voit.
+     *
+     * ⚠️ `null` = on ne sait pas encore (premiere interrogation en cours). On n'affiche alors
+     * **rien** plutot qu'un statut par defaut : afficher « calme » avant d'avoir demande serait
+     * une affirmation qu'on n'a pas les moyens de faire.
+     */
+    activity: Activity? = null,
 ) {
     val isSub = item.isSub
     val state = item.nodeState
@@ -274,6 +290,9 @@ fun SessionRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                // ⚠️ Le statut est place AVANT le menu, donc toujours visible sans ouvrir quoi que
+                // ce soit. C'est la reponse directe a « je ne sais pas si tu tournes ».
+                activity?.let { ActivityBadge(it) }
                 SessionOptionsMenu(
                     onPin = onPin,
                     pinned = pinned,
@@ -343,4 +362,44 @@ fun SessionRow(
 
         }
     }
+}
+
+/**
+ * **La pastille d'état d'une session.**
+ *
+ * ### Pourquoi un mot ET une couleur
+ * Une pastille de couleur seule ne se lit pas : ni en contraste élevé, ni pour un daltonien, ni
+ * d'un coup d'œil sur une ligne dense. Le mot est ce qui rend l'état lisible ; la couleur ne fait
+ * que le rendre trouvable. C'est la même règle que pour les statuts de serveur MCP.
+ *
+ * ⚠️ **« t'attend » est le seul état qui porte une forme pleine.** C'est le seul qui demande une
+ * action de l'utilisateur : il doit se distinguer des autres même flouté, même en noir et blanc.
+ *
+ * ⚠️ `Idle` n'affiche **rien**. Marquer « calme » sur 440 lignes remplirait l'écran d'une
+ * information qui est l'absence d'information — et noierait les quelques lignes qui comptent.
+ */
+@Composable
+private fun ActivityBadge(activity: Activity) {
+    // ⚠️ `Idle` et `Unseen` sont traites a part : le premier ne s'affiche pas, le second est
+    // deja porte par sa propre information (« termine »). Tout afficher rendrait le tout illisible.
+    val (label, tint) = when (activity) {
+        Activity.Waiting -> "t'attend" to TetherAlert
+        Activity.Running -> "en cours" to TetherAccent
+        Activity.Unseen -> "terminé" to TetherTextPrimary
+        Activity.Queued -> "en file" to TetherTextSecondary
+        Activity.Failed -> "échec" to TetherAlert
+        Activity.Idle -> return
+    }
+    val emphasis = activity == Activity.Waiting
+
+    Text(
+        text = label,
+        style = sh.sk7.tether.ui.theme.TetherDataStyle,
+        color = tint,
+        fontWeight = if (emphasis) FontWeight.SemiBold else FontWeight.Normal,
+        modifier = Modifier
+            .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+            .background(tint.copy(alpha = if (emphasis) 0.16f else 0.08f))
+            .padding(horizontal = Spacing.xs, vertical = 1.dp),
+    )
 }

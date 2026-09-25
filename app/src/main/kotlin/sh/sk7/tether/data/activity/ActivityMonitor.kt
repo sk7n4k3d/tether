@@ -77,6 +77,45 @@ class ActivityMonitor @Inject constructor(
     /** Un refresh à la fois : deux cycles concurrents doublonneraient les requêtes. */
     private val refreshLock = Mutex()
 
+    /**
+     * **Les sessions connues, fournies par l'ecran qui les a chargees.**
+     *
+     * ⚠️ Choix d'architecture, et il corrige un vrai defaut : le monitor rechargeait
+     * `GET /api/session` de son cote, ce qui **doublait un appel** que la liste fait deja — une
+     * requete lourde (450 sessions) pour lire quatre champs (`idle`, `viewed`, `outcome`,
+     * `parentID`).
+     *
+     * Le monitor **ne va donc pas chercher** les sessions : on les lui pousse. Son cycle
+     * periodique n'interroge que les routes legeres (actives, permissions, shells) et croise le
+     * resultat avec ce qu'il sait deja.
+     *
+     * ⚠️ Consequence assumee : si aucun ecran n'a pousse de sessions, l'activite par session reste
+     * vide. L'etat global (actives, shells) et le compteur d'attente fonctionnent quand meme —
+     * c'est le strict necessaire, et ca evite de payer 450 sessions pour l'afficher.
+     */
+    private var knownSessions: List<Session> = emptyList()
+
+    /**
+     * Alimente le monitor avec les sessions que l'ecran vient de charger.
+     *
+     * ⚠️ C'est le chemin **prefere** : il economise un appel lourd (450 sessions) pour lire quatre
+     * champs. Mais il ne suffit pas — voir [SESSION_RESCAN_MS].
+     */
+    fun publishSessions(sessions: List<Session>) {
+        knownSessions = sessions
+        lastSessionScan = System.currentTimeMillis()
+    }
+
+    /**
+     * Horodatage du dernier approvisionnement en sessions.
+     *
+     * ⚠️ Mesure a l'origine de ce champ : une session **creee apres** le chargement de la liste
+     * n'apparaissait jamais dans l'etat — le monitor ne la decouvrait pas, puisque plus personne ne
+     * rechargeait la liste de sessions. Le tour se terminait en 6 s, et l'en-tete continuait de
+     * dire « rien » : exactement le reproche qu'on corrige.
+     */
+    private var lastSessionScan = 0L
+
     private var loop: kotlinx.coroutines.Job? = null
 
     /**
@@ -130,15 +169,29 @@ class ActivityMonitor @Inject constructor(
             try {
                 // ⚠️ Les trois lectures sont en **parallèle** : indépendantes, et
                 // séquentielles elles tripleraient la latence d'un cycle pour rien.
-                val sessions = gateway.allSessions(settings)
+                // ⚠️ Reapprovisionnement **periodique et lent** (voir SESSION_RESCAN_MS) : sans
+                // lui, une session creee pendant que l'ecran est ouvert resterait invisible. Le
+                // cout est borne et justifie — c'est ce qui rend l'etat vivant au lieu de figé.
+                if (System.currentTimeMillis() - lastSessionScan > SESSION_RESCAN_MS) {
+                    runCatching { gateway.allSessions(settings) }.onSuccess {
+                        knownSessions = it
+                        lastSessionScan = System.currentTimeMillis()
+                    }
+                }
+
                 val activeIDs = gateway.activeSessions(settings)
                 val shells = gateway.shells(settings)
                 // Les permissions et les formulaires sont ce qui « attend ». Ils viennent d'une
                 // seule route globale : pas besoin de la demander par session.
                 val pendingPermissions = gateway.pendingPermissions(settings)
 
-                val activities = sessions.associate { session ->
-                    session.id to session.toActivity(activeIDs, pendingPermissions.count { it.sessionID == session.id })
+                // ⚠️ On croise les sessions **connues** avec ce qu'on vient d'interroger. Aucune
+                // requete lourde n'est refaite : c'est le principe du detenteur unique.
+                val activities = knownSessions.associate { session ->
+                    session.id to session.toActivity(
+                        activeIDs,
+                        pendingPermissions.count { it.sessionID == session.id },
+                    )
                 }
 
                 _state.value = FleetState(
@@ -222,5 +275,15 @@ class ActivityMonitor @Inject constructor(
          * d'octets.
          */
         const val POLL_INTERVAL_MS = 12_000L
+
+        /**
+         * 60 s : les sessions changent **peu**, leur etat change **vite**.
+         *
+         * ⚠️ Deux cadences distinctes, et c'est deliberé : interroger les sessions (lourd, 450
+         * elements) a la meme frequence que les etats (leger) gaspillerait la bande passante pour
+         * une donnee qui ne bouge presque pas. 60 s suffit a voir apparaitre une session nouvelle
+         * sans payer le prix a chaque cycle.
+         */
+        const val SESSION_RESCAN_MS = 60_000L
     }
 }

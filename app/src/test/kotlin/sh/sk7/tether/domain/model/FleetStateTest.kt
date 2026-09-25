@@ -191,6 +191,62 @@ class FleetStateTest {
         assertEquals(null, unknown.durationLabel(now = 1_000))
     }
 
+
+    @Test
+    fun `l arriere historique n est pas un signal`() {
+        // ⚠️ LE test que la mesure a impose : sur ce serveur, 110 sessions sur 200 sont
+        // « pas vues » — jamais rouvertes depuis des jours. Les compter toutes en tete d'ecran
+        // produit un chiffre exact et inutilisable. Un arriere n'est pas une information.
+        val vieux = 1_000L
+        val recent = 10_000L
+        val state = fleet(
+            session("ancienne", Activity.Unseen, idleAt = vieux),
+            session("ancienne2", Activity.Unseen, idleAt = vieux + 1),
+        )
+
+        // Reference : il y a peu. Rien ne s'est passe depuis.
+        assertTrue(state.unseenSince(recent).isEmpty(), "un arriere historique ne compte pas")
+        // Mais la verite par session reste : la pastille de la ligne continue de dire « termine ».
+        assertEquals(2, state.unseen.size, "la verite du serveur n'est pas effacee")
+    }
+
+    @Test
+    fun `ce qui vient de se terminer est un signal`() {
+        val openedAt = 5_000L
+        val state = fleet(
+            session("vieux", Activity.Unseen, idleAt = 1_000),
+            session("frais", Activity.Unseen, idleAt = 6_000),
+        )
+
+        val since = state.unseenSince(openedAt)
+        assertEquals(1, since.size)
+        assertEquals("frais", since.first().sessionID)
+        assertEquals(Activity.Unseen, state.summarySince(openedAt))
+    }
+
+    @Test
+    fun `t attend prime meme quand rien ne vient de se terminer`() {
+        // ⚠️ Une decision en attente est un signal par nature : elle n'a pas besoin d'etre
+        // recente pour compter. L'inverse serait faux.
+        val state = fleet(
+            session("bloquee", Activity.Waiting),
+            session("vieille", Activity.Unseen, idleAt = 1_000),
+        )
+
+        assertEquals(Activity.Waiting, state.summarySince(9_999))
+    }
+
+    @Test
+    fun `tout est calme depuis l ouverture`() {
+        val state = fleet(
+            session("a", Activity.Unseen, idleAt = 1_000),
+            session("b", Activity.Idle),
+        )
+
+        // Rien depuis l'ouverture, rien en cours, rien en attente : c'est calme.
+        assertEquals(Activity.Idle, state.summarySince(9_999))
+    }
+
     @Test
     fun `la file compte separement des sessions qui attendent`() {
         // ⚠️ « En file » et « t attend » sont deux faits differents : le premier attend son tour

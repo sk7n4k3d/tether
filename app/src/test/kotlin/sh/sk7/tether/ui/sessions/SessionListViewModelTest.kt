@@ -34,6 +34,7 @@ import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.domain.model.UsageStats
+import sh.sk7.tether.data.activity.ActivityMonitor
 import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.PinnedSessions
@@ -191,6 +192,19 @@ class SessionListViewModelTest {
         // Le monitor partage : les tests n'exercent pas l'etat de connexion, mais le ViewModel
         // en depend pour le signaler sur du vecu.
         ConnectionMonitor(realStore(settings)),
+        // ⚠️ Le détenteur d'état vivant : ces tests n'exercent pas l'activité, mais le ViewModel
+        // s'y abonne pour la liste. Un `ActivityMonitor` réel suffit — il ne fait rien tant que
+        // son cycle n'est pas déclenché, et les tests n'attendent pas de lui.
+        ActivityMonitor(
+            store = realStore(settings),
+            gateway = gateway,
+            connection = ConnectionMonitor(realStore(settings)),
+            // ⚠️ Portee **annulee** : la boucle du monitor ne doit jamais tourner pendant un test,
+            // sinon ses cycles (delay de 12 s) pollueraient les compteurs d'appels sur des tests
+            // qui durent plus longtemps que l'intervalle.
+            appScope = CoroutineScope(Dispatchers.Unconfined).also { it.cancel() },
+            dispatcher = Dispatchers.Unconfined,
+        ),
         Dispatchers.Unconfined,
     )
 

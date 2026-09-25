@@ -16,6 +16,8 @@ import kotlinx.coroutines.withContext
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
+import sh.sk7.tether.data.activity.ActivityMonitor
+import sh.sk7.tether.domain.model.FleetState
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.settings.ConnectionMonitor
@@ -96,6 +98,7 @@ class SessionListViewModel @Inject constructor(
     private val gateway: OpenCodeGateway,
     private val pinned: PinnedSessions,
     private val monitor: ConnectionMonitor,
+    private val activity: ActivityMonitor,
     @param:IoDispatcher
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -111,6 +114,14 @@ class SessionListViewModel @Inject constructor(
 
     private val _state = MutableStateFlow<SessionListUiState>(SessionListUiState.Loading)
     val state: StateFlow<SessionListUiState> = _state.asStateFlow()
+
+    /**
+     * **L'état vivant de toute l'installation**, lu directement au détenteur partagé.
+     *
+     * ⚠️ On ne le recalcule **pas** ici : la liste n'est qu'un des lecteurs. Le jour où un second
+     * écran veut le même état, il lira la même source — et les deux ne pourront pas se contredire.
+     */
+    val fleet: StateFlow<FleetState> = activity.state
 
     private val _create = MutableStateFlow(CreateSessionState())
     val create: StateFlow<CreateSessionState> = _create.asStateFlow()
@@ -159,10 +170,16 @@ class SessionListViewModel @Inject constructor(
     }
 
     init {
+        // ⚠️ On s'abonne : la boucle du monitor s'arrête quand plus personne ne regarde, ce qui
+        // évite d'interroger le serveur toutes les 12 s pour un écran fermé.
+        activity.acquire()
         refresh()
     }
 
     override fun onCleared() {
+        // ⚠️ Toujours relâcher, même si l'écran est détruit par une erreur : un abonnement qui
+        // fuit laisserait la boucle allumée pour toute la vie du processus.
+        activity.release()
         scope.cancel()
     }
 
@@ -239,6 +256,9 @@ class SessionListViewModel @Inject constructor(
 
     private suspend fun load(settings: ConnectionSettings): SessionListUiState {
         val sessions = gateway.allSessions(settings)
+        // ⚠️ On **donne** les sessions au détenteur d'état au lieu de le laisser les recharger :
+        // un seul appel réseau pour les deux besoins (la liste affiche, le monitor calcule).
+        activity.publishSessions(sessions)
         // ⚠️ On compte les approbations en attente **a chaque chargement de la liste** : c'est le
         // moment ou l'utilisateur regarde l'app, donc celui ou le badge doit etre juste. Un
         // echec est ignore (`getOrElse`) : le badge est un confort, pas une fonction critique.

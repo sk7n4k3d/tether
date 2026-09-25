@@ -1,5 +1,9 @@
 package sh.sk7.tether.ui.sessions
 
+import sh.sk7.tether.domain.model.FleetState
+
+import sh.sk7.tether.domain.model.Activity
+
 import sh.sk7.tether.ui.theme.TetherDataStyle
 
 import androidx.compose.foundation.border
@@ -103,6 +107,7 @@ fun SessionListScreen(
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
     val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
     val pinnedIds by viewModel.pinnedIds.collectAsStateWithLifecycle()
+    val fleet by viewModel.fleet.collectAsStateWithLifecycle()
     // ⚠️ La requete vit **hors** de la branche `Loaded` : si elle mourait au passage a l'etat
     // d'erreur ou de chargement, un rafraichissement rate effacerait la recherche en cours.
     var query by remember { mutableStateOf("") }
@@ -168,6 +173,12 @@ fun SessionListScreen(
                 onValueChange = { query = it },
                 modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             )
+            // ⚠️ L'en-tête de flotte répond à la question qu'on se pose en ouvrant l'app :
+            // « est-ce que c'est calme ? ». Il est placé AVANT la liste, parce que c'est la
+            // première chose qu'on veut savoir — et qu'il tient en un mot.
+            if (fleet.hasAnything || fleet.polledAt != null) {
+                FleetHeader(fleet = fleet)
+            }
         Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 SessionListUiState.Loading -> Centered {
@@ -263,6 +274,10 @@ fun SessionListScreen(
                             items(visible, key = { it.id }) { item ->
                                 SessionRow(
                                     item = item,
+                                    // ⚠️ L'état vient du détenteur partagé, jamais recalculé ici :
+                                    // c'est ce qui garantit que la liste et le chat ne diront pas
+                                    // deux choses différentes de la même session.
+                                    activity = fleet.bySession[item.id]?.activity,
                                     // Chevron : ouvre/ferme les sous-agents. Present seulement
                                     // si la session en a (sinon aucun controle inutile).
                                     onToggleSubs = if (item.childCount > 0) {
@@ -737,3 +752,97 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
  */
 private fun isUnauthorized(message: String): Boolean =
     message.contains("401") || message.contains("403")
+
+/**
+ * **L'en-tête de flotte : l'état de toute l'installation, en un mot.**
+ *
+ * ### Ce qu'il répond, et pourquoi il est en haut
+ * La question qu'on se pose en ouvrant l'app n'est pas « quelle est la première session ? » mais
+ * **« est-ce que c'est calme ? »**. Y répondre demande de parcourir mentalement 440 lignes, ce
+ * que personne ne fait. Un mot en haut de l'écran le fait à notre place.
+ *
+ * ### Les compteurs, et pourquoi ils sont distincts
+ * « 2 t'attendent » et « 3 tournent » ne se traitent pas pareil : le premier demande un geste,
+ * le second demande de la patience. Les additionner en « 5 sessions » perdrait exactement
+ * l'information qui décide de ce qu'on fait ensuite.
+ *
+ * ⚠️ **Rien n'est affiché quand tout est calme et qu'on n'a jamais interrogé le serveur.** Un
+ * en-tête « calme » à l'ouverture serait une affirmation qu'on n'a pas encore les moyens de
+ * faire — on ne sait pas, on n'a pas demandé.
+ */
+@Composable
+private fun FleetHeader(fleet: FleetState) {
+    // ⚠️ Instant de reference : l'ouverture de l'ecran. « Qu'est-ce qui s'est passe pendant que
+    // j'etais ailleurs ? » est une question utile ; « 110 sessions jamais rouvertes » n'en est pas
+    // une. La verite par session reste dans la pastille de chaque ligne.
+    //
+    // ⚠️ HYPOTHESE ASSUMEE : cette borne vient de l'horloge du **telephone**, alors que `idleAt`
+    // vient de celle du **serveur**. Les deux machines sont synchronisees par NTP, donc l'ecart est
+    // de l'ordre de la seconde. Si un jour il ne l'etait plus, l'effet serait de decaler la fenetre
+    // de quelques secondes — jamais d'afficher un fait faux, puisqu'aucune donnee n'est inventee.
+    // La comparaison « termine / pas vu » par session, elle, reste **entierement serveur** et ne
+    // depend d'aucune horloge locale.
+    val openedAt = remember { System.currentTimeMillis() }
+    val since = fleet.unseenSince(openedAt)
+
+    val (label, tint) = when (fleet.summarySince(openedAt)) {
+        Activity.Waiting -> "Des décisions t'attendent" to TetherAlert
+        Activity.Unseen -> "Du travail vient de se terminer" to TetherTextPrimary
+        Activity.Running -> "En cours d'exécution" to TetherAccent
+        Activity.Queued -> "Messages en file" to TetherTextSecondary
+        Activity.Failed -> "Des tours ont échoué" to TetherAlert
+        Activity.Idle -> "Calme" to TetherTextSecondary
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg, vertical = Spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = tint,
+            fontWeight = if (fleet.summarySince(openedAt) == Activity.Waiting) {
+            FontWeight.SemiBold
+        } else {
+            FontWeight.Normal
+        },
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            // ⚠️ Chaque compteur n'apparaît que s'il est non nul : une ligne de « 0 » partout
+            // serait du bruit, et noierait le seul chiffre qui compte.
+            if (fleet.waiting.isNotEmpty()) Counter("${fleet.waiting.size} t'attend", TetherAlert)
+            // ⚠️ On compte les termines **depuis l'ouverture**, pas le total : 110 « pas vu »
+            // serait exact et inutilisable. Et on dit le mot « terminé », pas « pas vu » — ce
+            // qu'on annonce est un evenement, pas un manquement.
+            if (since.isNotEmpty()) Counter("${since.size} terminé" + if (since.size > 1) "s" else "", TetherTextPrimary)
+            if (fleet.running.isNotEmpty()) Counter("${fleet.running.size} en cours", TetherAccent)
+            if (fleet.queued.isNotEmpty()) Counter("${fleet.queued.size} en file", TetherTextSecondary)
+            if (fleet.liveShells.isNotEmpty()) Counter("${fleet.liveShells.size} shell", TetherTextSecondary)
+        }
+
+        // ⚠️ On dit l'erreur d'interrogation au lieu de la taire : un état figé qui a l'air à jour
+        // est pire qu'un état qu'on sait périmé.
+        fleet.error?.let { message ->
+            Text(
+                text = "État non rafraîchi : $message",
+                style = sh.sk7.tether.ui.theme.TetherDataStyle,
+                color = TetherAlert.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Counter(label: String, tint: androidx.compose.ui.graphics.Color) {
+    Text(
+        text = label,
+        style = sh.sk7.tether.ui.theme.TetherDataStyle,
+        color = tint,
+    )
+}
