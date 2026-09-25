@@ -1,5 +1,15 @@
 package sh.sk7.tether.ui.sessions
 
+import sh.sk7.tether.ui.theme.TetherDataStyle
+
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import com.composables.icons.lucide.Search
+import com.composables.icons.lucide.X
+import sh.sk7.tether.ui.theme.TetherComposerBorder
+import sh.sk7.tether.ui.theme.TetherComposerSurface
+import sh.sk7.tether.ui.theme.TetherDimensions
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -84,6 +94,9 @@ fun SessionListScreen(
     val create by viewModel.create.collectAsStateWithLifecycle()
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
     val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
+    // ⚠️ La requete vit **hors** de la branche `Loaded` : si elle mourait au passage a l'etat
+    // d'erreur ou de chargement, un rafraichissement rate effacerait la recherche en cours.
+    var query by remember { mutableStateOf("") }
     // Dialogues d'action : la session visee, ou null. L'etat vit ici (et non dans la branche
     // `Loaded`) parce que les boites sont affichees **hors** du `when` : si la liste passe par
     // un etat transitoire pendant l'action, le dialogue ne doit pas disparaitre sous le doigt.
@@ -138,7 +151,15 @@ fun SessionListScreen(
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+            // La recherche vit **au-dessus** de la liste, pas dans les reglages : retrouver une
+            // session est un geste du quotidien, pas une configuration.
+            SearchField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            )
+        Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 SessionListUiState.Loading -> Centered {
                     CircularProgressIndicator(color = TetherAccent)
@@ -176,9 +197,13 @@ fun SessionListScreen(
                     // donc l'ensemble des parents OUVERTS (et non l'inverse), pour que le
                     // defaut soit « replie » sans avoir a pre-remplir la liste.
                     var expandedParents by remember { mutableStateOf(emptySet<String>()) }
+                    // ⚠️ ORDRE : on filtre par RECHERCHE **avant** de replier les sous-agents.
+                    // L'inverse perdrait les enfants d'un parent qui ne matche pas mais dont un
+                    // enfant matche — exactement le cas « je cherche le nom d'un sous-agent ».
+                    val searched = remember(items, query) { SessionSearch.filter(items, query) }
                     // Liste rendue : un parent replie masque ses enfants.
-                    val visible = remember(items, expandedParents) {
-                        items.filter { item ->
+                    val visible = remember(searched, expandedParents) {
+                        searched.filter { item ->
                             item.parentID == null || item.parentID in expandedParents
                         }
                     }
@@ -191,6 +216,13 @@ fun SessionListScreen(
                         onRefresh = viewModel::startRefresh,
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        // ⚠️ **Etat vide de recherche**, distinct de « aucune session » : dire
+                        // « aucune session » alors qu'on vient de taper un filtre est un
+                        // mensonge, et l'utilisateur chercherait pourquoi ses sessions ont
+                        // disparu. On dit sur quoi on a cherche, et on propose d'effacer.
+                        if (visible.isEmpty() && query.isNotBlank()) {
+                            NoSearchResult(query = query, onClear = { query = "" })
+                        } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
@@ -240,6 +272,8 @@ fun SessionListScreen(
                 }
             }
         }
+        }
+}
     }
 
     if (create.visible && state is SessionListUiState.Loaded) {
@@ -544,3 +578,127 @@ private fun EnumDropdown(
 private fun Model.displayName(): String = name ?: "${providerID.orEmpty()}/$id"
 
 private fun Model.toRef(): ModelRef = ModelRef(id = modelID ?: id, providerID = providerID.orEmpty())
+
+/**
+ * **Le champ de recherche.**
+ *
+ * ### Pourquoi il reprend la surface de la barre de saisie du chat
+ * ⚠️ C'est un choix de coherence : dans Tether, **une zone ou l'on ecrit a toujours la meme
+ * forme** (surface posee, liseré 1 dp, pas de bordure Material, pas de label flottant). Un
+ * `OutlinedTextField` ici et une surface nue dans le chat donneraient deux langages visuels pour
+ * la meme action. Une app dont les composants ne se ressemblent pas parait inachevee.
+ *
+ * ⚠️ Le bouton d'effacement n'apparait **que s'il y a du texte** : un controle qui ne fait rien
+ * est un piege a tapes.
+ */
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(TetherDimensions.cornerMd))
+            .background(TetherComposerSurface)
+            .border(1.dp, TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerMd))
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Icon(
+            imageVector = Lucide.Search,
+            contentDescription = null,
+            tint = TetherTextSecondary,
+            modifier = Modifier.size(15.dp),
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(
+                    text = "Rechercher une session",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TetherTextSecondary,
+                )
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = TetherTextPrimary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(TetherAccent),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    // ⚠️ `Search` affiche la touche « rechercher » au lieu d'« entrer » : la
+                    // recherche est locale et instantanee, il n'y a rien a valider.
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+                ),
+                // ⚠️ **NECESSAIRE, et c'est un bug attrape en testant** : sans ce modificateur,
+                // le `BasicTextField` n'occupe que la largeur de son texte — qui est vide au
+                // depart. Le tap tombait alors sur le placeholder (un `Text` non cliquable), et
+                // le champ ne recevait **jamais** le focus : impossible de taper quoi que ce soit.
+                // `fillMaxWidth` lui donne la surface entiere a capturer.
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (value.isNotEmpty()) {
+            Icon(
+                imageVector = Lucide.X,
+                contentDescription = "Effacer la recherche",
+                tint = TetherTextSecondary,
+                modifier = Modifier
+                    .size(15.dp)
+                    .clickable { onValueChange("") },
+            )
+        }
+    }
+}
+
+/**
+ * **Aucun resultat — un etat a part entiere, pas un vide.**
+ *
+ * ⚠️ C'est le point que les analyses d'interfaces generiques designent comme le premier
+ * marqueur d'une app « inachevee » : 92 % des interfaces generees n'ont **pas d'etat vide
+ * designe**. Afficher une liste vide sans explication laisse croire a un bug de chargement.
+ *
+ * ⚠️ On repete la **requete** dans le message : c'est ce qui permet de reperer une faute de
+ * frappe. « Aucun resultat » seul oblige a relire son propre champ.
+ */
+@Composable
+private fun NoSearchResult(query: String, onClear: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(Spacing.xl),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Lucide.Search,
+            contentDescription = null,
+            tint = TetherTextSecondary,
+            modifier = Modifier.size(28.dp),
+        )
+        Text(
+            text = "Aucune session pour « $query »",
+            style = MaterialTheme.typography.titleSmall,
+            color = TetherTextPrimary,
+            modifier = Modifier.padding(top = Spacing.md),
+        )
+        Text(
+            text = "La recherche porte sur le titre, le modèle et l'agent.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TetherTextSecondary,
+            modifier = Modifier.padding(top = Spacing.sm),
+        )
+        Text(
+            text = "Effacer la recherche",
+            style = TetherDataStyle,
+            color = TetherAccent,
+            modifier = Modifier
+                .padding(top = Spacing.md)
+                .clip(RoundedCornerShape(TetherDimensions.cornerSm))
+                .clickable(onClick = onClear)
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        )
+    }
+}
