@@ -905,6 +905,66 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /**
+     * **Bascule un message en file entre « attend son tour » et « corrige le tour en cours ».**
+     * (`PATCH /api/session/{id}/inbox/{inboxID}`, corps `{"delivery": "steer"|"queue"}`.)
+     *
+     * ### Pourquoi ce bouton existe
+     * L'app **affichait** deja le mode (« corrige le tour en cours » / « attend son tour ») mais ne
+     * pouvait pas le **changer**. Un message en file restait donc fige dans le mode ou il avait ete
+     * accepte, alors que c'est justement au moment ou l'agent travaille qu'on se rend compte qu'on
+     * voulait corriger le tour plutot qu'attendre le suivant.
+     *
+     * ⚠️ **Le serveur est la verite, on ne devine pas l'effet.** On ne bascule pas l'etat
+     * localement en supposant que le PATCH a marche : on relit la file ([refreshQueue]) apres coup,
+     * exactement comme [cancelQueued]. Un `409` (mesure : « Pending input cannot change to queue »,
+     * le message est deja en cours de livraison) doit laisser le mode tel qu'il est, pas afficher
+     * celui qu'on esperait.
+     *
+     * ⚠️ `busy` marque l'identifiant pendant l'aller-retour, et il est **retire dans tous les cas**
+     * (succes, echec, exception) : un message qui resterait marque « en vol » aurait un bouton
+     * desactive pour toujours.
+     */
+    fun toggleQueuedDelivery(inboxID: String) {
+        val message = _state.value.chat.messages.firstOrNull { it.id == inboxID } ?: return
+        // ⚠️ On ne bascule pas ce qui est deja en vol (annulation ou autre bascule).
+        if (inboxID in _state.value.cancelling) return
+        // ⚠️ Le mode cible est l'INVERSE du mode affiche. `steer` corrige le tour en cours,
+        // `queue` attend son tour — les deux seules valeurs de `Session.Inbox.Delivery`.
+        val target = if (message.isSteering) "queue" else "steer"
+
+        _state.update { it.copy(cancelling = it.cancelling + inboxID) }
+        scope.launch {
+            val current = settings ?: store.current().also { settings = it }
+            val ok = runCatching {
+                gateway.updateInboxDelivery(current, sessionID, inboxID, target)
+            }.getOrDefault(false)
+            _state.update { state ->
+                state.copy(
+                    cancelling = state.cancelling - inboxID,
+                    // ⚠️ Neutralite : changer de mode n'est pas une panne, donc `notice` et pas
+                    // `error`. Et un echec est DIT — ne rien dire laisserait croire que le mode a
+                    // change alors qu'il n'en est rien.
+                    notice = if (ok) {
+                        if (target == "steer") {
+                            "Ce message corrigera le tour en cours."
+                        } else {
+                            "Ce message attendra son tour."
+                        }
+                    } else {
+                        // ⚠️ On nomme la cause la plus probable sans l'affirmer : mesure du
+                        // 2026-09-26, un `409` signifie que le message est deja en cours de
+                        // livraison — auquel cas il n'y a plus de mode a changer, et ce n'est pas
+                        // une erreur de l'utilisateur.
+                        "Le serveur a refusé de changer le mode (message déjà en cours de livraison ?)."
+                    },
+                )
+            }
+            // ⚠️ On relit TOUJOURS la file, succes ou echec : c'est elle qui porte le mode reel.
+            refreshQueue()
+        }
+    }
+
     /** Efface l'information neutre (apres l'avoir montree). */
     fun clearNotice() = _state.update { it.copy(notice = null) }
 

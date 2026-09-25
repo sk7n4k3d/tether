@@ -295,12 +295,23 @@ open class NeutralGateway : OpenCodeGateway {
         inboxID: String,
     ): Boolean = true
 
+    /** Dernier mode demande par un PATCH d'inbox, pour verifier ce qui part vraiment. */
+    var lastDelivery: String? = null
+
+    /** Force l'echec du PATCH : le serveur rend 409 quand le message part deja. */
+    @Volatile
+    var deliveryFailure: Throwable? = null
+
     override suspend fun updateInboxDelivery(
         settings: ConnectionSettings,
         sessionID: String,
         inboxID: String,
         delivery: String,
-    ): Boolean = true
+    ): Boolean {
+        deliveryFailure?.let { throw it }
+        lastDelivery = delivery
+        return true
+    }
 
     override suspend fun pendingForms(settings: ConnectionSettings): List<FormInfoDto> = emptyList()
 

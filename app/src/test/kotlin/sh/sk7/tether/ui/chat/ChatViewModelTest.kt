@@ -243,6 +243,23 @@ class ChatViewModelTest {
             return inbox
         }
 
+        /**
+         * ⚠️ **La file servie doit refleter la bascule.** Le ViewModel RELIT la file apres un
+         * PATCH (`refreshQueue`) : un fake qui renverrait l'ancien mode ferait echouer le test sur
+         * un comportement pourtant correct.
+         */
+        override suspend fun updateInboxDelivery(
+            settings: ConnectionSettings,
+            sessionID: String,
+            inboxID: String,
+            delivery: String,
+        ): Boolean {
+            deliveryFailure?.let { throw it }
+            lastDelivery = delivery
+            inbox = inbox.map { if (it.id == inboxID) it.copy(delivery = delivery) else it }
+            return true
+        }
+
         override suspend fun dismissInbox(
             settings: ConnectionSettings,
             sessionID: String,
@@ -752,6 +769,62 @@ class ChatViewModelTest {
             optimisticIndex,
             "l'optimiste doit rester en DERNIER, pas etre remonte en tete : $ids",
         )
+    }
+
+
+    /**
+     * ⚠️ **La bascule demande l'INVERSE du mode courant.**
+     *
+     * L'app affichait deja le mode mais ne pouvait pas le changer. Le piege ici est de renvoyer le
+     * mode lu tel quel (donc rien ne change) : on verifie la valeur REELLEMENT envoyee au serveur.
+     */
+    @Test
+    fun `basculer un message en file demande le mode inverse`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_q", "corrige", "queue"))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_q" } }
+
+        vm.toggleQueuedDelivery("msg_q")
+
+        awaitValue(vm.state) { st -> st.notice != null }
+        assertEquals("steer", gateway.lastDelivery, "queue doit basculer vers steer")
+    }
+
+    @Test
+    fun `basculer un message qui corrige le tour le remet en attente`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_q", "corrige", "steer"))
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_q" } }
+
+        vm.toggleQueuedDelivery("msg_q")
+
+        awaitValue(vm.state) { st -> st.notice != null }
+        assertEquals("queue", gateway.lastDelivery, "steer doit basculer vers queue")
+    }
+
+    @Test
+    fun `un refus de bascule est dit et ne laisse pas le message marque en vol`() {
+        val source = FakeEventSource()
+        val gateway = FakeGateway()
+        gateway.inbox = listOf(queuedItem("msg_q", "attends", "queue"))
+        // ⚠️ Mesure du 2026-09-26 : le serveur rend 409 quand le message est deja en cours de
+        // livraison. Ce n'est PAS une panne de l'utilisateur, mais ca doit se dire.
+        gateway.deliveryFailure = IllegalStateException("409 Pending input cannot change to queue")
+
+        val vm = viewModel(gateway, source)
+        awaitValue(vm.state) { st -> st.chat.messages.any { it.id == "msg_q" } }
+
+        vm.toggleQueuedDelivery("msg_q")
+
+        val st = awaitValue(vm.state) { it.notice != null }
+        assertTrue(st.notice!!.contains("refus"), "le refus doit etre nomme, obtenu : ${st.notice}")
+        // ⚠️ Et l'identifiant sort de l'ensemble « en vol » : sinon son bouton resterait
+        // desactive pour toujours.
+        assertTrue("msg_q" !in st.cancelling, "l'identifiant ne doit pas rester marque en vol")
     }
 
     // ------------------------------------------------------------------

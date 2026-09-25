@@ -70,6 +70,7 @@ import com.composables.icons.lucide.Layers
 import com.composables.icons.lucide.PanelBottomOpen
 import com.composables.icons.lucide.Copy
 import com.composables.icons.lucide.Undo2
+import com.composables.icons.lucide.Zap
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Send
@@ -401,6 +402,7 @@ fun ChatScreen(
                     queued = state.chat.messages.filter { it.isQueued },
                     cancelling = state.cancelling,
                     onCancel = viewModel::cancelQueued,
+                    onToggleMode = viewModel::toggleQueuedDelivery,
                 )
                 state.notice?.let { notice ->
                     // ⚠️ Teinte neutre, jamais celle de l'erreur : « l'appel était sans effet » est
@@ -680,6 +682,14 @@ fun ChatScreen(
 @Composable
 private fun QueuedBar(
     queued: List<ChatMessage>,
+    /**
+     * ⚠️ **Bascule le mode d'un message en file** (`steer` <-> `queue`).
+     *
+     * L'app affichait deja le mode mais ne pouvait pas le changer : un message restait fige dans
+     * celui ou il avait ete accepte, alors que c'est pendant que l'agent travaille qu'on se rend
+     * compte qu'on voulait corriger le tour plutot qu'attendre le suivant.
+     */
+    onToggleMode: (String) -> Unit,
     cancelling: Set<String>,
     onCancel: (String) -> Unit,
 ) {
@@ -702,6 +712,7 @@ private fun QueuedBar(
                 message = message,
                 busy = message.id in cancelling,
                 onCancel = { onCancel(message.id) },
+                onToggleMode = onToggleMode,
             )
         }
     }
@@ -719,6 +730,7 @@ private fun QueuedRow(
     message: ChatMessage,
     busy: Boolean,
     onCancel: () -> Unit,
+    onToggleMode: (String) -> Unit,
 ) {
     val modeLabel = if (message.isSteering) "corrige le tour en cours" else "attend son tour"
     val tint = if (message.isSteering) TetherAccent else TetherTextSecondary
@@ -748,6 +760,31 @@ private fun QueuedRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(text = modeLabel, style = TetherDataStyle, color = tint)
+        }
+        // ⚠️ **La bascule de mode, a cote de l'annulation.** Elle inverse ce qui est affiche :
+        // un message qui « attend son tour » passe a « corrige le tour en cours », et l'inverse.
+        //
+        // ⚠️ Elle disparait pendant un aller-retour (`busy`) : le serveur est la verite, donc un
+        // second appui sur un etat non encore confirme n'aurait rien a inverser de fiable.
+        if (!busy) {
+            IconButton(
+                onClick = { onToggleMode(message.id) },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    // Une icone qui dit le GESTE pour un mode lisible, et l'etat pour l'autre :
+                    // `Zap` = passer en correction immediate (steer), `Hourglass` = remettre en
+                    // attente (queue). L'icone ne suffit pas seule — la description dit l'action.
+                    imageVector = if (message.isSteering) Lucide.Hourglass else Lucide.Zap,
+                    contentDescription = if (message.isSteering) {
+                        "Faire attendre ce message au lieu de corriger le tour en cours"
+                    } else {
+                        "Corriger le tour en cours avec ce message"
+                    },
+                    tint = TetherTextSecondary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
         if (busy) {
             CircularProgressIndicator(

@@ -273,8 +273,22 @@ object TetherNotifier {
     /**
      * Compte les décisions en attente, ou `0` si on ne peut pas le savoir.
      *
-     * ⚠️ Un échec donne **0**, donc une notification ordinaire : on ne bloque pas une alerte sur
-     * une lecture réseau. On ne prétend simplement pas qu'une décision attend quand on n'a pas pu
+     * ⚠️ **Permissions ET formulaires.** Un formulaire immobilise l'agent **exactement comme une
+     * permission** : la session ne bouge plus tant que personne ne repond. Compter seulement les
+     * permissions laissait donc un formulaire arriver en silence — l'app fermee, rien ne l'annonce,
+     * et l'agent reste bloque des heures sans que rien ne l'indique.
+     *
+     * ⚠️ Les deux lectures sont **globales** (`/api/permission/request`, `/api/form`), et c'est
+     * necessaire : mesure du 2026-09-26, une demande emise par un **sous-agent** appartient a la
+     * session **enfant**, et la route par session ne la voit pas.
+     *
+     * ⚠️ **Somme, pas remplacement.** Le libelle de la notification dit « Autorisation requise » et
+     * c'est un raccourci assume : ce qui compte au moment ou on la lit, c'est qu'une session est
+     * **immobilisee**. Les nommer separement demanderait de savoir laquelle des deux files a
+     * declenche, ce que ce compteur ne cherche pas a distinguer.
+     *
+     * ⚠️ Un echec donne **0**, donc une notification ordinaire : on ne bloque pas une alerte sur
+     * une lecture reseau. On ne prétend simplement pas qu'une décision attend quand on n'a pas pu
      * le vérifier.
      */
     private fun pendingDecisions(entry: PushEntryPoint): Int = runCatching {
@@ -285,7 +299,12 @@ object TetherNotifier {
             kotlinx.coroutines.withTimeoutOrNull(PENDING_DECISION_TIMEOUT_MS) {
                 val settings = entry.connectionStore().current()
                 if (!settings.isConfigured) return@withTimeoutOrNull 0
-                entry.gateway().pendingPermissions(settings).size
+                val gateway = entry.gateway()
+                // ⚠️ Chaque lecture est isolee : un serveur qui repond aux permissions mais pas aux
+                // formulaires (ou l'inverse) doit tout de meme annoncer ce qu'il a annonce.
+                val permissions = runCatching { gateway.pendingPermissions(settings).size }.getOrDefault(0)
+                val forms = runCatching { gateway.pendingForms(settings).size }.getOrDefault(0)
+                permissions + forms
             } ?: 0
         }
     }.getOrDefault(0)
