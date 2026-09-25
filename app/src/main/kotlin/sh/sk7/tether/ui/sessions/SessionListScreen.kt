@@ -112,6 +112,7 @@ fun SessionListScreen(
     val create by viewModel.create.collectAsStateWithLifecycle()
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
     val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
+    val pendingForms by viewModel.pendingForms.collectAsStateWithLifecycle()
     val pinnedIds by viewModel.pinnedIds.collectAsStateWithLifecycle()
     val fleet by viewModel.fleet.collectAsStateWithLifecycle()
     // ⚠️ La requete vit **hors** de la branche `Loaded` : si elle mourait au passage a l'etat
@@ -123,7 +124,14 @@ fun SessionListScreen(
     // ⚠️ La teinte du bouton d'approbations dit s'il y a quelque chose a faire. Un bouton
     // toujours identique obligerait a l'ouvrir pour savoir — c'est-a-dire a faire le travail
     // que le badge est cense epargner.
-    val pendingTint = if (pendingApprovals > 0) TetherAlert else TetherTextPrimary
+    //
+    // ⚠️ **Les formulaires comptent autant que les permissions.** Un formulaire bloque l'agent
+    // exactement comme une demande d'autorisation (la session reste immobile tant que personne ne
+    // repond) : ne teinter qu'avec les permissions ferait dire « calme » a l'icone alors qu'un
+    // agent attend une reponse. Le contenu de description distingue les deux pour ne pas annoncer
+    // un fait faux a un lecteur d'ecran.
+    val pendingTint = if (pendingApprovals + pendingForms > 0) TetherAlert else TetherTextPrimary
+    val approvalsLabel = approvalsSummary(pendingApprovals, pendingForms)
     var renaming by remember { mutableStateOf<SessionItem?>(null) }
     var deleting by remember { mutableStateOf<SessionItem?>(null) }
 
@@ -148,7 +156,7 @@ fun SessionListScreen(
                     IconButton(onClick = onOpenPermissions) {
                         Icon(
                             imageVector = Lucide.ShieldCheck,
-                            contentDescription = "Approbations en attente",
+                            contentDescription = approvalsLabel,
                             tint = pendingTint,
                         )
                     }
@@ -933,4 +941,23 @@ private fun Counter(label: String, tint: androidx.compose.ui.graphics.Color) {
         style = sh.sk7.tether.ui.theme.TetherDataStyle,
         color = tint,
     )
+}
+
+/**
+ * **Ce que le lecteur d'ecran annonce sur le bouton d'approbations.**
+ *
+ * ⚠️ On somme les deux files (autorisations **et** formulaires) parce qu'un formulaire bloque
+ * l'agent autant qu'une permission. Le libelle les distingue au lieu de dire un total muet : a
+ * l'oreille, « 3 en attente » ne dit pas s'il faut accorder un droit ou remplir un formulaire, et
+ * les deux gestes n'ont rien a voir.
+ *
+ * ⚠️ Fonction **pure**, extraite pour etre verrouillee par un test : c'est elle qui decide si
+ * l'icone annonce une demande ou se tait. Un `when` en ligne ne se testerait pas.
+ */
+fun approvalsSummary(permissions: Int, forms: Int): String = when {
+    permissions > 0 && forms > 0 ->
+        "Approbations : $permissions autorisation(s) et $forms formulaire(s) en attente"
+    permissions > 0 -> "Approbations : $permissions autorisation(s) en attente"
+    forms > 0 -> "Approbations : $forms formulaire(s) en attente"
+    else -> "Approbations en attente"
 }

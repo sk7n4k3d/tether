@@ -160,6 +160,21 @@ class SessionListViewModel @Inject constructor(
     val pendingApprovals: StateFlow<Int> = _pendingApprovals.asStateFlow()
 
     /**
+     * Nombre de **formulaires en attente** sur le serveur.
+     *
+     * ⚠️ Meme role que [pendingApprovals] : un formulaire bloque l'agent exactement comme une
+     * permission (mesure : la session reste immobile tant que personne ne repond). Le point
+     * d'entree doit donc porter **les deux** compteurs — sinon l'icone afficherait « calme » alors
+     * qu'un agent est bloque sur une question. C'est le mensonge par omission que la teinte
+     * d'alerte existe pour empecher.
+     *
+     * ⚠️ Un echec est avale (`getOrElse`) : le badge est un confort, une erreur de badge ne doit
+     * pas transformer un detail en panne apparente.
+     */
+    private val _pendingForms = MutableStateFlow(0)
+    val pendingForms: StateFlow<Int> = _pendingForms.asStateFlow()
+
+    /**
      * Identifiants des sessions epinglees.
      *
      * ⚠️ Expose a l'UI pour qu'elle puisse **remonter** les epingles en tete de liste. Un
@@ -271,6 +286,11 @@ class SessionListViewModel @Inject constructor(
         // echec est ignore (`getOrElse`) : le badge est un confort, pas une fonction critique.
         _pendingApprovals.value =
             runCatching { gateway.pendingPermissions(settings).size }.getOrElse { 0 }
+        // ⚠️ Meme raison que ci-dessus pour les formulaires : le point d'entree doit signaler
+        // **les deux** types de blocage (permission et formulaire). Un formulaire compte ici sans
+        // etre ouvert : c'est le seul moyen de savoir qu'une reponse est attendue.
+        _pendingForms.value =
+            runCatching { gateway.pendingForms(settings).size }.getOrElse { 0 }
         if (sessions.isEmpty()) return SessionListUiState.Empty(settings.directory)
         // L'arbre : chaque parent suivi de ses sous-agents (67 % des sessions reelles).
         val items = SessionListMapper.toTree(sessions)

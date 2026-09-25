@@ -26,6 +26,8 @@ import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.api.SessionParent
 import sh.sk7.tether.data.api.TimeInfo
 import sh.sk7.tether.data.api.CommandDto
+import sh.sk7.tether.data.api.FormFieldDto
+import sh.sk7.tether.data.api.FormInfoDto
 import sh.sk7.tether.data.api.McpServerDto
 import sh.sk7.tether.data.api.PermissionAskDto
 import sh.sk7.tether.data.api.PluginDto
@@ -78,10 +80,24 @@ class SessionListViewModelTest {
         private val agents: List<Agent> = listOf(Agent(id = "general", name = "General")),
         private val failure: Throwable? = null,
         private val created: Session = Session(id = "ses_new", title = "Nouvelle"),
+        private val pendingFormList: List<FormInfoDto> = emptyList(),
     ) : NeutralGateway() {
         var sessionsCalls = 0
         var lastCreateAgent: String? = null
         var lastCreateTitle: String? = null
+
+        /** Echec **des formulaires seulement** : la liste doit rester chargee et le compteur a 0. */
+        var failForms: Boolean = false
+
+        /**
+         * Le compteur de formulaires du point d'entree doit lire **le serveur**, jamais une valeur
+         * locale : c'est `pendingForms` qui fait foi, surcharge ici pour le test qui l'exerce.
+         */
+        override suspend fun pendingForms(settings: ConnectionSettings): List<FormInfoDto> {
+            failure?.let { throw it }
+            if (failForms) throw java.net.ConnectException("injoignable")
+            return pendingFormList
+        }
 
         override suspend fun info(settings: ConnectionSettings): ServerInfo {
             failure?.let { throw it }
@@ -367,4 +383,36 @@ class SessionListViewModelTest {
 
         assertEquals(ModelRef("deepseek-v4.1-flash", "ollama-cloud"), state.createModel)
     }
+
+    @Test
+    fun `refresh expose le nombre de formulaires pendants au point d entree`() = runBlocking<Unit> {
+        val gateway = FakeGateway(
+            pendingFormList = listOf(
+                FormInfoDto(id = "frm_1", sessionID = "ses_1", title = "A"),
+                FormInfoDto(id = "frm_2", sessionID = "global", title = "B"),
+            ),
+        )
+        val vm = viewModel(gateway)
+
+        val state = loaded(vm)
+
+        // ⚠️ La liste reste celle du fake par defaut : le formulaire ne cree pas de session (et
+        // c'est le point) — il ne fait que compter. On verifie que `sessionID:"ses_1"` annonce
+        // dans le formulaire ne se substitue a aucune session existante.
+        assertEquals("ses_existing", state.items.first().id)
+        awaitCondition("compteur de formulaires renseigne") { vm.pendingForms.value == 2 }
+    }
+
+    @Test
+    fun `un echec de lecture des formulaires laisse le compteur a zero sans casser la liste`() =
+        runBlocking<Unit> {
+            val gateway = FakeGateway(
+                pendingFormList = listOf(FormInfoDto(id = "frm_1", sessionID = "global")),
+            ).apply { failForms = true }
+            val vm = viewModel(gateway)
+
+            loaded(vm)
+
+            assertEquals(0, vm.pendingForms.value)
+        }
 }
