@@ -110,8 +110,16 @@ object ChatSearch {
      * ⚠️ On ne modifie **jamais** le texte affiche — seulement la cle de comparaison. L'utilisateur
      * doit continuer a voir « Résumé » avec son accent.
      */
+    /**
+     * ⚠️ **Compilee une fois, pas a chaque appel.** Mesure : `filter` appelle `normalize` trois
+     * fois par session, soit ~1 350 compilations de regex **par frappe** sur 450 sessions. Une
+     * `Regex` construite dans le corps d'une fonction se recompile a chaque appel — c'est le
+     * piege classique, et il est invisible a la lecture.
+     */
+    private val ACCENTS = Regex("\\p{Mn}+")
+
     private fun normalize(value: String): String =
         java.text.Normalizer
             .normalize(value.lowercase(), java.text.Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
+            .replace(ACCENTS, "")
 }

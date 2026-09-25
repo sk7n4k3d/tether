@@ -62,3 +62,23 @@ tasks.withType<Test>().configureEach {
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
 }
+
+// ⚠️ **Aucun `buildTypes` n'existait : l'app n'avait donc QUE le profil debug**, sans R8, sans
+// minification, sans optimisation. C'est le plus gros levier de performance disponible, et il
+// etait invisible parce que l'app fonctionne — simplement lentement.
+//
+// ⚠️ La signature utilise la cle de debug : c'est un build **release** (optimise) mais signe
+// localement, ce qui suffit pour installer et mesurer. Un vrai release exigerait une cle dediee.
+android {
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}

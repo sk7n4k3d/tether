@@ -99,7 +99,25 @@ fun SessionRow(
 ) {
     val isSub = item.isSub
     val state = item.nodeState
-    val branchActive = item.branchActive || state == NodeState.Active
+    // ⚠️ **L'ACTIVITE VIENT DU SERVEUR, PAS DU `outcome`.**
+    //
+    // Avant : `branchActive = item.branchActive || state == NodeState.Active`, ou `Active` etait
+    // deduit d'un `outcome == null`. Mesure sur une capture reelle de 50 sessions : **10 ont
+    // `outcome == null`** sans tourner — elles affichaient donc un nœud plein et un halo pulsant
+    // « en cours », alors que la seule source d'etat d'execution de ce projet est
+    // `/api/session/active`.
+    //
+    // ⚠️ Un signal faux est pire qu'un signal absent : l'utilisateur apprend a l'ignorer, et
+    // l'indicateur perd toute sa valeur quand il dit vrai.
+    //
+    // `activity == null` signifie « pas encore interroge ». On retombe alors sur l'heuristique
+    // precedente — c'est un repli assume, pas une affirmation.
+    val serverSaysRunning = activity == Activity.Running || activity == Activity.Waiting
+    val branchActive = if (activity != null) {
+        serverSaysRunning
+    } else {
+        item.branchActive || state == NodeState.Active
+    }
     val expandable = onToggleSubs != null && item.childCount > 0
 
     // Positions : le fil est a abscisse FIXE (donc continu), le contenu se decale.
@@ -140,21 +158,44 @@ fun SessionRow(
     val invitesToExpand = expandable && !subsExpanded
     val pulseOn = animationsAllowed && (branchActive || invitesToExpand)
 
-    val pulse by rememberInfiniteTransition(label = "node-pulse").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = if (branchActive) 1600 else 2200),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "node-pulse-value",
-    )
-    // Le halo d'invitation reste plus discret que celui d'activite : deux informations
-    // differentes ne doivent pas crier aussi fort.
-    val pulseAlpha = when {
-        !pulseOn -> 0f
-        branchActive -> 0.30f * pulse
-        else -> 0.16f * pulse
+    // ⚠️ **ON N'ANIME QUE L'ACTIVITE, JAMAIS L'INVITATION.**
+    //
+    // Mesure sur le Pixel : l'app rendait **301 frames en 5 s au repos, soit exactement 60 fps**,
+    // et **0 frame** une fois les animations systeme desactivees. Toute l'activite venait donc
+    // d'animations — et il en restait une apres avoir rendu le halo conditionnel.
+    //
+    // La cause : **30 sessions** de la liste sont des parents avec sous-agents, et chacune pulsait
+    // en permanence pour « inviter » a deplier. Trente halos a 60 fps, en continu, pour une
+    // information que le chevron et le compteur d'enfants donnent **deja** — et sans mouvement.
+    //
+    // ⚠️ L'invitation garde donc un halo, mais **statique** : elle se voit, elle ne coute rien.
+    // L'activite, elle, pulse toujours : c'est une information qui change et qui merite le
+    // mouvement — « quelque chose tourne en ce moment ».
+    //
+    // ⚠️ Le commentaire precedent affirmait « on ne la declenche jamais pour rien ». Il decrivait
+    // l'intention, pas le code : la transition etait creee sur chaque ligne. Cet ecart-la, aucune
+    // relecture ne le rattrape — il fallait mesurer.
+    val pulseAlpha: Float
+    val pulseRadius: Float
+    if (pulseOn && branchActive) {
+        val pulse by rememberInfiniteTransition(label = "node-pulse").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1600),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "node-pulse-value",
+        )
+        pulseAlpha = 0.30f * pulse
+        pulseRadius = 2.2f + pulse * 0.8f
+    } else if (pulseOn) {
+        // Invitation : halo **fixe**, sans animation. Meme information, zero cout.
+        pulseAlpha = 0.16f
+        pulseRadius = 2.2f
+    } else {
+        pulseAlpha = 0f
+        pulseRadius = 2.2f
     }
     val pulseColor = if (branchActive) accent else idle
 
@@ -203,7 +244,7 @@ fun SessionRow(
                 if (pulseAlpha > 0f) {
                     drawCircle(
                         color = pulseColor.copy(alpha = pulseAlpha),
-                        radius = nodeR * (2.2f + pulse * 0.8f),
+                        radius = nodeR * pulseRadius,
                         center = Offset(nodeXpx, nodeYpx),
                     )
                 }
@@ -213,7 +254,9 @@ fun SessionRow(
                     expandable && subsExpanded -> {
                         drawCircle(color = accent, radius = nodeR, center = Offset(nodeXpx, nodeYpx))
                     }
-                    state == NodeState.Active -> {
+                    // ⚠️ Le nœud « actif » suit `branchActive` (donc le serveur), jamais
+                    // `state == NodeState.Active` qui se fiait a l'absence d'`outcome`.
+                    branchActive -> {
                         drawCircle(color = accent, radius = nodeR, center = Offset(nodeXpx, nodeYpx))
                     }
                     state == NodeState.Failed -> drawCircle(

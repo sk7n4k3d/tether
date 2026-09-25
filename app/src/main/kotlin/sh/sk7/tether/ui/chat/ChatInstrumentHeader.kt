@@ -115,7 +115,11 @@ fun ChatInstrumentHeader(
                 )
             }
             state.tokens?.let { tokens ->
-                val total = tokens.input + tokens.output
+                // ⚠️ **Le raisonnement compte.** Il etait exclu ici alors que `UsageStats.totalTokens`
+                // l'inclut : deux definitions du meme « total » dans la meme app. Sur un modele qui
+                // raisonne beaucoup, l'ecran affichait un volume tres inferieur a la realite — donc
+                // un chiffre faux, ce qui est pire qu'un chiffre absent.
+                val total = tokens.input + tokens.output + tokens.reasoning
                 if (total > 0) {
                     Text(
                         text = formatTokens(tokens.input, tokens.output),

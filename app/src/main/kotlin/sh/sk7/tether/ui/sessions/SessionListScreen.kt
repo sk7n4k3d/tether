@@ -211,7 +211,7 @@ fun SessionListScreen(
                         // ⚠️ Le titre **qualifie la panne** au lieu de dire « connexion
                         // impossible » a tout le monde : « refusés » et « injoignable » n'appellent
                         // pas le meme geste, et les confondre envoie chercher au mauvais endroit.
-                        title = if (isUnauthorized(current.message)) {
+                        title = if (current.unauthorized) {
                             "Identifiants refusés"
                         } else {
                             "Serveur injoignable"
@@ -747,17 +747,6 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
         )
     }
 }
-
-/**
- * La panne est-elle un refus d'identifiants ?
- *
- * ⚠️ On regarde les **codes** et non le texte : le message est produit par `ConnectionErrors` et
- * peut changer de formulation sans que la cause change. Un 401/403 signifie « mot de passe », le
- * reste signifie « reseau ou adresse ».
- */
-private fun isUnauthorized(message: String): Boolean =
-    message.contains("401") || message.contains("403")
-
 /**
  * **L'en-tête de flotte : l'état de toute l'installation, en un mot.**
  *

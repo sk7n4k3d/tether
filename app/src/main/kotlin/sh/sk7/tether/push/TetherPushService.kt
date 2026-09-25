@@ -64,7 +64,15 @@ class TetherPushService : PushService() {
     override fun onMessage(message: PushMessage, instance: String) {
         val text = message.content?.toString(Charsets.UTF_8).orEmpty()
         Log.i(TAG, "message recu (${text.length} octets)")
-        notify(applicationContext, text.ifBlank { "Nouvelle activité sur opencode" })
+        // ⚠️ On extrait la session AVANT de nettoyer le texte : la ligne de routage ne doit
+        // pas s'afficher dans la notification, elle est un en-tete de transport.
+        val sessionID = SESSION_MARKER.find(text)?.groupValues?.get(1)
+        val visible = text.replace(SESSION_MARKER, "").trim()
+        notify(
+            applicationContext,
+            visible.ifBlank { "Nouvelle activité sur opencode" },
+            sessionID = sessionID,
+        )
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) {
@@ -90,7 +98,16 @@ class TetherPushService : PushService() {
          * `NotificationManagerCompat.notify` **ne leve pas**, il ne se passe simplement rien.
          * On verifie donc explicitement, et on trace — un silence inexplique coute des heures.
          */
-        fun notify(context: Context, text: String) {
+        /**
+         * La ligne que le plugin ajoute au corps du message pour porter la session.
+         *
+         * ⚠️ Elle doit rester **identique** cote plugin (voir `tether:session=` dans
+         * `ntfy-opencode.ts`). C'est le seul canal qui survit jusqu'a l'application : les
+         * en-tetes ntfy n'arrivent pas par UnifiedPush.
+         */
+        private val SESSION_MARKER = Regex("tether:session=(\\S+)")
+
+        fun notify(context: Context, text: String, sessionID: String? = null) {
             val manager = NotificationManagerCompat.from(context)
             if (!manager.areNotificationsEnabled()) {
                 Log.w(TAG, "notifications desactivees : rien ne s'affichera")
@@ -99,13 +116,29 @@ class TetherPushService : PushService() {
 
             ensureChannel(context)
 
-            // Le tap ouvre l'app. Aucune donnee n'est transportee : l'app relira l'etat.
+            // ⚠️ **Le deep link est indispensable, et son absence etait un vrai bug.**
+            //
+            // Avant, l'intent n'emportait rien (« l'app relira l'etat ») : taper une notification
+            // ouvrait l'app sur la **derniere session utilisee**, pas sur celle qui avait
+            // declenche l'alerte. Avec plusieurs sessions en cours, la notification previent
+            // sans dire de quoi — et on peut meme lire la mauvaise conversation en croyant
+            // repondre a l'agent.
+            //
+            // ⚠️ La session arrive par le **corps** du message (`tether:session=...`), pas par un
+            // en-tete : mesure du 2026-09-25, un distributeur UnifiedPush ne transmet a l'app que
+            // la charge utile (2 extras selon la spec Android). Les en-tetes ntfy sont perdus.
             val intent = Intent(context, sh.sk7.tether.MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                if (sessionID != null) {
+                    data = android.net.Uri.parse("opencode://session/$sessionID")
+                }
             }
             val pending = PendingIntent.getActivity(
                 context,
-                0,
+                // ⚠️ Code de requete **distinct par session** : deux notifications de deux
+                // sessions differentes doivent ouvrir leur propre conversation. Un code fige
+                // ferait que la seconde ecraserait l'intent de la premiere (FLAG_UPDATE_CURRENT).
+                sessionID?.hashCode() ?: 0,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )

@@ -23,7 +23,16 @@ import java.util.Locale
  */
 object SessionExporter {
 
-    private val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.FRANCE)
+    /**
+     * ⚠️ **Cree a chaque appel, jamais partage.**
+     *
+     * `SimpleDateFormat` n'est **pas thread-safe** : un exemplaire partage dans un `object` produit
+     * des dates fausses ou des exceptions des que deux threads l'utilisent. Aujourd'hui l'export
+     * etait appele depuis un seul point (le thread de composition), donc le bug restait dormant —
+     * mais l'export sur un gros fichier doit passer en arriere-plan, et c'est exactement ce
+     * changement qui le reveillerait. Le cout de creation est negligeable (un export par clic).
+     */
+    private fun stamp(): SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.FRANCE)
 
     /**
      * Rend une conversation complete en Markdown.
@@ -37,7 +46,7 @@ object SessionExporter {
         // ⚠️ L'identifiant et la date sont dans le fichier : sans eux, un export qu'on relit
         // dans six mois ne peut plus etre rattache a sa session d'origine.
         appendLine("- Session : `$sessionID`")
-        appendLine("- Exporté le : ${stamp.format(Date())}")
+        appendLine("- Exporté le : ${stamp().format(Date())}")
         state.cost?.takeIf { it > 0 }?.let {
             appendLine("- Coût : ${String.format(Locale.FRANCE, "%.2f", it)} \$")
         }
