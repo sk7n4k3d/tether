@@ -43,6 +43,34 @@ object EventReducer {
         val sessionID = event.sessionID
         if (sessionID != null && sessionID != state.sessionID) return state
 
+        // ⚠️ **Frontiere de message, appliquee AVANT tout traitement** (bug de l'affichage
+        // « tout condense » en direct).
+        //
+        // Mesure du 2026-09-25 sur le flux reel : un tour produit **plusieurs messages
+        // assistant**, chacun avec son propre `assistantMessageID`. Chaque etape emet son
+        // `session.text.started` avec un id **different** du precedent :
+        //
+        //     step.started  msg=i9eIZZ
+        //     text.started  msg=i9eIZZ
+        //     text.delta    msg=i9eIZZ
+        //     step.ended    msg=i9eIZZ
+        //     step.started  msg=pB0J7s   <- NOUVEAU message
+        //     text.started  msg=pB0J7s
+        //
+        // Or `streamingText` n'etait remis a zero qu'au **début du tour**. Les reponses de
+        // toutes les etapes s'empilaient donc dans un seul bloc, collees sans espace
+        // (« partout.Maintenant », « devie.Je compile »), et le rail ne marquait qu'un seul
+        // nœud pour cinq messages. C'est exactement le constat de Bastien : en direct,
+        // l'organisation disparait.
+        //
+        // ⚠️ On le fait **ici et pas dans chaque handler** : huit types d'evenements portent un
+        // `assistantMessageID` (texte, raisonnement, outils, etapes). Un seul point de passage
+        // ne peut pas etre oublie quand un type s'ajoute.
+        //
+        // ⚠️ `val state =` **masque volontairement** le parametre : le `when` ci-dessous opere
+        // donc sur l'etat deja segmente, sans que chaque branche ait a y penser.
+        val state = state.beginSegmentIfNewMessage(event.data)
+
         return when (event.type) {
             // --- Texte ---
             "session.text.started" -> state
@@ -420,6 +448,74 @@ object EventReducer {
 
     private fun SessionUiState.withAssistantMessageID(id: String?): SessionUiState =
         if (id == null) this else copy(assistantMessageID = id)
+
+    /**
+     * **Cloture le message precedent et ouvre le nouveau**, quand l'id change.
+     *
+     * ### Pourquoi c'est necessaire
+     * ⚠️ Un **tour** (`session.execution.*`) contient **plusieurs messages** assistant. Mesure du
+     * 2026-09-25 sur le flux reel : `step.started / text.started / text.delta / step.ended` se
+     * repete avec un `assistantMessageID` **different** a chaque etape.
+     *
+     * Or les champs `streaming*` n'etaient remis a zero qu'au **début du tour**
+     * (`session.execution.started`). Resultat : les reponses de toutes les etapes s'empilaient
+     * dans un seul bloc — « partout.Maintenant », « devie.Je compile » — sans separation, sans
+     * rail, avec un seul nœud pour cinq messages. C'est le bug « en direct, tout est condense,
+     * il manque des informations ».
+     *
+     * ### Pourquoi on CLOTURE au lieu de jeter
+     * ⚠️ Mettre `streamingText = null` ferait **disparaitre** les etapes precedentes pendant tout
+     * le tour : l'ecran ne montrerait jamais que la derniere. On empile donc le message termine
+     * dans `messages`, exactement comme le fait [closeAssistantMessage] en fin de tour — meme
+     * donnee, meme rendu, meme rail.
+     *
+     * ⚠️ On ne cloture pas un etat sans contenu : sinon chaque `step.started` ajouterait une
+     * bulle vide entre les messages.
+     *
+     * ⚠️ L'id precedent peut **revenir** (rejeu apres reconnexion, ou evenement desordonne) :
+     * dans ce cas on ne cloture rien et on continue le message en cours — `id == null` comme
+     * `id == current` retombent tous deux sur l'etat inchange.
+     */
+    private fun SessionUiState.beginSegmentIfNewMessage(data: JsonObject): SessionUiState {
+        val incoming = data.str("assistantMessageID") ?: return this
+        val current = assistantMessageID ?: return copy(assistantMessageID = incoming)
+        if (incoming == current) return this
+
+        val text = streamingText
+        val reasoning = streamingReasoning
+        val tools = streamingTools
+        val hasContent = text != null || reasoning != null || tools.isNotEmpty()
+
+        val messages = if (!hasContent) {
+            messages
+        } else {
+            val closed = ChatMessage(
+                id = current,
+                role = Role.Assistant,
+                text = text.orEmpty(),
+                reasoning = reasoning.orEmpty(),
+                tools = tools,
+                reasoningDurationLabel = reasoningDurationLabel,
+            )
+            // Remplacement par id : une reconnexion peut rejouer un message deja empile.
+            val index = messages.indexOfFirst { it.id == current }
+            if (index >= 0) messages.toMutableList().also { it[index] = closed }
+            else messages + closed
+        }
+
+        return copy(
+            messages = messages,
+            assistantMessageID = incoming,
+            streamingText = null,
+            streamingReasoning = null,
+            streamingTools = emptyList(),
+            reasoningDurationLabel = null,
+            reasoningStartedAt = null,
+            // ⚠️ Les durees d'outil restent : elles sont indexees par id d'outil, pas par message,
+            // et l'outil appartient au message qu'on vient de cloturer — les effacer ferait
+            // perdre la duree d'une carte deja affichee.
+        )
+    }
 
     private fun JsonObject.str(key: String): String? =
         (this[key] as? JsonPrimitive)?.contentOrNull

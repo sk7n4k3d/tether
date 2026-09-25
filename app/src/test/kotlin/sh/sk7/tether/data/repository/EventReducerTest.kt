@@ -454,6 +454,77 @@ class EventReducerTest {
     // exact de Bastien sur l'affichage en direct.
     // ---------------------------------------------------------------------
 
+    /**
+     * ⚠️ **Le bug « en direct, tout est condense »**, reproduit sur la sequence reellement
+     * capturee le 2026-09-25 : un tour contient **plusieurs messages assistant**, chacun avec son
+     * `assistantMessageID`.
+     *
+     * Sans segmentation, les reponses de toutes les etapes s'empilaient dans un seul bloc :
+     * « partout.Maintenant », « devie.Je compile » — collees, sans rail, sans nœud par message.
+     */
+    @Test
+    fun `un tour a plusieurs messages et chacun garde son bloc`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.execution.started"))
+
+        // --- etape 1 : msg_A ---
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_A"}"""))
+        s = EventReducer.reduce(s, ev("session.text.started", """{"assistantMessageID":"msg_A"}"""))
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"assistantMessageID":"msg_A","delta":"Premier"}"""))
+        s = EventReducer.reduce(s, ev("session.text.ended", """{"assistantMessageID":"msg_A"}"""))
+        s = EventReducer.reduce(s, ev("session.step.ended", """{"assistantMessageID":"msg_A"}"""))
+        assertEquals("Premier", s.streamingText, "l'etape en cours porte son propre texte")
+
+        // --- etape 2 : msg_B, un AUTRE message ---
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_B"}"""))
+        s = EventReducer.reduce(s, ev("session.text.started", """{"assistantMessageID":"msg_B"}"""))
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"assistantMessageID":"msg_B","delta":"Second"}"""))
+
+        // ⚠️ **C'est l'assertion du bug** : le texte de la 2e etape ne doit PAS contenir celui de
+        // la 1re. Avant le correctif on obtenait « PremierSecond », d'ou l'affichage colle.
+        assertEquals("Second", s.streamingText, "chaque message a son propre texte, jamais l'accumulation")
+
+        // ⚠️ Et le message precedent est **empile**, pas jete : mettre a `null` aurait fait
+        // disparaitre les etapes precedentes pendant tout le tour.
+        assertEquals(1, s.messages.size, "l'etape precedente doit rester visible")
+        assertEquals("msg_A", s.messages.single().id)
+        assertEquals("Premier", s.messages.single().text)
+
+        // --- fin du tour : le dernier message clos, l'etat transitoire vide ---
+        s = EventReducer.reduce(s, ev("session.execution.succeeded"))
+        assertNull(s.streamingText)
+        assertEquals(2, s.messages.size, "les deux messages du tour sont dans l'historique")
+        assertEquals(listOf("msg_A", "msg_B"), s.messages.map { it.id })
+        assertEquals(listOf("Premier", "Second"), s.messages.map { it.text })
+    }
+
+    @Test
+    fun `un message sans contenu ne cree pas de bulle vide`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        // ⚠️ Une etape qui n'a rien produit (pas de texte, pas de raisonnement, pas d'outil) ne
+        // doit pas laisser de bulle : sinon un tour de 10 etapes semait 10 blocs vides.
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_A"}"""))
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_B"}"""))
+        assertTrue(s.messages.isEmpty(), "aucune bulle vide, obtenu ${s.messages.map { it.id }}")
+    }
+
+    @Test
+    fun `un evenement rejoue du meme message ne cloture pas deux fois`() {
+        var s = SessionUiState(sessionID = "ses_1")
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"assistantMessageID":"msg_A","delta":"Salut"}"""))
+        // ⚠️ Une reconnexion SSE peut **rejouer** un evenement du meme message : il ne doit ni
+        // re-empiler un doublon, ni couper le message en deux.
+        s = EventReducer.reduce(s, ev("session.step.started", """{"assistantMessageID":"msg_A"}"""))
+        s = EventReducer.reduce(s, ev("session.text.delta", """{"assistantMessageID":"msg_A","delta":" toi"}"""))
+        assertEquals("Salut toi", s.streamingText)
+        assertTrue(s.messages.isEmpty(), "un rejeu du meme id ne cloture rien")
+
+        // ⚠️ Et un evenement **sans** `assistantMessageID` ne doit pas non plus couper le message :
+        // sinon `session.tool.progress` (qui n'en porte pas toujours) fragmenterait le texte.
+        s = EventReducer.reduce(s, ev("session.tool.progress", """{"id":"call_1"}"""))
+        assertEquals("Salut toi", s.streamingText)
+    }
+
     @Test
     fun `session tool called remplit le resume depuis l'objet input`() {
         var s = SessionUiState(sessionID = "ses_1")
