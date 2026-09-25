@@ -86,6 +86,7 @@ import kotlinx.coroutines.launch
 import dev.snipme.highlights.model.SyntaxThemes
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
+import sh.sk7.tether.ui.components.CollapsibleBlock
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -1232,9 +1233,54 @@ private fun MarkdownBody(text: String) {
 
 /** Raisonnement du modele : discret, repliable mentalement (texte secondaire, italique). */
 
-/** Contenu de forme inconnue : affiche brut, jamais jete (Review Focus n°4). */
+/**
+ * Contenu de forme inconnue, ou **note longue** : affiche brut, jamais jete (Review Focus n°4).
+ *
+ * ### Pourquoi il se replie quand il est long
+ * ⚠️ Constat de Bastien : « quand un sub-agent repond il est totalement deplie ce qui fait tache
+ * compare au reste de l'application ».
+ *
+ * Mesure du 2026-09-25 : un rapport de sous-agent arrive comme un message de type `synthetic`,
+ * ou le serveur met un **titre court** dans `description` et le **rapport entier** dans `text`.
+ * Le mapper range le titre dans `message.text` et le rapport dans `rawFallback` — donc
+ * `RawFallback` recevait **24 711 caracteres** a afficher d'un bloc (mesure sur le rapport
+ * « Meilleures pratiques barre de saisie »). Cinq fois la hauteur d'un ecran, en texte secondaire
+ * non mis en forme, au milieu d'une conversation dont tout le reste est replie et aere.
+ *
+ * ⚠️ **C'est la meme regle que le raisonnement et les sorties d'outil** : l'information
+ * secondaire se resume sur une ligne et s'ouvre d'un tap (voir [CollapsibleBlock] et
+ * `docs/design-soul.md`, « pas de bloc gris massif »). `rawFallback` n'etait simplement pas
+ * traite comme les autres.
+ *
+ * ⚠️ Le seuil est en **caracteres**, pas en lignes : mesurer les lignes demanderait une passe de
+ * layout par message, alors que la longueur du texte est connue a la composition. 400 caracteres
+ * ≈ 10 lignes, au-dela desquelles un bloc brut degringole vraiment la lecture.
+ */
 @Composable
 private fun RawFallback(raw: String) {
+    // ⚠️ En dessous du seuil, **on ne replie pas** : un `unknown` de deux lignes derriere un tap
+    // serait une complication pour rien, et le projet s'interdit les controles sans effet.
+    if (raw.length > RAW_COLLAPSE_THRESHOLD) {
+        CollapsibleBlock(
+            summary = "Contenu brut · ${formatRawSize(raw.length)}",
+            detail = raw,
+            summaryColor = TetherTextSecondary,
+            detailColor = TetherTextSecondary,
+            detailContent = { text ->
+                // ⚠️ On deplie en `bodySmall` **monospace-friendly** mais sans markdown : c'est du
+                // brut, il ne doit pas etre interprete (une note de sous-agent peut contenir des
+                // `#` et des `*` qui ne sont pas du balisage).
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TetherTextSecondary,
+                    modifier = Modifier.padding(start = Spacing.xl, bottom = Spacing.sm),
+                )
+            },
+        )
+        return
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1255,6 +1301,26 @@ private fun RawFallback(raw: String) {
             modifier = Modifier.weight(1f),
         )
     }
+}
+
+/**
+ * Seuil de repli de [RawFallback], en caracteres.
+ *
+ * ⚠️ 400 ≈ 10 lignes a `bodySmall` sur un ecran de telephone : au-dela, le bloc brut prend plus
+ * de place que la reponse qu'il accompagne.
+ */
+private const val RAW_COLLAPSE_THRESHOLD = 400
+
+/**
+ * **La taille d'un contenu brut, lisible.** « 24,7 k caracteres », pas « 24711 ».
+ *
+ * ⚠️ On dit « caracteres » et non « tokens » : c'est une longueur de texte, et un client qui
+ * afficherait un compte de tokens **invente** mentirait sur ce qu'il mesure.
+ */
+private fun formatRawSize(chars: Int): String = when {
+    chars >= 1_000_000 -> "%.1f M caracteres".format(java.util.Locale.FRANCE, chars / 1_000_000.0)
+    chars >= 1_000 -> "%.1f k caracteres".format(java.util.Locale.FRANCE, chars / 1_000.0)
+    else -> "$chars caracteres"
 }
 
 /**
