@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import sh.sk7.tether.ui.chat.ChatScreen
 import sh.sk7.tether.ui.sessions.SessionListScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
+import sh.sk7.tether.push.NotificationPermissionRequest
 
 object Routes {
     const val SESSIONS = "sessions"
@@ -28,6 +29,10 @@ fun TetherNavHost(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Routes.SESSIONS,
 ) {
+    // Demande d'autorisation de notifier : sans elle, la chaine UnifiedPush fonctionne
+    // (endpoint recu, message recu) mais rien ne s'affiche, et Android ne le dit pas.
+    NotificationPermissionRequest()
+
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.SESSIONS) {
             SessionListScreen(

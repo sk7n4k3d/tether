@@ -182,19 +182,32 @@ object PushEndpointRelay {
 /**
  * Enregistre l'app aupres du distributeur UnifiedPush (ntfy).
  *
+ * ⚠️ **`tryUseCurrentOrDefaultDistributor` et non `registerApp` seul.** Mesure sur le Pixel :
+ * avec `registerApp` et un `savedDistributor = null` (installation neuve), l'appel **ne leve
+ * pas** et l'endpoint **n'arrive jamais** — ntfy ne recoit aucun `REGISTER`, parce que la
+ * bibliotheque ne sait pas quel distributeur interroger. C'est cette fonction qui **resout et
+ * sauvegarde** le distributeur ; une fois sauvegarde, les appels suivants sont idempotents.
+ *
  * ⚠️ **Idempotent** : appeler cette fonction a chaque demarrage est sans effet si
  * l'enregistrement existe deja — c'est le comportement attendu par la bibliotheque.
  *
  * @return `true` si un distributeur est disponible et l'enregistrement demande.
  */
-fun registerForPush(context: Context): Boolean {
+fun registerForPush(context: Context, onResult: ((Boolean) -> Unit)? = null): Boolean {
     val distributors = UnifiedPush.getDistributors(context)
+    Log.i(
+        "TetherPush",
+        "distributeurs=${distributors.size} saved=${UnifiedPush.getSavedDistributor(context)}",
+    )
     if (distributors.isEmpty()) {
         Log.w("TetherPush", "aucun distributeur UnifiedPush installe")
+        onResult?.invoke(false)
         return false
     }
-    // `registerApp` (et non `register`) : c'est la variante qui **resout le distributeur**
-    // sauvegarde ou par defaut au lieu d'exiger son identifiant.
-    UnifiedPush.registerApp(context, "")
+    UnifiedPush.tryUseCurrentOrDefaultDistributor(context) { success ->
+        Log.i("TetherPush", "distributeur retenu=$success saved=${UnifiedPush.getSavedDistributor(context)}")
+        if (success) UnifiedPush.registerApp(context, "")
+        onResult?.invoke(success)
+    }
     return true
 }
