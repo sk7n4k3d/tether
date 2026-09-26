@@ -97,9 +97,37 @@ object TetherNotifier {
      * s'execute dans un service de push, sans cycle de vie de composition, et n'a besoin que d'un
      * instantane au moment d'afficher.
      */
-    private fun knownSessionIDs(entry: PushEntryPoint): Set<String> =
-        runCatching { entry.activityMonitor().state.value.bySession.keys }.getOrDefault(emptySet())
-
+    /**
+     * **La session portee par le message est-elle plausible ?**
+     *
+     * ⚠️ **On valide la FORME, pas l'existence — et c'est un correctif.**
+     *
+     * J'avais d'abord exige que la session soit **connue de l'app** (`in knownSessionIDs`), par
+     * prudence envers une charge exterieure. Mesure du 2026-09-26, log a l'appui :
+     *
+     * ```
+     * deep link : session=ses_f2b4097ecffe8dMdMYfZlf1eiS connue=false decision=Progress
+     * ```
+     *
+     * `connue=false` **a chaque fois**, donc repli sur `PushTarget.App` : **le tap ouvrait l'app
+     * sans la session** — le bug signale par Bastien.
+     *
+     * La raison est structurelle : le push **peut relancer le processus** (mesure du sous-agent :
+     * pid 16742 -> 17231). Au moment ou la notification se construit, le detenteur d'etat n'a
+     * **rien** charge, donc `bySession` est vide. Ma validation etait donc **incapable de marcher
+     * dans le cas le plus important** : app fermee, celui ou la notification sert le plus.
+     *
+     * ⚠️ **Ce qu'on accepte en echange, et pourquoi c'est acceptable** : le topic relais accepte
+     * des publications anonymes, donc un tiers pourrait injecter `tether:session=<n'importe quoi>`.
+     * L'effet serait d'**ouvrir une session vide ou inexistante** — rien de plus : l'identifiant
+     * n'est pas un secret, il ne donne aucun droit, et l'app retombe sur sa propre lecture du
+     * serveur pour tout le reste. Le cout d'une validation stricte (un deep link casse dans le cas
+     * principal) est tres superieur au risque qu'elle ecarte.
+     *
+     * ⚠️ On garde donc le **prefixe** : `ses_` est la forme reelle des identifiants de session
+     * (mesuree sur le serveur). C'est un filtre sur une **forme**, pas une dependance a un etat
+     * charge — il ne peut pas se tromper selon le moment.
+     */
     fun show(context: Context, payload: PushPayload) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) {
@@ -158,7 +186,18 @@ object TetherNotifier {
                     context,
                     // ⚠️ Une decision en attente prime : c'est l'ecran ou l'on repond. Sinon, on
                     // ouvre la session **si elle est reconnue**, et l'app sinon.
-                    targetFor(decision, payload.sessionID?.takeIf { it in knownSessionIDs(entry) }),
+                    targetFor(
+                        decision,
+                        payload.sessionID?.takeIf { id ->
+                            val plausible = id.looksLikeSessionID()
+                            // ⚠️ **Trace du deep link** : c'est LE point qui decide si le tap
+                            // ouvre la session ou l'app. Sans cette ligne, un tap qui n'ouvre pas
+                            // la bonne session ne laisse aucune trace (c'est ce qui a rendu ce bug
+                            // invisible jusqu'ici).
+                            Log.i(TAG, "deep link : session=$id plausible=$plausible decision=$decision")
+                            plausible
+                        },
+                    ),
                     ONGOING_ID + 1,
                 ),
             )
@@ -378,3 +417,30 @@ object TetherNotifier {
         }
     }
 }
+
+/**
+ * **La session portee par un message de notification est-elle plausible ?**
+ *
+ * ⚠️ **Valide la FORME, jamais l'existence** — c'est un correctif, mesure a l'appui.
+ *
+ * J'exigeais d'abord que la session soit **connue de l'app**. Log du 2026-09-26 :
+ *
+ *     deep link : session=ses_f2b4097ecffe8dMdMYfZlf1eiS connue=false decision=Progress
+ *
+ * `connue=false` **a chaque notification**, donc repli sur l'app : **le tap ouvrait
+ * l'application sans la session** (bug signale par Bastien).
+ *
+ * La cause est structurelle : le push **peut relancer le processus** (mesure : pid 16742 -> 17231),
+ * et au moment ou la notification se construit le detenteur d'etat n'a **rien** charge. La
+ * validation etait donc incapable de marcher dans le cas le plus important : app fermee.
+ *
+ * ⚠️ **Ce qu'on accepte en echange** : le topic relais accepte des publications anonymes, donc un
+ * tiers pourrait injecter un identifiant arbitraire. L'effet se limite a **ouvrir une session vide
+ * ou inexistante** : l'identifiant n'est pas un secret, ne donne aucun droit, et tout le reste de
+ * l'ecran vient de la lecture du serveur par l'app. Le cout d'une validation stricte (un deep link
+ * casse dans le cas principal) depasse largement le risque qu'elle ecarte.
+ *
+ * ⚠️ `ses_` est la forme **reelle** des identifiants de session (mesuree sur le serveur) : un
+ * filtre sur une forme ne peut pas se tromper selon le moment.
+ */
+internal fun String.looksLikeSessionID(): Boolean = startsWith("ses_")

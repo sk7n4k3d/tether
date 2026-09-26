@@ -3,6 +3,7 @@ package sh.sk7.tether.push
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -235,4 +236,37 @@ class PushProgressTest {
         // soit un clignotement. L'anti-spam se fait par le remplacement du meme ID.
         assertEquals(false, shouldClearProgress(PushKind.Progress))
     }
+
+    // ---------------------------------------------------------------------
+    // La decision du TAP : session ou app ?
+    //
+    // ⚠️ Regression mesuree sur le Pixel (2026-09-26) : ma validation exigeait que la
+    // session soit CONNUE de l'app. Log a l'appui :
+    //     deep link : session=ses_f2b4... connue=false decision=Progress
+    // à CHAQUE notification, donc repli sur l'app : le tap ouvrait l'app sans la session.
+    //
+    // Cause structurelle : le push PEUT relancer le processus, et au moment ou la notification
+    // se construit le detenteur d'etat n'a rien charge (bySession vide). La validation etait
+    // donc incapable de marcher dans le cas principal (app fermee).
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `une session plausible est acceptee sans dependre de l'etat charge`() {
+        // ⚠️ C'est LE point du correctif : la forme suffit. Aucun etat a interroger, donc la
+        // decision ne peut pas dependre du moment (process fraichement relance, cache vide).
+        assertTrue("ses_f2b4097ecffe8dMdMYfZlf1eiS".looksLikeSessionID())
+        assertTrue("ses_x".looksLikeSessionID())
+    }
+
+    @Test
+    fun `une charge qui ne ressemble pas a une session est refusee`() {
+        // ⚠️ Le topic relais accepte des publications anonymes : on garde un filtre. Mais il
+        // porte sur une FORME, pas sur une existence — le risque ecarte est d'ouvrir une session
+        // vide, pas une escalation.
+        assertFalse("".looksLikeSessionID())
+        assertFalse("msg_abc".looksLikeSessionID())
+        assertFalse("../../etc/passwd".looksLikeSessionID())
+        assertFalse("https://exemple.test".looksLikeSessionID())
+    }
+
 }
