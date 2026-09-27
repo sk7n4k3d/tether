@@ -56,6 +56,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,12 +110,17 @@ fun SessionListScreen(
     viewModel: SessionListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val create by viewModel.create.collectAsStateWithLifecycle()
     val sessionError by viewModel.sessionError.collectAsStateWithLifecycle()
     val pendingApprovals by viewModel.pendingApprovals.collectAsStateWithLifecycle()
     val pendingForms by viewModel.pendingForms.collectAsStateWithLifecycle()
     val pinnedIds by viewModel.pinnedIds.collectAsStateWithLifecycle()
     val fleet by viewModel.fleet.collectAsStateWithLifecycle()
+    // ⚠️ Evenement ponctuel, collecte **une fois** pour toute la vie de l'ecran : une session
+    // creee ne doit pas etre rejouee a chaque recomposition. Le `Channel` du ViewModel le garantit
+    // (un etat, lui, serait rejoue — et rouvrirait la session apres une rotation).
+    LaunchedEffect(Unit) {
+        viewModel.openSession.collect { onOpenSession(it) }
+    }
     // ⚠️ La requete vit **hors** de la branche `Loaded` : si elle mourait au passage a l'etat
     // d'erreur ou de chargement, un rafraichissement rate effacerait la recherche en cours.
     var query by remember { mutableStateOf("") }
@@ -184,7 +190,7 @@ fun SessionListScreen(
         },
         floatingActionButton = {
             if (state is SessionListUiState.Loaded) {
-                Button(onClick = viewModel::openCreate) {
+                Button(onClick = viewModel::newSession) {
                     Icon(Lucide.Plus, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Session")
@@ -369,19 +375,6 @@ fun SessionListScreen(
 }
     }
 
-    if (create.visible && state is SessionListUiState.Loaded) {
-        val loaded = state as SessionListUiState.Loaded
-        CreateSessionDialog(
-            form = create,
-            models = loaded.models,
-            agents = loaded.agents,
-            onTitleChange = viewModel::onCreateTitleChange,
-            onModelChange = viewModel::onCreateModelChange,
-            onAgentChange = viewModel::onCreateAgentChange,
-            onConfirm = viewModel::createSession,
-            onDismiss = viewModel::dismissCreate,
-        )
-    }
 
     renaming?.let { item ->
         RenameSessionDialog(
@@ -583,101 +576,6 @@ private fun InfoBlock(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CreateSessionDialog(
-    form: CreateSessionState,
-    models: List<Model>,
-    agents: List<Agent>,
-    onTitleChange: (String) -> Unit,
-    onModelChange: (ModelRef) -> Unit,
-    onAgentChange: (String?) -> Unit,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Nouvelle session") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = form.title,
-                    onValueChange = onTitleChange,
-                    label = { Text("Titre") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                EnumDropdown(
-                    label = "Modèle (obligatoire)",
-                    options = models.map { it.displayName() },
-                    selectedIndex = models.indexOfFirst { it.toRef() == form.model },
-                    onSelect = { index -> onModelChange(models[index].toRef()) },
-                )
-                EnumDropdown(
-                    label = "Agent",
-                    options = agents.map { it.name ?: it.id },
-                    selectedIndex = agents.indexOfFirst { it.id == form.agent },
-                    onSelect = { index -> onAgentChange(agents[index].id) },
-                )
-                form.error?.let {
-                    Text(it, color = TetherAlert, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm, enabled = form.canSubmit) {
-                if (form.creating) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Créer")
-                }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler") } },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EnumDropdown(
-    label: String,
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-) {
-    val expandedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val expanded = expandedState.value
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expandedState.value = !expandedState.value },
-    ) {
-        OutlinedTextField(
-            value = options.getOrNull(selectedIndex).orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(androidx.compose.material3.MenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expandedState.value = false }) {
-            options.forEachIndexed { index, option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onSelect(index)
-                        expandedState.value = false
-                    },
-                )
-            }
-        }
-    }
-}
-
-private fun Model.displayName(): String = name ?: "${providerID.orEmpty()}/$id"
-
-private fun Model.toRef(): ModelRef = ModelRef(id = modelID ?: id, providerID = providerID.orEmpty())
 
 /**
  * **Le champ de recherche.**

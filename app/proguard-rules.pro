@@ -25,7 +25,9 @@
 -keep class javax.inject.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper
 
-# UnifiedPush : le service est instancie par le framework
+# Push ET actions de notification : le service est instancie par le framework, et le receiver
+# par Android qui resout le composant declare au manifeste. Sans ce -keep, le release compile,
+# s'installe, et le bouton « Refuser » ne fait RIEN en production — un bug invisible au debug.
 -keep class sh.sk7.tether.push.** { *; }
 
 # Ktor / OkHttp : options et serialiseurs charges par nom

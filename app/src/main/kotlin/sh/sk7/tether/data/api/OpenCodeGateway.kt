@@ -75,11 +75,18 @@ interface OpenCodeGateway {
 
     suspend fun agents(settings: ConnectionSettings): List<Agent>
 
+    /**
+     * Cree une session avec **les valeurs par defaut du serveur**.
+     *
+     * ⚠️ C'est le seul cas normal : le dialogue de creation a ete supprime. `model` et `agent`
+     * viennent du **dernier choix memorise** (voir `SessionDefaultsStore`) et sont `null` tant que
+     * l'utilisateur n'a rien choisi — le serveur resout alors au premier tour. Aucun `title` :
+     * opencode nomme la session lui-meme, et il ne reecrit pas un titre qu'on lui impose.
+     */
     suspend fun createSession(
         settings: ConnectionSettings,
-        title: String,
-        model: ModelRef,
-        agent: String?,
+        model: ModelRef? = null,
+        agent: String? = null,
     ): Session
 
     /** Une session precise (`GET /api/session/{id}`), pour titrer l'ecran de chat. */
@@ -592,13 +599,11 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun createSession(
         settings: ConnectionSettings,
-        title: String,
-        model: ModelRef,
+        model: ModelRef?,
         agent: String?,
     ): Session = client(settings).createSession(
-        title = title,
-        model = model,
         location = settings.directory,
+        model = model,
         agent = agent,
     )
 

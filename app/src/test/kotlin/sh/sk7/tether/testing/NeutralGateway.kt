@@ -78,10 +78,17 @@ open class NeutralGateway : OpenCodeGateway {
 
     override suspend fun createSession(
         settings: ConnectionSettings,
-        title: String,
-        model: ModelRef,
+        model: ModelRef?,
         agent: String?,
-    ): Session = Session(id = "ses_new", title = title)
+    ): Session {
+        lastCreateModel = model
+        lastCreateAgent = agent
+        return Session(id = "ses_new")
+    }
+
+    /** Dernier choix transmis a la creation, pour les assertions. */
+    var lastCreateModel: ModelRef? = null
+    var lastCreateAgent: String? = null
 
     override suspend fun session(settings: ConnectionSettings, sessionID: String): Session =
         Session(id = sessionID)

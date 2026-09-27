@@ -28,6 +28,7 @@ import sh.sk7.tether.data.event.OcEvent
 import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.ConnectionStore
+import sh.sk7.tether.data.settings.SessionDefaultsStore
 import sh.sk7.tether.testing.NeutralGateway
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -103,6 +104,19 @@ class ChatAttachmentsTest {
         }
     }
 
+    /**
+     * Store du dernier choix, sur son **propre** fichier jetable.
+     *
+     * ⚠️ Isole de [realStore] volontairement : un test qui memorise un modele ne doit pas
+     * polluer le store de connexion du test suivant.
+     */
+    private fun defaultsStore(): SessionDefaultsStore {
+        val dir = File(System.getProperty("java.io.tmpdir"), "tether-datastore-attach-defaults").apply { mkdirs() }
+        val file = File(dir, "defaults-${UUID.randomUUID()}.preferences_pb")
+        files += file
+        return SessionDefaultsStore(PreferenceDataStoreFactory.create(scope = scope) { file })
+    }
+
     private fun viewModel(gateway: FakeGateway): ChatViewModel {
         val dir = File(System.getProperty("java.io.tmpdir"), "tether-datastore-attach").apply { mkdirs() }
         val file = File(dir, "settings-${UUID.randomUUID()}.preferences_pb")
@@ -122,6 +136,7 @@ class ChatAttachmentsTest {
                 dispatcher = Dispatchers.Unconfined,
             ),
             streamFactory = EventSourceFactory { FakeEventSource() },
+            sessionDefaults = defaultsStore(),
             dispatcher = Dispatchers.Unconfined,
             awaitingGraceMillis = 150,
         )

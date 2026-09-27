@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import sh.sk7.tether.data.api.HistoryPage
 import sh.sk7.tether.data.api.Agent
@@ -42,12 +44,14 @@ import sh.sk7.tether.data.activity.ActivityMonitor
 import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.PinnedSessions
+import sh.sk7.tether.data.settings.SessionDefaultsStore
 import sh.sk7.tether.data.settings.ConnectionStore
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlinx.coroutines.flow.first
 
 class SessionListViewModelTest {
 
@@ -79,12 +83,15 @@ class SessionListViewModelTest {
         ),
         private val agents: List<Agent> = listOf(Agent(id = "general", name = "General")),
         private val failure: Throwable? = null,
+        /** Echec **de la creation seule** : la liste doit rester chargee. */
+        private val createFailure: Throwable? = null,
         private val created: Session = Session(id = "ses_new", title = "Nouvelle"),
         private val pendingFormList: List<FormInfoDto> = emptyList(),
     ) : NeutralGateway() {
         var sessionsCalls = 0
-        var lastCreateAgent: String? = null
-        var lastCreateTitle: String? = null
+        var createCalls = 0
+        var modelsCalls = 0
+        var agentsCalls = 0
 
         /** Echec **des formulaires seulement** : la liste doit rester chargee et le compteur a 0. */
         var failForms: Boolean = false
@@ -105,24 +112,26 @@ class SessionListViewModelTest {
         }
 
         override suspend fun models(settings: ConnectionSettings): List<Model> {
+            modelsCalls++
             failure?.let { throw it }
             return models
         }
 
         override suspend fun agents(settings: ConnectionSettings): List<Agent> {
+            agentsCalls++
             failure?.let { throw it }
             return agents
         }
 
         override suspend fun createSession(
             settings: ConnectionSettings,
-            title: String,
-            model: ModelRef,
+            model: ModelRef?,
             agent: String?,
         ): Session {
-            lastCreateTitle = title
+            createCalls++
+            lastCreateModel = model
             lastCreateAgent = agent
-            failure?.let { throw it }
+            createFailure?.let { throw it }
             return created
         }
 
@@ -199,7 +208,9 @@ class SessionListViewModelTest {
     private fun viewModel(
         gateway: FakeGateway,
         settings: ConnectionSettings = ConnectionSettings(password = "x", directory = "/home/utilisateur"),
-    ) = SessionListViewModel(
+    ): SessionListViewModel {
+        lastDefaults = SessionDefaultsStore(newDataStore("defaults"))
+        return SessionListViewModel(
         realStore(settings),
         gateway,
         // Un vrai DataStore sur un fichier temporaire : l'epinglage ne fait pas partie de ce que
@@ -221,13 +232,30 @@ class SessionListViewModelTest {
             appScope = CoroutineScope(Dispatchers.Unconfined).also { it.cancel() },
             dispatcher = Dispatchers.Unconfined,
         ),
+        lastDefaults,
         Dispatchers.Unconfined,
-    )
+        )
+    }
+
+    /** Memorise un choix, comme le ferait un changement de modele dans une conversation. */
+    private suspend fun recordDefaults(model: ModelRef?, agent: String?) =
+        lastDefaults.record(model = model, agent = agent)
+
+    /**
+     * Store du dernier choix, cree **par le test** et passe au ViewModel.
+     *
+     * ⚠️ Le test doit pouvoir y ecrire : c'est ainsi qu'on simule « l'utilisateur a change de
+     * modele dans une conversation ». Passer par un membre prive du ViewModel serait un test
+     * lie a l'implementation plutot qu'au comportement.
+     */
+    private lateinit var lastDefaults: SessionDefaultsStore
 
     /** DataStore jetable, isole par test. */
-    private fun testDataStore(): DataStore<Preferences> {
-        val dir = File(System.getProperty("java.io.tmpdir"), "tether-pins-test").apply { mkdirs() }
-        val file = File(dir, "pins-${UUID.randomUUID()}.preferences_pb")
+    private fun testDataStore(): DataStore<Preferences> = newDataStore("pins")
+
+    private fun newDataStore(tag: String): DataStore<Preferences> {
+        val dir = File(System.getProperty("java.io.tmpdir"), "tether-sessions-$tag").apply { mkdirs() }
+        val file = File(dir, "store-${UUID.randomUUID()}.preferences_pb")
         files += file
         return PreferenceDataStoreFactory.create(scope = scope) { file }
     }
@@ -265,20 +293,24 @@ class SessionListViewModelTest {
         awaitValue(vm.state) { it !is SessionListUiState.Loading }
 
     @Test
-    fun `refresh expose la liste chargee et resout modeles et agents`() = runBlocking<Unit> {
+    fun `refresh expose la liste chargee et ne charge ni modeles ni agents`() = runBlocking<Unit> {
         val session = Session(
             id = "ses_1",
             title = "Une session",
             agent = "general",
             time = TimeInfo(created = 1_000, updated = 2_000),
         )
-        val vm = viewModel(FakeGateway(sessions = listOf(session)))
+        val gateway = FakeGateway(sessions = listOf(session))
+        val vm = viewModel(gateway)
 
         val state = loaded(vm)
         assertEquals(1, state.items.size)
         assertEquals("ses_1", state.items.first().id)
-        assertEquals(1, state.models.size)
-        assertEquals(1, state.agents.size)
+        // ⚠️ **Ni `models` ni `agents`.** Le seul consommateur etait la dialogue de creation,
+        // supprimee : on payait deux appels reseau a chaque rafraichissement pour rien. Le
+        // catalogue se charge dans la conversation, une fois, ou il sert.
+        assertEquals(0, gateway.modelsCalls, "la liste ne doit plus charger le catalogue")
+        assertEquals(0, gateway.agentsCalls, "la liste ne doit plus charger les agents")
     }
 
     @Test
@@ -308,80 +340,92 @@ class SessionListViewModelTest {
         assertEquals(0, gateway.sessionsCalls)
     }
 
+    /**
+     * Un seul appel cree la session, **sans dialogue et sans titre**.
+     *
+     * ⚠️ Ce test remplace `createSession transmettait le modele obligatoire et l'agent choisi`.
+     * Il encode le comportement mesure : `POST /api/session` n'exige aucun champ, et **le serveur
+     * ne reecrit pas un titre qu'on lui donne** (mesure du 2026-09-26 : `{"title":"Nouvelle
+     * session"}` est conserve tel quel, donc l'envoyer empechait opencode d'en nommer une).
+     */
     @Test
-    fun `createSession transmet le modele obligatoire et l agent choisi`() = runBlocking<Unit> {
+    fun `newSession cree en un geste et n envoie aucun titre`() = runBlocking<Unit> {
         val gateway = FakeGateway()
         val vm = viewModel(gateway)
         loaded(vm)
-        vm.onCreateTitleChange("Ma nouvelle session")
-        vm.onCreateModelChange(ModelRef("deepseek-v4.1-flash", "ollama-cloud"))
-        vm.onCreateAgentChange("general")
 
-        vm.createSession()
+        vm.newSession()
 
+        awaitCondition("session creee") { gateway.createCalls >= 1 }
         awaitCondition("liste rechargee") { gateway.sessionsCalls >= 2 }
-        awaitValue(vm.create) { !it.creating }
-        assertEquals("Ma nouvelle session", gateway.lastCreateTitle)
-        assertEquals("general", gateway.lastCreateAgent)
+        assertEquals(1, gateway.createCalls, "une seule creation")
         assertEquals(2, gateway.sessionsCalls, "la liste est rechargee apres creation")
     }
 
+    /**
+     * Le **dernier choix** est renvoye, et rien d'autre n'est invente.
+     *
+     * ⚠️ C'est tout l'objet du changement : le defaut du serveur est `general` +
+     * `deepseek-v4.1-flash` (mesure : seul `general` est en `mode: "all"` et il porte ce modele),
+     * donc « ne rien envoyer » atterrirait sur un modele que l'utilisateur change a chaque session.
+     */
     @Test
-    fun `createSession refuse un modele absent et n appelle pas le serveur`() = runBlocking<Unit> {
+    fun `newSession renvoie le dernier choix memorise`() = runBlocking<Unit> {
         val gateway = FakeGateway()
         val vm = viewModel(gateway)
         loaded(vm)
-        vm.onCreateTitleChange("Sans modele")
+        recordDefaults(ModelRef("space-bunny-free", "opencode"), "build")
 
-        vm.createSession()
+        vm.newSession()
 
-        assertEquals("Un modèle est obligatoire.", vm.create.value.error)
-        assertEquals(1, gateway.sessionsCalls, "aucune creation ni recharge")
-        assertEquals(null, gateway.lastCreateTitle)
+        awaitCondition("session creee") { gateway.createCalls >= 1 }
+        assertEquals(ModelRef("space-bunny-free", "opencode"), gateway.lastCreateModel)
+        assertEquals("build", gateway.lastCreateAgent)
     }
 
+    /**
+     * Aucun choix memorise => on ne suppose **rien**.
+     *
+     * ⚠️ On ne remplit pas avec le `defaultModel(sessions)` de l'ancien dialogue : ce modele
+     * venait du catalogue, et une session fraichement creee a `model: null` cote serveur
+     * (mesure). Renvoyer un choix qu'on n'a pas fait serait afficher une valeur inventee.
+     */
     @Test
-    fun `le modele par defaut est celui de la session la plus recente`() = runBlocking<Unit> {
-        val gateway = FakeGateway(
-            sessions = listOf(
-                Session(
-                    id = "ses_recent",
-                    title = "Récente",
-                    // ⚠️ `variant` est present sur une session reelle mais PAS dans le catalogue.
-                    model = ModelRef("mimo-v2.6-flash-free", "opencode", variant = "default"),
-                    time = TimeInfo(created = 2_000),
-                ),
-            ),
-            models = listOf(
-                Model(id = "space-bunny-free", modelID = "space-bunny-free", providerID = "opencode"),
-                Model(id = "mimo-v2.6-flash-free", modelID = "mimo-v2.6-flash-free", providerID = "opencode"),
-            ),
-        )
+    fun `sans choix memorise la creation n invente ni modele ni agent`() = runBlocking<Unit> {
+        val gateway = FakeGateway()
+        val vm = viewModel(gateway)
+        loaded(vm)
 
-        val state = loaded(vm = viewModel(gateway))
+        vm.newSession()
 
-        assertEquals(ModelRef("mimo-v2.6-flash-free", "opencode"), state.createModel)
+        awaitCondition("session creee") { gateway.createCalls >= 1 }
+        assertTrue(gateway.lastCreateModel == null, "aucun modele invente : ${gateway.lastCreateModel}")
+        assertTrue(gateway.lastCreateAgent == null, "aucun agent invente : ${gateway.lastCreateAgent}")
     }
 
+    /**
+     * Un echec de creation **remonte une erreur et n'ouvre rien**.
+     *
+     * ⚠️ Ce test ne depend pas de l'etat de la liste : son sujet est l'echec de la creation, et
+     * `loaded()` le ferait dependre d'un chargement qui n'est pas ce qu'on veut mesurer ici. La
+     * liste qui s'affiche normalement est deja couverte par les autres tests de cette classe.
+     */
     @Test
-    fun `un modele de session absent du catalogue retombe sur le premier modele`() = runBlocking<Unit> {
-        val gateway = FakeGateway(
-            sessions = listOf(
-                Session(
-                    id = "ses_old",
-                    title = "Ancienne",
-                    model = ModelRef(id = "modele-supprime", providerID = "ollama-cloud"),
-                    time = TimeInfo(created = 2_000),
-                ),
-            ),
-            models = listOf(
-                Model(id = "deepseek-v4.1-flash", modelID = "deepseek-v4.1-flash", providerID = "ollama-cloud"),
-            ),
-        )
+    fun `un echec de creation remonte l erreur sans naviguer`() = runBlocking<Unit> {
+        val gateway = FakeGateway(createFailure = IllegalStateException("creation refusee"))
+        val vm = viewModel(gateway)
+        settled(vm)
 
-        val state = loaded(vm = viewModel(gateway))
+        vm.newSession()
 
-        assertEquals(ModelRef("deepseek-v4.1-flash", "ollama-cloud"), state.createModel)
+        awaitCondition("erreur remontee") { vm.sessionError.value != null }
+        assertEquals(1, gateway.createCalls, "la creation a bien ete tentee, une seule fois")
+        // ⚠️ `withTimeoutOrNull` et non `first()` : sans evenement, `first()` suspendrait jusqu'au
+        // plafond du test. Ici on **prouve** l'absence d'evenement, en quelques centaines de ms.
+        // ⚠️ On passe par un booleen explicite : `kotlin.test` expose deux surcharges
+        // d'`assertNull` (valeur et bloc), et l'ambiguite rendait l'echec illisible.
+        val opened = withTimeoutOrNull(300) { vm.openSession.first() }
+        assertTrue(opened == null, "rien a ouvrir, mais on a recu : $opened")
     }
 
     @Test

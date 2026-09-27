@@ -108,15 +108,21 @@ class OpenCodeClientTest {
         assertEquals("/tmp", req.url.parameters["location[directory]"])
     }
 
+    /**
+     * L'agent n'est signe que si on le fournit.
+     *
+     * ⚠️ Ecrit sur la forme **reelle** : le corps porte `location` en premier, et `agent` est
+     * simplement absent quand on ne le passe pas (et non `null`).
+     */
     @Test
     fun `createSession signe l agent optionnel et l omet si absent`() = runBlocking {
-        val body = """{"data":{"id":"ses_new","title":"t"}}"""
+        val body = """{"data":{"id":"ses_new"}}"""
         val withAgent = OpenCodeClient("http://host:4096", creds, mockClient(body))
-        withAgent.createSession("t", ModelRef("m", "p"), "/tmp", agent = "general")
+        withAgent.createSession("/tmp", model = ModelRef("m", "p"), agent = "general")
         assertTrue(String(lastRequest!!.body.toByteArray()).contains("\"agent\":\"general\""))
 
         val withoutAgent = OpenCodeClient("http://host:4096", creds, mockClient(body))
-        withoutAgent.createSession("t", ModelRef("m", "p"), "/tmp")
+        withoutAgent.createSession("/tmp", model = ModelRef("m", "p"))
         assertFalse(String(lastRequest!!.body.toByteArray()).contains("\"agent\""))
     }
 
@@ -127,17 +133,25 @@ class OpenCodeClientTest {
         assertEquals("2.0.x", client.info().version)
     }
 
+    /**
+     * Le corps minimal : `location` seul suffit, et **aucun titre n'est envoye**.
+     *
+     * ⚠️ Mesure du 2026-09-26 sur le 2.0.x : `SessionCreate` n'a aucun champ obligatoire, et
+     * `{"location":{"directory":"/tmp"}}` seul rend 200 avec `title`/`agent`/`model` a `null`.
+     * Le serveur ne reecrit pas un titre qu'on lui impose — envoyer `"Nouvelle session"` le
+     * conservait tel quel, ce qui empechait la generation automatique. D'ou l'absence de `title`.
+     */
     @Test
-    fun `createSession poste le corps et lit l objet data`() = runBlocking {
-        val body = """{"data":{"id":"ses_new","title":"t"}}"""
+    fun `createSession poste le corps minimal et lit l objet data`() = runBlocking {
+        val body = """{"data":{"id":"ses_new"}}"""
         val client = OpenCodeClient("http://host:4096", creds, mockClient(body))
-        val s = client.createSession("t", ModelRef("m", "p"), "/tmp")
+        val s = client.createSession("/tmp")
         assertEquals("ses_new", s.id)
         val req = lastRequest!!
         assertEquals("http://host:4096/api/session", req.url.toString())
         val sent = String(req.body.toByteArray())
-        assertTrue(sent.contains("\"title\":\"t\""))
         assertTrue(sent.contains("\"directory\":\"/tmp\""))
+        assertFalse(sent.contains("\"title\""), "aucun titre ne doit etre envoye : vu $sent")
     }
 
     @Test

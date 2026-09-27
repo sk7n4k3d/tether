@@ -137,6 +137,11 @@ data class ModelVariant(val id: String, val settings: JsonObject? = null)
  * Agent de `GET /api/agent`. Seuls les champs d'affichage sont retenus : la reponse reelle
  * porte aussi `system` (prompt complet, plusieurs kilo-octets) et `permissions`, inutiles ici.
  * `mode` vaut `primary`, `subagent` ou `all`.
+ *
+ * ⚠️ **`model` n'est pas un detail** : chaque agent porte LE sien (mesure du 2026-09-26 sur notre
+ * 2.0.x : `build` porte `glm-5.3`, `plan` et `edit` portent `deepseek-v4.1-flash`). Choisir un
+ * agent, c'est donc choisir un modele sans le dire — d'ou son affichage dans le selecteur.
+ * `null` = l'agent herite du defaut.
  */
 @Serializable
 data class Agent(
@@ -145,6 +150,7 @@ data class Agent(
     val description: String? = null,
     val mode: String? = null,
     val hidden: Boolean = false,
+    val model: ModelRef? = null,
 )
 
 /**
@@ -283,11 +289,25 @@ data class PromptAcceptance(
     val time: TimeInfo? = null,
 )
 
+/**
+ * Corps de `POST /api/session`.
+ *
+ * ⚠️ **Aucun champ n'est obligatoire** (mesure : `GET /openapi.json` sur notre 2.0.x,
+ * `SessionCreate.required` est absent). Avec `{"location":{…}}` seul, le serveur repond **200** et
+ * cree la session avec `title`, `agent` et `model` a `null` — il ne_resout rien tant que le
+ * premier tour n'a pas tourne.
+ *
+ * ⚠️ **`title` n'est plus envoye, et c'est volontaire.** Le serveur **ne reecrit pas** le titre
+ * qu'on lui donne (mesure : `{"title":"Nouvelle session"}` est conserve tel quel). Envoyer un
+ * titre generique empechait donc opencode d'en generer un descriptif. Un `null` explicite est
+ * accepte au meme titre qu'un champ absent (mesure : HTTP 200, et la reponse ne contient aucune
+ * cle `title`), donc `explicitNulls` reste a `true` — pas de changement global du `Json`.
+ */
 @Serializable
 data class CreateSessionBody(
-    val title: String,
-    val model: ModelRef,
     val location: LocationBody,
+    val title: String? = null,
+    val model: ModelRef? = null,
     /** Optionnel : le serveur applique son agent par defaut si absent. */
     val agent: String? = null,
 )

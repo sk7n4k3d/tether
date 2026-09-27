@@ -58,6 +58,22 @@
         </activity>
 
         <!--
+          Boutons de decision sur la notification d'autorisation.
+
+          ⚠️ `exported="false"` : ce receiver repond a une demande d'autorisation sur la
+          machine de l'utilisateur. L'exposer autoriserait n'importe quelle app a approuver a sa
+          place — un bouton `Toujours autoriser` declenche par une autre application. Il n'est
+          atteignable que par l'app elle-meme (PendingIntent explicite, `FLAG_IMMUTABLE`).
+
+          ⚠️ Aucun `intent-filter` : le receiver est cible **nominativement** par
+          `Intent(context, PermissionActionReceiver::class.java)`. Un filtre le rendrait
+          atteignable par action, donc exportable de fait.
+        -->
+        <receiver
+            android:name=".push.PermissionActionReceiver"
+            android:exported="false" />
+
+        <!--
           Receveur de push UnifiedPush.
 
           ⚠️ `PushService` est le contrat a implementer ; NE PAS declarer en plus un

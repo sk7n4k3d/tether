@@ -76,6 +76,13 @@ data class ChatUiState(
      * direct, tokens, statut ». La liste des sessions le montre deja ; le chat l'oubliait, alors
      * que c'est l'ecran ou l'on passe le plus de temps. Un cockpit qui ne dit ce qu'il pilote
      * que sur la page d'accueil n'est pas un cockpit.
+     *
+     * ⚠️ **[meta] est la SEULE source de verite du modele et de l'agent a l'ecran.** Il y avait
+     * des champs `modelOverride` / `agentOverride` « a afficher a cote » : ils etaient **ecrits
+     * a chaque changement et jamais lus**, donc l'ecran continuait d'afficher la valeur chargee a
+     * l'ouverture, et changer de modele paraissait ne rien faire. Un champ d'etat qu'on ecrit
+     * n'actualise rien : apres un changement accepte, on **relit** la session (voir [loadMeta]).
+     * Ne pas reintroduire ces champs.
      */
     val meta: SessionMeta? = null,
     /**
@@ -87,18 +94,6 @@ data class ChatUiState(
      * ligne « charger plus » qui ne charge rien, ce qui est un echec benin ; l'inverse (croire
      * qu'il n'y a plus rien) ferait disparaitre l'historique.
      */
-    /**
-     * Le modele choisi par l'utilisateur dans cette session.
-     *
-     * ⚠️ Affiche **a cote** du modele reel de l'en-tete, jamais a sa place : le modele reel vient
-     * du serveur et fait foi. Afficher l'override seul ferait disparaitre ce que la session
-     * utilise vraiment si le changement a echoue.
-     */
-    val modelOverride: String? = null,
-
-    /** L'agent choisi dans cette session, meme regle que [modelOverride]. */
-    val agentOverride: String? = null,
-
     val hasOlder: Boolean = false,
     /** Un chargement de messages anciens est en cours (indicateur en haut de la liste). */
     val loadingOlder: Boolean = false,
@@ -209,6 +204,7 @@ class ChatViewModel @Inject constructor(
     private val gateway: OpenCodeGateway,
     private val activity: ActivityMonitor,
     private val streamFactory: EventSourceFactory,
+    private val sessionDefaults: sh.sk7.tether.data.settings.SessionDefaultsStore,
     @param:IoDispatcher
     private val dispatcher: CoroutineDispatcher,
     /** Delai sans evenement avant de rendre la main (etat stable, reessayable). */
@@ -295,6 +291,25 @@ class ChatViewModel @Inject constructor(
      * `_state.update` — un bloc qui doit rester non-suspendable pour rejouer son compare-and-set.
      */
     private val acceptedOptimistic = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * Ids optimistes dont l'envoi **est en cours** (le `POST /prompt` n'a pas repondu).
+     *
+     * ⚠️ Existe pour une seule raison : [pruneOptimisticLinks] purge [preexistingUserIds] sur la
+     * liste des optimistes **presents dans l'etat**. Or dans [send] l'instantane est ecrit
+     * *avant* la publication de l'optimiste, sans quoi une resync le consomme par texte (bug
+     * corrige, voir [send]). Il faut que la purge ne jette pas l'entree pendant l'intervalle.
+     *
+     * ⚠️ **Gardien non prouve par un test.** La fenetre miroir (purge entre l'ecriture de
+     * l'instantane et la publication) n'a pas pu etre reproduite : `send` ne suspend pas entre
+     * ces deux instructions, il faudrait donc un entrelacement multi-thread. Le set est **defensif**
+     * et cout 4 lignes ; on le garde parce qu'il rend la purge correcte par construction plutot
+     * que par chance, pas parce qu'un echec l'aurait demontre. Si un jour il devient inutile,
+     * `pruneOptimisticLinks` est le seul endroit a toucher.
+     *
+     * Retire a chaque sortie d'envoi (accepte, refuse, erreur, non configure).
+     */
+    private val inFlightSends = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /**
      * Ids serveur des messages utilisateur **deja vus** au moment ou l'optimiste est cree.
@@ -531,8 +546,11 @@ class ChatViewModel @Inject constructor(
             .filter { it.isOptimistic }
             .map { it.id }
             .toHashSet()
-        acceptedOptimistic.keys.retainAll(present)
-        preexistingUserIds.keys.retainAll(present)
+        // ⚠️ `+ inFlightSends` : un envoi declare mais pas encore publie n'est pas dans l'etat, et
+        // son instantane doit survivre a la purge. Sans ca, la fenetre de [send] se rouvre.
+        val keep = present + inFlightSends
+        acceptedOptimistic.keys.retainAll(keep)
+        preexistingUserIds.keys.retainAll(keep)
     }
 
     /**
@@ -643,7 +661,28 @@ class ChatViewModel @Inject constructor(
             try {
                 val current = settings ?: store.current().also { settings = it }
                 if (gateway.setSessionModel(current, sessionID, model)) {
-                    _state.update { it.copy(modelOverride = model.id) }
+                    // ⚠️ On **memorise** pour la prochaine creation de session. Sans ca, « Nouvelle
+                    // session » retomberait sur le defaut du serveur (`general` + deepseek-v4.1-flash,
+                    // mesure du 2026-09-26) alors que l'utilisateur change de modele a chaque
+                    // session. C'est le memoriser, et non le redemander dans une dialogue, qui
+                    // supprime les 3 champs sans rien lui faire perdre.
+                    sessionDefaults.record(model = model)
+                    // ⚠️ On **relit** la session au lieu d'ecrire la valeur dans un champ d'etat.
+                    //
+                    // Le champ `modelOverride` faisait exactement ca : il etait ecrit (ici) et
+                    // **jamais lu** — l'en-tete et le selecteur lisaient `meta`, charge une seule
+                    // fois a l'ouverture. Le serveur changeait bien, l'app affichait l'ancien, et
+                    // « je ne peux pas changer de modele » en decoulait.
+                    //
+                    // `assume` n'est utilise que si la relecture echoue : le POST a repondu 2xx,
+                    // donc la valeur vient du serveur, pas d'une supposition. La resync confirmera.
+                    loadMeta(
+                        current,
+                        assume = _state.value.meta?.copy(
+                            model = model.id,
+                            provider = model.providerID.ifBlank { null },
+                        ) ?: SessionMeta(model = model.id, provider = model.providerID.ifBlank { null }),
+                    )
                 } else {
                     _state.update { it.copy(error = "Le serveur a refusé le changement de modèle.") }
                 }
@@ -659,7 +698,12 @@ class ChatViewModel @Inject constructor(
             try {
                 val current = settings ?: store.current().also { settings = it }
                 if (gateway.setSessionAgent(current, sessionID, agent)) {
-                    _state.update { it.copy(agentOverride = agent) }
+                    sessionDefaults.record(agent = agent)
+                    // Meme raison que [setModel] : relire plutot qu'ecrire un champ mort.
+                    loadMeta(
+                        current,
+                        assume = _state.value.meta?.copy(agent = agent) ?: SessionMeta(agent = agent),
+                    )
                 } else {
                     _state.update { it.copy(error = "Le serveur a refusé le changement d'agent.") }
                 }
@@ -1010,23 +1054,30 @@ class ChatViewModel @Inject constructor(
      *
      * ⚠️ **Un seul appel** pour les deux : `loadTitle` faisait deja ce `GET` et jetait tout sauf
      * le titre. Le cout en direct, lui, vient du flux (`session.usage.updated`), pas d'ici.
+     *
+     * [assume] est la valeur affichee **seulement si la relecture echoue** apres un changement
+     * accepte. Deux cas distincts, a ne pas confondre :
+     * - au chargement initial il n'y a rien a montrer : l'en-tete reste vide, ce qui est exact ;
+     * - apres un `POST` repondu 2xx, la valeur vient du serveur — on l'affiche plutot que de
+     *   laisser une valeur perimee, et la resync confirmera.
      */
-    private suspend fun loadMeta(current: ConnectionSettings) {
-        runCatching { gateway.session(current, sessionID) }
-            .getOrNull()
-            ?.let { session ->
-                _state.update {
-                    it.copy(
-                        title = session.title?.takeIf { t -> t.isNotBlank() } ?: it.title,
-                        meta = SessionMeta(
-                            model = session.model?.id,
-                            provider = session.model?.providerID,
-                            agent = session.agent,
-                            startedAt = session.time?.created,
-                        ),
-                    )
-                }
-            }
+    private suspend fun loadMeta(current: ConnectionSettings, assume: SessionMeta? = null) {
+        val session = runCatching { gateway.session(current, sessionID) }.getOrNull()
+        if (session == null) {
+            if (assume != null) _state.update { it.copy(meta = assume) }
+            return
+        }
+        _state.update {
+            it.copy(
+                title = session.title?.takeIf { t -> t.isNotBlank() } ?: it.title,
+                meta = SessionMeta(
+                    model = session.model?.id,
+                    provider = session.model?.providerID,
+                    agent = session.agent,
+                    startedAt = session.time?.created,
+                ),
+            )
+        }
     }
 
     /**
@@ -1116,6 +1167,25 @@ class ChatViewModel @Inject constructor(
         if (body.isEmpty() && attachments.isEmpty()) return
 
         val optimistic = ChatMessage(id = "$OPTIMISTIC_PREFIX${optimisticCounter++}", role = Role.User, text = body)
+
+        // ⚠️ **L'instantane s'ecrit AVANT de publier l'optimiste.** C'est le correctif d'un bug
+        // **reproduit** : dans l'ordre inverse (publier, puis instantaner), une resync qui atterrit
+        // entre les deux voit l'optimiste **sans** son instantane, donc `preexistingFor` rend un
+        // ensemble vide, l'ancien message de meme texte redevient consommable et **l'envoi frais
+        // disparait de l'ecran**. Mesure : 1 echec sur 8 sur
+        // `un ancien message de meme texte ne confirme pas un optimiste frais` ; rejoue sur
+        // l'etat d'avant (675e174), ce test echoue a tous les coups.
+        //
+        // [inFlightSends] ferme en plus la fenetre miroir (la purge de [pruneOptimisticLinks]
+        // qui jetterait l'entree entre l'ecriture et la publication) — voir sa documentation :
+        // gardien defensif, non prouve par un test.
+        val preexisting = _state.value.chat.messages
+            .filter { it.role == Role.User && !it.id.startsWith(OPTIMISTIC_PREFIX) }
+            .map { it.id }
+            .toHashSet()
+        inFlightSends.add(optimistic.id)
+        preexistingUserIds[optimistic.id] = preexisting
+
         _state.update {
             it.copy(
                 chat = it.chat.copy(messages = it.chat.messages + optimistic),
@@ -1123,13 +1193,6 @@ class ChatViewModel @Inject constructor(
                 error = null,
             )
         }
-        // ⚠️ Snapshot des messages utilisateur **deja presents** : seuls ceux qui arriveront
-        // APRES cet envoi pourront le confirmer par texte. Sans ce garde-fou, un ancien message
-        // de meme texte validait le nouvel envoi et le faisait disparaitre de l'ecran.
-        preexistingUserIds[optimistic.id] = _state.value.chat.messages
-            .filter { it.role == Role.User && !it.id.startsWith(OPTIMISTIC_PREFIX) }
-            .map { it.id }
-            .toHashSet()
         armGrace()
 
         scope.launch {
@@ -1139,6 +1202,7 @@ class ChatViewModel @Inject constructor(
                 val current = settings ?: store.current().also { settings = it }
                 if (!current.isConfigured) {
                     cancelGrace()
+                    inFlightSends.remove(optimistic.id)
                     _state.update {
                         it.copy(
                             chat = it.chat.copy(messages = it.chat.messages - optimistic),
@@ -1166,6 +1230,9 @@ class ChatViewModel @Inject constructor(
                 // ⚠️ `accepted.id` EST l'id REST du message utilisateur : on le retient pour
                 // dedupliquer par id (et non par texte) des sa prochaine apparition.
                 acceptedOptimistic[optimistic.id] = accepted.id
+                // ⚠️ L'envoi n'est plus « en vol » : desormais c'est le lien **par id** qui fait foi
+                // (voir [dedupeOptimistic]), l'instantane par texte n'est plus consulte.
+                inFlightSends.remove(optimistic.id)
                 // Accepte : etat stable. Le flux peut ne jamais livrer (reseau coupe).
                 _state.update {
                     val cleared = if (attachments.isEmpty()) it else it.copy(attachments = emptyList())
@@ -1181,6 +1248,7 @@ class ChatViewModel @Inject constructor(
             } catch (e: Exception) {
                 cancelGrace()
                 acceptedOptimistic.remove(optimistic.id)
+                inFlightSends.remove(optimistic.id)
                 _state.update {
                     it.copy(
                         chat = it.chat.copy(messages = it.chat.messages - optimistic),

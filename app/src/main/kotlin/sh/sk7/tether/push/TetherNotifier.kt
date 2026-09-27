@@ -14,6 +14,8 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.runBlocking
 import sh.sk7.tether.data.api.OpenCodeGateway
+import sh.sk7.tether.domain.model.PermissionDecision
+import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.data.settings.ConnectionStore
 
 /**
@@ -148,11 +150,11 @@ object TetherNotifier {
         if (shouldClearProgress(payload.kind)) clearProgress(context, payload.sessionID)
 
         val foreground = entry.foregroundState().isForeground
-        val pending = pendingDecisions(entry)
+        val pending = pendingState(entry)
 
         val decision = decideNotification(
             appForeground = foreground,
-            pendingDecisions = pending,
+            pendingDecisions = pending.total,
             kind = payload.kind,
         )
         if (decision == PushDecision.Skip) {
@@ -203,6 +205,26 @@ object TetherNotifier {
             )
             // ⚠️ Une fin de tour se balaie au tap ; une autorisation reste ; un avancement se
             // laisse balayer (il n'attend rien de l'utilisateur) et **ne vibre pas**.
+            // ⚠️ **PUBLIC, et uniquement pour la notification de decision.**
+            //
+            // `NotificationCompat` vaut PRIVATE par defaut, et sur l'ecran verrouille Android
+            // masque **aussi les actions** d'une notification privee : on obtenait une notif qui
+            // dit « une decision attend » et refuse le bouton. Le bouton etait bien construit
+            // (verifie au `dumpsys notification` : `actions=3`) — invisible, simplement.
+            //
+            // Le compromis, assume : l'ecran verrouille affiche le TITRE, donc l'action demandee
+            // (`external_directory`, `bash`…). Pas la commande, et pas le corps du message, que
+            // le plugin reduit a « l'agent demande une autorisation ». Une notification qui exige
+            // de deverrouiller pour etre traitee a echoue a son travail : c'est tout le prix de
+            // ne pas avoir a ouvrir l'app.
+            //
+            // ⚠️ Les autres notifications gardent le defaut PRIVE : une fin de tour n'a rien a
+            // dire sur un ecran verrouille.
+            .apply {
+                if (decision == PushDecision.Ongoing) {
+                    setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                }
+            }
             .setAutoCancel(decision != PushDecision.Ongoing)
             .setOngoing(decision == PushDecision.Ongoing)
             .setSilent(decision == PushDecision.Progress)
@@ -213,6 +235,28 @@ object TetherNotifier {
                     else -> NotificationCompat.PRIORITY_DEFAULT
                 },
             )
+            .apply {
+                // ⚠️ **Des boutons seulement si le serveur dit qu'il y a UNE demande**, et
+                // seulement pour elle. Aucune identite, aucune requete : on ne peut pas deviner
+                // laquelle viserait, et deviner revient a appliquer une decision a un element
+                // qu'on n'a pas montre. Voir [approvalFor].
+                if (decision == PushDecision.Ongoing) {
+                    pending.approval?.let { approval ->
+                        // ⚠️ L'action demandee dans le **titre** : un bouton « Autoriser une fois »
+                        // sans dire sur quoi est un bouton qu'on ne peut pas accepter a l'aveugle.
+                        APPROVAL_ACTIONS.forEach { choice ->
+                            addAction(
+                                NotificationCompat.Action.Builder(
+                                    0,
+                                    approvalActionLabel(choice),
+                                    approvalIntent(context, approval, choice, choice.ordinal),
+                                ).build(),
+                            )
+                        }
+                        setContentTitle("Autorisation requise — ${approval.action}")
+                    }
+                }
+            }
             .build()
 
         val id = when (decision) {
@@ -330,23 +374,52 @@ object TetherNotifier {
      * une lecture reseau. On ne prétend simplement pas qu'une décision attend quand on n'a pas pu
      * le vérifier.
      */
-    private fun pendingDecisions(entry: PushEntryPoint): Int = runCatching {
+    /**
+     * L'etat d'attente **relu du serveur** : combien de decisions, et — si c'est **une seule**
+     * permission — laquelle.
+     *
+     * ⚠️ On etend la lecture qui existait deja (un compte) a son contenu, plutot que d'en ajouter
+     * une : deux lectures de la meme route, c'est deux occasions de diverger.
+     *
+     * ⚠️ Les identifiants viennent d'ici, **jamais de la charge du push** : le topic accepte
+     * l'ecriture anonyme, et un bouton qui agirait sur un id venu d'un tiers autoriserait
+     * n'importe quoi depuis le pouce de l'utilisateur. Voir [PendingApproval].
+     */
+    private fun pendingState(entry: PushEntryPoint): PendingState = runCatching {
         runBlocking {
             // ⚠️ Borné : on bloque le thread du distributeur, pas l'utilisateur, mais une borne
             // évite qu'un serveur lent retienne le callback système pendant la durée du timeout
             // Ktor (20 s). Au-delà, on considère qu'on ne sait pas — donc notification ordinaire.
             kotlinx.coroutines.withTimeoutOrNull(PENDING_DECISION_TIMEOUT_MS) {
                 val settings = entry.connectionStore().current()
-                if (!settings.isConfigured) return@withTimeoutOrNull 0
+                if (!settings.isConfigured) return@withTimeoutOrNull PendingState()
                 val gateway = entry.gateway()
                 // ⚠️ Chaque lecture est isolee : un serveur qui repond aux permissions mais pas aux
                 // formulaires (ou l'inverse) doit tout de meme annoncer ce qu'il a annonce.
-                val permissions = runCatching { gateway.pendingPermissions(settings).size }.getOrDefault(0)
-                val forms = runCatching { gateway.pendingForms(settings).size }.getOrDefault(0)
-                permissions + forms
-            } ?: 0
+                val permissions = runCatching { gateway.pendingPermissions(settings) }.getOrDefault(emptyList())
+                val forms = runCatching { gateway.pendingForms(settings) }.getOrDefault(emptyList())
+                PendingState(
+                    total = permissions.size + forms.size,
+                    approval = approvalFor(permissions.map { it.toPendingApproval() }),
+                )
+            } ?: PendingState()
         }
-    }.getOrDefault(0)
+    }.getOrDefault(PendingState())
+
+    /** Combien de decisions attendent — la seule information utilisee jusqu'ici. */
+    private fun pendingDecisions(entry: PushEntryPoint): Int = pendingState(entry).total
+
+    private fun PermissionRequest.toPendingApproval() = PendingApproval(
+        requestID = id,
+        sessionID = sessionID,
+        action = action,
+    )
+
+    /** Le compteur, et la demande unique sur laquelle on peut proposer des boutons. */
+    data class PendingState(
+        val total: Int = 0,
+        val approval: PendingApproval? = null,
+    )
 
     /** 3 s : bien plus que le temps de réponse d'un serveur local, bien moins qu'une gêne. */
     private const val PENDING_DECISION_TIMEOUT_MS = 3_000L
@@ -380,6 +453,67 @@ object TetherNotifier {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    }
+
+    /**
+     * L'intent **explicite** qui porte la reponse a un bouton de notification.
+     *
+     * ⚠️ **Explicite, jamais implicite** : Android 12+ refuse les intents implicites, et un
+     * intent implicite vers un receiver exportable est une porte ouverte — une autre app pourrait
+     * repondre a la place de l'utilisateur. On nomme donc la classe.
+     *
+     * ⚠️ `FLAG_IMMUTABLE` : un `PendingIntent` modifiable permettrait a un tiers de reecrire la
+     * decision. On ne la modifie jamais : elle est decidee a l'affichage.
+     *
+     * @param requestCode distingue les trois boutons, sinon Android les confondrait.
+     */
+    private fun approvalIntent(
+        context: Context,
+        approval: PendingApproval,
+        decision: PermissionDecision,
+        requestCode: Int,
+    ): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        APPROVAL_REQUEST_CODE_BASE + requestCode,
+        Intent(context, PermissionActionReceiver::class.java).apply {
+            action = PermissionActionReceiver.ACTION
+            putExtra(PermissionActionReceiver.EXTRA_REQUEST_ID, approval.requestID)
+            putExtra(PermissionActionReceiver.EXTRA_SESSION_ID, approval.sessionID)
+            putExtra(PermissionActionReceiver.EXTRA_DECISION, decision.wire)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /** Base des `requestCode` des trois boutons, hors des ID de notification (1001..1004). */
+    private const val APPROVAL_REQUEST_CODE_BASE = 3000
+
+    private const val DECISION_RESULT_ID = 1004
+
+    /**
+     * L'accuse apres un appui : **reussi ou echoue, toujours dit**.
+     *
+     * ⚠️ Ne pas faire d'accuse serait le meme defaut qu'un ecran muet : l'utilisateur ne sait pas
+     * si son appui a ete pris en compte. Et l'echec doit etre dit aussi — l'agent est **encore
+     * bloque**, et croire l'avoir debloque est le pire des deux mondes.
+     */
+    fun showDecisionResult(context: Context, ok: Boolean, message: String) {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        ensureChannel(context)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
+            .setContentTitle(if (ok) "Décision envoyée" else "Décision non envoyée")
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentIntent(pendingIntent(context, PushTarget.App, DECISION_RESULT_ID))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        try {
+            manager.notify(DECISION_RESULT_ID, notification)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "accuse de decision refuse par le systeme", e)
+        }
     }
 
     private fun ensureChannel(context: Context) {

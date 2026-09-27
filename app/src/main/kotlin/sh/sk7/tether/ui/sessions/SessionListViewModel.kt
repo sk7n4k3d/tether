@@ -7,6 +7,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +26,7 @@ import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.PinnedSessions
+import sh.sk7.tether.data.settings.SessionDefaultsStore
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
@@ -56,14 +60,8 @@ sealed interface SessionListUiState {
 
     data class Loaded(
         val items: List<SessionItem>,
-        val models: List<Model>,
-        val agents: List<Agent>,
         /** Consommation agregee. `null` = le serveur ne l'expose pas (pas d'erreur). */
         val usage: UsageInfo? = null,
-        /** Agent du serveur retenu a la creation, `null` = laisser le serveur decider. */
-        val createAgent: String? = null,
-        /** Modele choisi ; **obligatoire** a la creation (contrainte API). */
-        val createModel: ModelRef? = null,
         /**
          * Un rafraichissement est en cours **alors que la liste est deja affichee**.
          *
@@ -88,18 +86,6 @@ sealed interface SessionListUiState {
     ) : SessionListUiState
 }
 
-/** Etat du dialogue de creation de session. */
-data class CreateSessionState(
-    val visible: Boolean = false,
-    val title: String = "",
-    val model: ModelRef? = null,
-    val agent: String? = null,
-    val creating: Boolean = false,
-    val error: String? = null,
-) {
-    /** Le modele est obligatoire : sans lui, le bouton de creation reste inactif. */
-    val canSubmit: Boolean get() = !creating && model != null
-}
 
 @HiltViewModel
 class SessionListViewModel @Inject constructor(
@@ -108,6 +94,7 @@ class SessionListViewModel @Inject constructor(
     private val pinned: PinnedSessions,
     private val monitor: ConnectionMonitor,
     private val activity: ActivityMonitor,
+    private val defaults: SessionDefaultsStore,
     @param:IoDispatcher
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -125,6 +112,15 @@ class SessionListViewModel @Inject constructor(
     val state: StateFlow<SessionListUiState> = _state.asStateFlow()
 
     /**
+     * Evenement **ponctuel** : la session qu'on vient de creer, pour que l'ecran l'ouvre.
+     *
+     * ⚠️ Un `Channel` et non un etat : une session creee ne doit pas etre rejouee a chaque
+     * recomposition ni rappelee apres rotation. `receiveAsFlow` le consomme une fois.
+     */
+    private val _openSession = Channel<String>(Channel.BUFFERED)
+    val openSession: Flow<String> = _openSession.receiveAsFlow()
+
+    /**
      * **L'état vivant de toute l'installation**, lu directement au détenteur partagé.
      *
      * ⚠️ On ne le recalcule **pas** ici : la liste n'est qu'un des lecteurs. Le jour où un second
@@ -132,8 +128,6 @@ class SessionListViewModel @Inject constructor(
      */
     val fleet: StateFlow<FleetState> = activity.state
 
-    private val _create = MutableStateFlow(CreateSessionState())
-    val create: StateFlow<CreateSessionState> = _create.asStateFlow()
 
     /**
      * Erreur d'une action de session (renommer, fork, suppression…).
@@ -294,15 +288,13 @@ class SessionListViewModel @Inject constructor(
         if (sessions.isEmpty()) return SessionListUiState.Empty(settings.directory)
         // L'arbre : chaque parent suivi de ses sous-agents (67 % des sessions reelles).
         val items = SessionListMapper.toTree(sessions)
-        // Modeles et agents sont secondaires : leur echec ne doit pas masquer la liste.
-        val models = runCatching { gateway.models(settings) }.getOrDefault(emptyList())
-        val agents = runCatching { gateway.agents(settings) }.getOrDefault(emptyList())
+        // ⚠️ **Ni `models` ni `agents` ici.** Le seul consommateur etait la dialogue de creation,
+        // supprimee : on payait deux appels reseau a chaque rafraichissement de la liste pour un
+        // resultat que personne n'affichait. Le choix de modele se fait dans la conversation, ou le
+        // catalogue est charge une fois (cache S11) et ou il sert vraiment.
         return SessionListUiState.Loaded(
             items = items,
-            models = models,
-            agents = agents,
             usage = aggregateUsage(sessions),
-            createModel = defaultModel(sessions, models),
         )
     }
 
@@ -339,64 +331,43 @@ class SessionListViewModel @Inject constructor(
      * porte un `variant` (`"default"`), absent du catalogue, et comparer les deux rendrait
      * la selection vide dans le menu deroulant.
      */
-    private fun defaultModel(sessions: List<Session>, models: List<Model>): ModelRef? {
-        // ⚠️ **On trie AVANT de prendre le premier.** Sans le tri, `firstNotNullOfOrNull` prend
-        // la premiere session dans l'ordre **du serveur** — or cet ordre n'est pas contractuel, et
-        // le commentaire de cette fonction annoncait « la session la plus recente ». Le test
-        // existant passait parce que son faux ne rendait qu'une seule session : il validait un
-        // comportement que la production ne garantissait pas.
-        //
-        // ⚠️ `time.updated` peut etre absent : on trie sur ce qu'on a, en mettant les sessions
-        // sans horodatage en dernier, plutot qu'en les excluant (elles portent un modele valide).
-        val matching = sessions
-            .sortedByDescending { it.time?.updated ?: it.time?.created ?: 0L }
-            .firstNotNullOfOrNull { session ->
-                session.model?.let { ref -> models.firstOrNull { it.matches(ref) } }
-            }
-        return (matching ?: models.firstOrNull())?.toRef()
-    }
-
     // ------------------------------------------------------------------
-    // Dialogue de creation
+    // Creation de session
     // ------------------------------------------------------------------
 
-    fun openCreate() {
-        val loaded = _state.value as? SessionListUiState.Loaded ?: return
-        _create.value = CreateSessionState(
-            visible = true,
-            model = loaded.createModel ?: loaded.models.firstOrNull()?.toRef(),
-            agent = loaded.createAgent ?: loaded.agents.firstOrNull()?.id,
-        )
-    }
-
-    fun dismissCreate() {
-        _create.value = CreateSessionState()
-    }
-
-    fun onCreateTitleChange(value: String) = _create.update { it.copy(title = value, error = null) }
-
-    fun onCreateModelChange(model: ModelRef) = _create.update { it.copy(model = model, error = null) }
-
-    fun onCreateAgentChange(agent: String?) = _create.update { it.copy(agent = agent, error = null) }
-
-    /** Cree la session avec le modele choisi (obligatoire) puis recharge la liste. */
-    fun createSession() {
-        val form = _create.value
-        val model = form.model
-        if (model == null) {
-            _create.update { it.copy(error = "Un modèle est obligatoire.") }
-            return
-        }
-        _create.update { it.copy(creating = true, error = null) }
+    /**
+     * Cree une session et demande l'ouverture de l'ecran de chat.
+     *
+     * ⚠️ **Aucun dialogue, aucun champ.** Le serveur n'exige rien (mesure du 2026-09-26 :
+     * `SessionCreate` n'a aucun `required`, et `{"location":{…}}` seul rend 200). On renvoie le
+     * **dernier choix** de l'utilisateur ([SessionDefaultsStore]) plutot que de le redemander a
+     * chaque fois, parce que le defaut du serveur est `general` + `deepseek-v4.1-flash` — un
+     * modele qu'il change a chaque session de sa vie.
+     *
+     * ⚠️ **Aucun titre n'est envoye.** Le serveur ne reecrit pas le titre qu'on lui donne
+     * (mesure : `{"title":"Nouvelle session"}` est conserve tel quel), donc en envoyer un empechait
+     * opencode d'en generer un descriptif. Une session fraiche a `title: null` tant que le premier
+     * tour n'a pas tourne — la liste affiche alors « Sans titre », pas un nom invente.
+     *
+     * ⚠️ L'echec **ne** navigue **pas** : sans session, il n'y a rien a ouvrir, et navigationner
+     * quand meme ouvrirait un ecran vide en pretending que la creation a reussi.
+     */
+    fun newSession() {
         scope.launch {
-            val settings = store.current()
             try {
-                val title = form.title.trim().ifBlank { "Nouvelle session" }
-                gateway.createSession(settings, title, model, form.agent)
-                _create.value = CreateSessionState()
+                val current = store.current()
+                val last = defaults.current()
+                val created = gateway.createSession(
+                    settings = current,
+                    model = last.model,
+                    agent = last.agent,
+                )
+                _openSession.send(created.id)
                 refreshAfterCreate()
             } catch (e: Exception) {
-                _create.update { it.copy(creating = false, error = ConnectionErrors.describe(e)) }
+                // ⚠️ On reutilise [sessionError] : une creation ratee est une action impossible,
+                // et l'ecran sait deja la montrer. Un second canal.Display serait dupliqué pour rien.
+                _sessionError.value = ConnectionErrors.describe(e)
             }
         }
     }

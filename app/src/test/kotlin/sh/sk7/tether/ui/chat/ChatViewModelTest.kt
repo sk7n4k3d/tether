@@ -54,6 +54,7 @@ import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.domain.model.UsageStats
 import sh.sk7.tether.data.settings.ConnectionSettings
 import sh.sk7.tether.data.settings.ConnectionStore
+import sh.sk7.tether.data.settings.SessionDefaultsStore
 import sh.sk7.tether.domain.model.Role
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -94,6 +95,19 @@ class ChatViewModelTest {
         val store = ConnectionStore(dataStore, InMemoryCredentialsProvider())
         runBlocking { store.save(settings) }
         return store
+    }
+
+    /**
+     * Store du dernier choix, sur son **propre** fichier jetable.
+     *
+     * ⚠️ Isole de [realStore] volontairement : un test qui memorise un modele ne doit pas
+     * polluer le store de connexion du test suivant.
+     */
+    private fun defaultsStore(): SessionDefaultsStore {
+        val dir = File(System.getProperty("java.io.tmpdir"), "tether-datastore-defaults").apply { mkdirs() }
+        val file = File(dir, "defaults-${UUID.randomUUID()}.preferences_pb")
+        files += file
+        return SessionDefaultsStore(PreferenceDataStoreFactory.create(scope = scope) { file })
     }
 
     /** Source SSE pilotee par le test : `emit()` simule un evenement du serveur. */
@@ -138,8 +152,7 @@ class ChatViewModelTest {
 
         override suspend fun createSession(
             settings: ConnectionSettings,
-            title: String,
-            model: ModelRef,
+            model: ModelRef?,
             agent: String?,
         ): Session = Session(id = "ses_1")
 
@@ -302,6 +315,7 @@ class ChatViewModelTest {
                 dispatcher = Dispatchers.Unconfined,
             ),
             streamFactory = factory,
+            sessionDefaults = defaultsStore(),
             dispatcher = Dispatchers.Unconfined,
             awaitingGraceMillis = graceMillis,
         )
@@ -324,6 +338,23 @@ class ChatViewModelTest {
 
     /** Laisse le temps aux coroutines `Unconfined` lancees par `send` de s'executer. */
     private fun settle() = Thread.sleep(60)
+
+    /**
+     * Attend une **condition** qui n'est pas un [StateFlow] (compteur du faux, drapeau).
+     *
+     * ⚠️ [settle] dort 60 ms a l'aveugle. Sur un chemin qui implique deux echelles de temps
+     * (resync + acceptation `POST /prompt`), cette duree fixe est une course : le test
+     * `un ancien message de meme texte ne confirme pas un optimiste frais` echouait de facon
+     * intermittente. On attend **l'etat qu'on veut observer**, plus une duree arbitraire.
+     */
+    private fun awaitUntil(what: () -> String, predicate: () -> Boolean) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (System.nanoTime() < deadline) {
+            if (predicate()) return
+            Thread.sleep(5)
+        }
+        throw AssertionError("condition non atteinte : ${what()}")
+    }
 
     // ------------------------------------------------------------------
     // Review Focus n°5 — le test impose par le brief
@@ -528,6 +559,17 @@ class ChatViewModelTest {
         awaitValue(vm.state) { it.chat.messages.any { it.id == "msg_old_ok" } }
 
         vm.send("ok")
+        // ⚠️ On attend **l'acceptation HTTP** — l'instant que ce test doit observer — au lieu de
+        // dormir 60 ms. Le `POST` et une resync evoluent en parallele ; une duree fixe laissait
+        // la resync gagner la course **1 fois sur 8** (mesure : 8 executions, 1 echec), alors
+        // qu'aucune edition du code produit n'etait en cause.
+        //
+        // ✅ Cette version est **deterministe** : replayee sur l'etat d'avant le correctif
+        // (worktree `675e174` + ce seul fichier de test), elle ECHOUE a tous les coups —
+        // « vu [msg_old_ok] expected:<2> but was:<1> ». Elle a donc enfin des dents.
+        awaitUntil({ "prompts=${gateway.prompts} accepted=${gateway.lastAcceptedId}" }) {
+            gateway.prompts >= 1 && gateway.lastAcceptedId != null
+        }
         settle()
 
         val after = vm.state.value.chat.messages

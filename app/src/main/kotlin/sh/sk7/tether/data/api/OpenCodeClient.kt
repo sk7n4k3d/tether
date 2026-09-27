@@ -165,11 +165,19 @@ class OpenCodeClient(
         }.body<SessionEnvelope>().data
     }
 
-    /** `POST /api/session` renvoie `{data: <Session>}` = un OBJET, pas un tableau. */
+    /**
+     * `POST /api/session` renvoie `{data: <Session>}` = un OBJET, pas un tableau.
+     *
+     * ⚠️ **Aucun parametre n'est obligatoire.** [model] et [agent] passent quand on les fournit
+     * (le dernier choix memorise) et restent `null` sinon : le serveur resout l'agent et le modele
+     * au premier tour, pas a la creation (mesure du 2026-09-26 sur le 2.0.x : `agent`, `model` et
+     * `title` remontent a `null` sur une session fraiche). `title` n'est plus du tout un
+     * parametre : le serveur ne reecrit pas le titre qu'on lui donne, donc lui en envoyer un
+     * empechait la generation automatique. Voir [CreateSessionBody].
+     */
     suspend fun createSession(
-        title: String,
-        model: ModelRef,
         location: String,
+        model: ModelRef? = null,
         agent: String? = null,
     ): Session {
         val credentials = credentialsProvider.credentials()
@@ -178,9 +186,8 @@ class OpenCodeClient(
             contentType(ContentType.Application.Json)
             setBody(
                 CreateSessionBody(
-                    title = title,
-                    model = model,
                     location = LocationBody(location),
+                    model = model,
                     agent = agent?.takeIf { it.isNotBlank() },
                 ),
             )

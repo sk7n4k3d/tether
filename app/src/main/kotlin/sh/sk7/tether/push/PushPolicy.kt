@@ -1,5 +1,7 @@
 package sh.sk7.tether.push
 
+import sh.sk7.tether.domain.model.PermissionDecision
+
 /**
  * **Faut-il afficher une notification, et de quelle nature ?**
  *
@@ -135,6 +137,68 @@ fun parsePush(raw: String): PushPayload {
         .replace(SESSION_MARKER, "")
         .trim()
     return PushPayload(kind = kind, sessionID = sessionID, text = text)
+}
+
+/**
+ * **Une demande d'autorisation sur laquelle la notification peut proposer des boutons.**
+ *
+ * ⚠️ **Ses champs viennent TOUS du serveur**, jamais de la charge du push.
+ *
+ * C'est la regle la plus importante de ce fichier. Le topic ntfy accepte l'**ecriture anonyme** :
+ * n'importe qui peut y publier. Si l'identifiant de demande venait du push, un tiers pourrait
+ * publier une fausse notification et faire **approuver par le pouce de Bastien** une permission
+ * arbitraire sur sa machine — execution de commande, ecriture de fichier, le tout depuis un
+ * ecran verrouille. On interroge donc `GET /api/permission/request` au moment d'afficher, et le
+ * bouton n'agit que sur ce que le serveur a reellement en attente. Une fausse notification peut
+ * au pire dire « il y a peut-etre une demande » : elle ne peut rien autoriser.
+ *
+ * (C'est aussi ce que [TetherNotifier] fait deja pour *compter* les decisions en attente ; on
+ * etend cette lecture a leur *contenu*, on ne la duplique pas.)
+ */
+data class PendingApproval(
+    val requestID: String,
+    val sessionID: String,
+    /** L'action soumise (`bash`, `edit`…) : le bouton doit dire ce qu'il accorde. */
+    val action: String,
+)
+
+/**
+ * **La demande unique sur laquelle proposer des boutons, ou `null`.**
+ *
+ * ⚠️ **`singleOrNull`, volontairement.** Avec plusieurs demandes en attente, on ne sait pas
+ * laquelle le bouton viserait : en choisir une au hasard, c'est appliquer une decision a un
+ * element qu'on n'a pas montre. Sans boutons, la notification renvoie vers l'ecran
+ * d'approbations, ou l'utilisateur voit la liste. Une action qui ne peut pas etre faite est
+ * pire que pas d'action.
+ *
+ * - **0** demande : rien a accelerer ;
+ * - **1** demande : c'est elle, sans ambiguite ;
+ * - **2 et plus** : on renonce aux boutons.
+ */
+fun approvalFor(pending: List<PendingApproval>): PendingApproval? = pending.singleOrNull()
+
+/**
+ * **L'ordre des boutons d'une notification de decision.**
+ *
+ * ⚠️ `Refuser` d'abord, `Toujours` **en dernier**. L'ordre des actions d'une notification
+ * dictate l'ordre de lecture, et le premier est le plus facile a toucher par megarde. Or
+ * « Toujours autoriser » est le seul des trois qui ouvre un **droit permanent** : le placer en
+ * dernier rend un glissement accidentel beaucoup moins probable. Le droiture reste dans l'app,
+ * ou l'on voit la commande avant de l'accorder.
+ *
+ * L'ordre suit la consequence (voir `PermissionDecision`), pas l'alphabet.
+ */
+val APPROVAL_ACTIONS: List<PermissionDecision> = listOf(
+    PermissionDecision.Reject,
+    PermissionDecision.Once,
+    PermissionDecision.Always,
+)
+
+/** Le libelle d'un bouton, qui dit **ce qu'il accorde** et pas seulement « oui ». */
+fun approvalActionLabel(decision: PermissionDecision): String = when (decision) {
+    PermissionDecision.Reject -> "Refuser"
+    PermissionDecision.Once -> "Autoriser une fois"
+    PermissionDecision.Always -> "Toujours"
 }
 
 /** Plage d'ID reservee a l'avancement, hors des ID fixes du notifier (1001..1004). */
