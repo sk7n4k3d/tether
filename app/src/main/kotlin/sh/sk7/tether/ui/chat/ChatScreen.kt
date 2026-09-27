@@ -558,7 +558,7 @@ fun ChatScreen(
                     // ⚠️ `provider/id` et pas `id` : deux providers servent le meme `id`
                     // (`glm-5.3` n'existe pas partout), et n'afficher que l'`id` ferait croire a
                     // un modele qu'on ne paiera pas au bon endroit.
-                    models = models.map { PickerItem(AgentCatalog.modelLabel(it), it.name) },
+                    models = models.map { PickerItem(AgentCatalog.modelLabel(it), it.name, value = it.id) },
                     // ⚠️ **4 agents, pas 23.** Le serveur en expose 23 : 16 `subagent`, et 3
                     // `primary` qui sont en plus `hidden` (`compaction`, `title`, `summary`) —
                     // des agents internes qu'il s'invoque pour nommer et resumer. Les proposer

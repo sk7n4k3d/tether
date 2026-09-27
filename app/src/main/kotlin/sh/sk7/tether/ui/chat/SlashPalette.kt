@@ -161,7 +161,25 @@ private fun CommandRow(command: CommandDto, onPick: () -> Unit) {
  * agent sans afficher ce qu'il ameneOblige a deviner. Idem pour un modele : deux providers peuvent
  * servir le meme `id`, et n'afficher que l'`id` mentirait sur celui qu'on va payer.
  */
-data class PickerItem(val label: String, val secondary: String? = null)
+/**
+ * ⚠️ **`value` n'est PAS `label`.** Le selecteur renvoie [value] au callback, jamais le libelle.
+ *
+ * Bug du 2026-09-27, **introduit par moi** en reprenant la mise en forme de Proton Lumo : les
+ * modeles ont ete affiches en `provider/id` (le libelle juste et plus long), et le callback
+ * cherchait toujours `models.first { it.id == picked }` — donc la comparaison se faisait entre
+ * `"opencode/space-bunny-free"` et `"space-bunny-free"`, ne trouvait **rien**, et
+ * `?.let` ne partait jamais. Symptome : le modele se choisissait, la feuille se fermait, et le
+ * serveur retombait sur son defaut (`glm-5.3-flash`) sans la moindre erreur. Les agents
+ * echappaient au piege parce que leur libelle **est** leur id.
+ *
+ * Separer les deux rend le piege impossible a reintroduire par megarde.
+ */
+data class PickerItem(
+    val label: String,
+    val secondary: String? = null,
+    /** Ce que le callback recoit. Doit etre l'identite reelle, pas le libelle affiche. */
+    val value: String = label,
+)
 
 /** Une note de section, non cliquable : ici, ce que le serveur choisit a notre place. */
 data class PickerNote(val text: String)
@@ -289,7 +307,7 @@ private fun PickerSection(
                         // feuille (modèles, agents, skills) doivent avoir la même hauteur de
                         // cible — sinon la feuille saute d'une section à l'autre au doigt.
                         .heightIn(min = TetherDimensions.touchTarget)
-                        .clickable { onPick(item.label) }
+                        .clickable { onPick(item.value) }
                         .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
