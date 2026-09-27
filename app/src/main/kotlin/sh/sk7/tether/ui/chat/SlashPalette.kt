@@ -153,20 +153,63 @@ private fun CommandRow(command: CommandDto, onPick: () -> Unit) {
  * ⚠️ On distingue visuellement le **choix pour cette session** de l'etat courant : le serveur
  * applique le changement pour les tours suivants, ce qui est different d'un choix ponctuel.
  */
+/**
+ * Une ligne du selecteur : un libelle, et un **secondaire** qui explique le libelle.
+ *
+ * ⚠️ Le secondaire n'est pas decoratif. Un agent porte son **propre** modele (mesure du
+ * 2026-09-26 : `build` -> `glm-5.3`, `plan` et `edit` -> `deepseek-v4.1-flash`), donc choisir un
+ * agent sans afficher ce qu'il ameneOblige a deviner. Idem pour un modele : deux providers peuvent
+ * servir le meme `id`, et n'afficher que l'`id` mentirait sur celui qu'on va payer.
+ */
+data class PickerItem(val label: String, val secondary: String? = null)
+
+/** Une note de section, non cliquable : ici, ce que le serveur choisit a notre place. */
+data class PickerNote(val text: String)
+
+/**
+ * **Quelle feuille on ouvre.**
+ *
+ * ⚠️ Scinder la feuille suit Proton Lumo (2026-09-27) : le libelle de modele ouvre les
+ * **modeles**, le libelle d'agents ouvre les **agents**. Une seule feuille avec tout dedans
+ * obligeait a choisir entre un modele et un agent, alors que les deux sont des reglages de la
+ * meme nature — et le selecteur etait alors le seul point d'entree du composer, ce qui rendait
+ * le bouton d'envoi faire trois choses.
+ *
+ * ⚠️ **Les competences ont ete retirees d'ici** (demande du 2026-09-27) : meleees a des agents
+ * dans une feuille qui ne s'appelait pas « Outils », elles etaient invisibles et jugees
+ * inutiles. Consequence assumee : **activer une competence n'a plus de porte d'entree** — la
+ * barre du haut n'en a pas (`rechercher / outils en arriere-plan / diff / contexte / export`).
+ * La route reste cablee (`POST /experimental/session/{id}/skill`, [ChatViewModel.activateSkill])
+ * pour qu'un retour en arriere soit un simple branchement, pas un developpement.
+ */
+enum class PickerTab {
+    /** Les modeles du serveur, avec leur provider. */
+    Models,
+
+    /** Les agents selectionnables. */
+    Agents,
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ModelAgentPicker(
-    models: List<String>,
-    agents: List<String>,
+    tab: PickerTab = PickerTab.Models,
+    models: List<PickerItem>,
+    agents: List<PickerItem>,
     currentModel: String?,
     currentAgent: String?,
     onPickModel: (String) -> Unit,
     onPickAgent: (String) -> Unit,
     onDismiss: () -> Unit,
-    /** Les competences activables dans cette session. Vide = la section est masquee. */
-    skills: List<String> = emptyList(),
-    /** Active une competence : effet immediat cote serveur, contrairement au modele et l'agent. */
-    onPickSkill: (String) -> Unit = {},
+    /**
+     * Ce que le serveur fait de son cote quand on ne choisit rien.
+     *
+     * ⚠️ `null` = **aucune** mention. Une session fraiche a `agent` et `model` a `null` tant que le
+     * premier tour n'a pas tourne (mesure), et `/api/model/default` est une valeur de
+     * configuration, pas ce qu'on obtient. On n'affiche donc un defaut que pour l'agent, qui est
+     * materiel dans la reponse — le seul en `mode: "all"`.
+     */
+    defaultNote: String? = null,
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -176,30 +219,23 @@ fun ModelAgentPicker(
             modifier = Modifier.padding(bottom = Spacing.xl),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            PickerSection(
-                title = "MODÈLE",
-                items = models,
-                current = currentModel,
-                icon = Lucide.Blocks,
-                onPick = onPickModel,
-            )
-            PickerSection(
-                title = "AGENT",
-                items = agents,
-                current = currentAgent,
-                icon = Lucide.Blocks,
-                onPick = onPickAgent,
-            )
-            // ⚠️ Les competences n'apparaissent que si le serveur en annonce. Une section vide de
-            // plus ferait croire a un manque de l'app alors que c'est le serveur qui n'en a pas —
-            // et la question ne se pose pas dans ce cas.
-            if (skills.isNotEmpty()) {
+            if (tab == PickerTab.Models) {
                 PickerSection(
-                    title = "ACTIVER UNE COMPÉTENCE",
-                    items = skills,
-                    current = null,
+                    title = "MODÈLE",
+                    items = models,
+                    current = currentModel,
                     icon = Lucide.Blocks,
-                    onPick = onPickSkill,
+                    onPick = onPickModel,
+                )
+            }
+            if (tab == PickerTab.Agents) {
+                PickerSection(
+                    title = "AGENT",
+                    items = agents,
+                    current = currentAgent,
+                    icon = Lucide.Blocks,
+                    onPick = onPickAgent,
+                    note = defaultNote,
                 )
             }
         }
@@ -209,10 +245,11 @@ fun ModelAgentPicker(
 @Composable
 private fun PickerSection(
     title: String,
-    items: List<String>,
+    items: List<PickerItem>,
     current: String?,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onPick: (String) -> Unit,
+    note: String? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Text(
@@ -222,6 +259,16 @@ private fun PickerSection(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         )
+        // ⚠️ La note vient **avant** la liste : elle dit ce que le serveur fera de son cote, donc
+        // c'est le contexte de la liste, pas sa legende.
+        note?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = TetherTextMuted,
+                modifier = Modifier.padding(horizontal = Spacing.lg),
+            )
+        }
         if (items.isEmpty()) {
             // ⚠️ Un selecteur vide doit se dire. Sans ce message, l'utilisateur croirait a un
             // defaut d'affichage alors que le serveur n'a simplement rien annonce.
@@ -233,8 +280,8 @@ private fun PickerSection(
             )
         }
         LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
-            items(items, key = { it }) { item ->
-                val active = item == current
+            items(items, key = { it.label }) { item ->
+                val active = item.label == current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -242,7 +289,7 @@ private fun PickerSection(
                         // feuille (modèles, agents, skills) doivent avoir la même hauteur de
                         // cible — sinon la feuille saute d'une section à l'autre au doigt.
                         .heightIn(min = TetherDimensions.touchTarget)
-                        .clickable { onPick(item) }
+                        .clickable { onPick(item.label) }
                         .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
@@ -254,13 +301,22 @@ private fun PickerSection(
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
-                        text = item,
+                        text = item.label,
                         style = TetherDataStyle,
                         color = if (active) TetherAccent else TetherTextPrimary,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    item.secondary?.let {
+                        Text(
+                            text = it,
+                            style = TetherDataStyle,
+                            color = if (active) TetherAccent else TetherTextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

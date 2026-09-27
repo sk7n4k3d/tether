@@ -85,6 +85,8 @@ import com.mikepenz.markdown.compose.elements.MarkdownHighlightedCodeFence
 import dev.snipme.highlights.Highlights
 import kotlinx.coroutines.launch
 import dev.snipme.highlights.model.SyntaxThemes
+import sh.sk7.tether.domain.model.AgentCatalog
+import sh.sk7.tether.domain.model.AgentCatalog.carriedModelLabel
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.ui.components.CollapsibleBlock
@@ -136,7 +138,7 @@ fun ChatScreen(
     var draft by remember { mutableStateOf("") }
 
     /** Le selecteur modele/agent est-il ouvert ? */
-    var pickerOpen by remember { mutableStateOf(false) }
+    var pickerTab by remember { mutableStateOf<PickerTab?>(null) }
 
     /**
      * La dictee est-elle en cours ?
@@ -537,7 +539,6 @@ fun ChatScreen(
             val commands by viewModel.commands.collectAsStateWithLifecycle()
             val models by viewModel.models.collectAsStateWithLifecycle()
             val agents by viewModel.agents.collectAsStateWithLifecycle()
-            val skills by viewModel.skills.collectAsStateWithLifecycle()
 
             // ⚠️ La palette n'apparait que si une commande est EN COURS DE FRAPPE (voir
             // `SlashInput`). La logique est testee a part parce qu'elle a trois faux positifs
@@ -551,22 +552,34 @@ fun ChatScreen(
                 )
             }
 
-            if (pickerOpen) {
+            pickerTab?.let { tab ->
                 ModelAgentPicker(
-                    models = models.map { it.id },
-                    agents = agents.map { it.id },
-                    skills = skills.map { it.id },
+                    tab = tab,
+                    // ⚠️ `provider/id` et pas `id` : deux providers servent le meme `id`
+                    // (`glm-5.3` n'existe pas partout), et n'afficher que l'`id` ferait croire a
+                    // un modele qu'on ne paiera pas au bon endroit.
+                    models = models.map { PickerItem(AgentCatalog.modelLabel(it), it.name) },
+                    // ⚠️ **4 agents, pas 23.** Le serveur en expose 23 : 16 `subagent`, et 3
+                    // `primary` qui sont en plus `hidden` (`compaction`, `title`, `summary`) —
+                    // des agents internes qu'il s'invoque pour nommer et resumer. Les proposer
+                    // comme collegues, c'est proposer `Title`. Voir `AgentCatalog`.
+                    agents = AgentCatalog.selectable(agents).map {
+                        PickerItem(it.id, it.carriedModelLabel())
+                    },
+                    // ⚠️ L'agent par defaut est **derive de la reponse** (le seul `mode: "all"`),
+                    // pas une constante. Aucun agent n'etant resolu sur une session fraiche, on ne
+                    // peut pas non plus afficher `/api/model/default` : c'est une valeur de
+                    // configuration, pas ce qu'on obtient.
+                    defaultNote = AgentCatalog.serverDefault(agents)?.let { def ->
+                        buildString {
+                            append("Défaut opencode : ${def.id}")
+                            def.carriedModelLabel()?.let { append(" · $it") }
+                        }
+                    },
                     currentModel = state.meta?.model,
                     currentAgent = state.meta?.agent,
-                    onPickSkill = { id ->
-                        pickerOpen = false
-                        // ⚠️ Activer une competence est un **effet immediat** (le serveur reprend
-                        // l'execution), pas un reglage stocke : on ferme la feuille pour que
-                        // l'utilisateur voie le resultat dans la conversation.
-                        viewModel.activateSkill(id)
-                    },
                     onPickModel = { id ->
-                        pickerOpen = false
+                        pickerTab = null
                         models.firstOrNull { it.id == id }?.let { picked ->
                             viewModel.setModel(
                                 sh.sk7.tether.data.api.ModelRef(
@@ -577,10 +590,10 @@ fun ChatScreen(
                         }
                     },
                     onPickAgent = { id ->
-                        pickerOpen = false
+                        pickerTab = null
                         viewModel.setAgent(id)
                     },
-                    onDismiss = { pickerOpen = false },
+                    onDismiss = { pickerTab = null },
                 )
             }
 
@@ -603,7 +616,17 @@ fun ChatScreen(
                 // ⚠️ Le selecteur est accessible par le bouton d'envoi lui-meme quand le champ est
                 // vide : choisir un modele ne demande rien d'ecrire, et c'est le moment ou on le
                 // fait — avant de composer.
-                onPickModelAgent = { pickerOpen = true },
+                onPickModelAgent = { pickerTab = PickerTab.Models },
+                onOpenAgents = { pickerTab = PickerTab.Agents },
+                // ⚠️ `provider/id`, la meme forme que le libelle du selecteur et que celui
+                // d'une ligne de session. Le `id` seul ne dit pas a quel fournisseur on va payer.
+                // ⚠️ Le **nom court**, pas `provider/id` : 26 caracteres dans une barre d'outils
+                // tronquent, et un libelle tronque qui signifie autre chose est pire que rien.
+                // Le nom commercial quand le serveur en donne un (`Space Bunny Free`), l'id sinon.
+                // Le `provider` reste dans la feuille — c'est la qu'on l'audite.
+                currentModelLabel = state.meta?.model?.let { id ->
+                    models.firstOrNull { it.id == id }?.name ?: id
+                },
                 attachments = state.attachments,
                 onRemoveAttachment = viewModel::removeAttachment,
                 // ⚠️ Le trombone ouvre le selecteur **du systeme** : c'est lui qui a acces aux

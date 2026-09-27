@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,13 +52,17 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.ArrowUp
+import com.composables.icons.lucide.Blocks
+import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.CircleStop
 import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Paperclip
+import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.X
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAccent
@@ -68,6 +73,8 @@ import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.theme.TetherIconMuted
+import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 
 /**
@@ -113,13 +120,30 @@ fun Composer(
     /** Dictee en cours : le micro le dit, sinon le geste semble ignore. */
     listening: Boolean = false,
     /**
-     * Ouvre le selecteur modele/agent. Attache au bouton d'envoi quand le champ est vide.
+     * Ouvre le selecteur modele/agent. Attache au bouton d'envoi quand le champ est vide, **et a
+     * la pastille de modele** (voir [currentModelLabel]).
      *
      * ⚠️ Sur le bouton d'envoi, et pas une icone a part : choisir un modele ne demande rien a
      * ecrire, c'est une action **au repos**. Une icone dediee prendrait une place permanente dans
      * une barre ou chaque pixel coute au champ de saisie.
      */
     onPickModelAgent: (() -> Unit)? = null,
+    /** Ouvre la feuille **agents**. `null` masque le bouton. */
+    onOpenAgents: (() -> Unit)? = null,
+    /**
+     * **Le modele en cours, en permanence** — et la pastille qui permet d'en changer.
+     *
+     * ⚠️ `null` = **le serveur n'a rien resolu** (session fraiche, aucun tour lance : mesure du
+     * 2026-09-26, `POST /api/session` laisse `model` a `null`). On affiche alors un tiret et
+     * **rien d'autre** : ni `/api/model/default` (une valeur de configuration, pas ce qu'on
+     * obtient), ni le modele de la derniere session (un autre choix, presente comme un fait).
+     *
+     * ⚠️ **La pastille survit au `Stop`.** Pendant un tour, le bouton d'envoi est un arret : c'est
+     * le seul endroit ou le composer pouvait etre atteint, donc le modele devenait
+     * **inchangeable en cours d'execution** — alors que le TUI le permet. Elle est ici hors du
+     * `Row` du bouton, donc cliquable dans les deux etats.
+     */
+    currentModelLabel: String? = null,
     /**
      * Les fichiers joints au prochain envoi.
      *
@@ -151,7 +175,10 @@ fun Composer(
         targetValue = when {
             showStop -> TetherAlert
             hasContent -> TetherAccent
-            else -> TetherTextSecondary.copy(alpha = 0.25f)
+            // ⚠️ 0.55 et non 0.25 : a 0.25 la fleche disparait et l'app perd son
+            // point d'entree principal. Lumo la garde visible et ternit — c'est un controle
+            // visiblement inactif, pas un controle absent.
+            else -> TetherTextSecondary.copy(alpha = 0.55f)
         },
         label = "composer-button-color",
     )
@@ -233,235 +260,194 @@ fun Composer(
             }
         }
 
-        Row(
+        // ════════════════════════════════════════════════════════════════════
+        // LA SURFACE : champ en pleine largeur, barre d'outils DANS la surface.
+        // ════════════════════════════════════════════════════════════════════
+        //
+        // ⚠️ **Reprise de Proton Lumo, relevee le 2026-09-27 sur son composer.** Trois
+        // corrections, mesurees :
+        //
+        //  1. **Le champ prend la largeur entiere.** Avant, il etait entre le trombone a gauche
+        //     et un bouton circulaire de 40 dp a droite : il ne restait que ~55 % de la barre
+        //     pour ecrire. Or ecrire un prompt long est le cas NORMAL dans un cockpit (le
+        //     plafond est deja a 10 lignes, 240 dp — on ne fait pas semblant que c'est court).
+        //  2. **La barre d'outils est DANS la surface, en bas.** Plus rien ne vit a cote du
+        //     champ, donc plus dePressed-glisseur possible ni de collision entre le micro et
+        //     l'envoi — le reproche que la documentation du fichier portait sur l'ancien
+        //     dessin, justement parce qu'il etait vrai.
+        //  3. **L'envoi est une icone, pas un disque.** Le disque de 40 dp ne se justifiait
+        //     que parce que le bouton portait **trois** fonctions (envoyer / arreter / ouvrir le
+        //     selecteur quand le champ est vide). Le selecteur ayant sa propre place dans la
+        //     barre d'outils, il n'en reste que deux — et l'icone suffit. Le cercle disparait,
+        //     l'espace qu'il occupait revient au champ.
+        //
+        // ⚠️ **L'etat ne passe plus par la silhouette mais par la teinte** (ambre = arreter,
+        // teal = envoyer, muet = rien a envoyer). C'est un recul d'accessibilite — la regle
+        // dit « jamais la couleur seule » — et il est **compense** : l'icone elle-meme change
+        // (fleche contre carre d'arret) et le libelle pour lecteur d'ecran dit l'action reelle.
+        // On ne peut pas avoir les trois, et la silhouette d'un disque est ce qui rendait
+        // l'ancien bouton illisible des que la barre gagnait un element.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm)
+                .clip(RoundedCornerShape(ComposerRadius))
+                .background(TetherComposerSurface)
+                .border(1.dp, TetherComposerBorder, RoundedCornerShape(ComposerRadius)),
         ) {
-            // ------------------------------------------------ LA SURFACE DE SAISIE
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    // ⚠️ Rayon 24 dp. **Mesures live** des references : Claude **14 px**,
-                    // ChatGPT **28 px** — et Grok/Gemini sont sur des pilules ~32. Aucun n'est
-                    // carre, aucun n'est sous 14. 24 tombe entre les deux archetypes
-                    // dominants (carte moderee / pilule), au token M3 `extra large` (28)
-                    // legerement adouci pour rester coherent avec `cornerMd` (12) deja utilise.
-                    .clip(RoundedCornerShape(ComposerRadius))
-                    .background(TetherComposerSurface)
-                    // ⚠️ Liseré 1 dp cale sur l'ecart **mesure** de ChatGPT (~1.9 vs surface).
-                    // Pas d'ombre : elle est invisible sur mon fond quasi-noir, donc elle
-                    // n'ajouterait que du cout de rendu. Le lisere est le seul outil qui
-                    // delimite reellement la surface ici.
-                    .border(1.dp, TetherComposerBorder, RoundedCornerShape(ComposerRadius))
-                    // ⚠️ Padding interne : les references mesurent **7px 10px** (ChatGPT) et
-                    // **8px** (Claude) — tres serre, volontairement : la barre doit rester
-                    // fine. Mon `Spacing.md` (12) + `Spacing.sm` (8) reste plus genereux, ce
-                    // qui est correct ici : ma police d'ecran est plus petite que celle de
-                    // ChatGPT (17px) et la densite globale de l'app est plus faible que la
-                    // leur. Serrer davantage nuirait a la lisibilite des prompts longs.
-                    .padding(horizontal = Spacing.md, vertical = Spacing.sm),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                ) {
-                    // -------------------------------- LE TROMBONE, A GAUCHE DU CHAMP
-                    //
-                    // ⚠️ **Il etait a DROITE, colle au micro et a l'envoi : c'est l'anti-pattern que
-                    // les references evitent.** Releve du 2026-09-25 sur quatre grands produits
-                    // (ChatGPT, Claude, Gemini, Perplexity) : **tous** mettent un controle unique a
-                    // **gauche** du champ, et ne gardent a droite que la dictee et l'envoi. Apple a
-                    // recule en iOS 27 sur le micro colle a l'envoi, justement parce que deux cibles
-                    // trop proches declenchent des gestes faux.
-                    //
-                    // Trois icones serrees sur une barre etroite, c'est ce qui donnait l'impression
-                    // de fouillis (constat de Bastien : « super moche avec ses deux boutons »).
-                    if (onAttach != null) {
-                        Box(
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(percent = 50))
-                                .clickable(onClick = onAttach)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription = "Joindre un fichier"
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Lucide.Paperclip,
-                                contentDescription = null,
-                                tint = TetherTextSecondary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
+            Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
+                // ─────────────────────────────────────────── LE CHAMP, PLEINE LARGEUR
+                Box {
+                    if (value.isEmpty()) {
+                        // ⚠️ Placeholder **plein**, surtout pas un texte secondaire attenue.
+                        // Mesure : mon ancien placeholder a 60 % d'opacite donnait **2.96** de
+                        // contraste, sous le seuil de 4.5 — illisible. Mon `#8B98A5` plein
+                        // donne **5.19** : au-dessus de Claude, sobre.
+                        Text(
+                            text = "Écrire à l'agent…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TetherTextSecondary,
+                        )
                     }
-                    // Le champ prend la place restante : le trombone ne peut donc plus avaler sa
-                    // zone de tap (piege documente : un controle a gauche sans marge fait rater le
-                    // tap dans le champ).
-                    Box(modifier = Modifier.weight(1f)) {
-                if (value.isEmpty()) {
-                    // ⚠️ Placeholder **plein**, surtout pas un texte secondaire attenue.
-                    // Mesure : mon ancien placeholder a 60 % d'opacite donnait **2.96** de
-                    // contraste, sous le seuil de 4.5 — illisible. Comparaison avec les
-                    // references mesurees : ChatGPT `#cdcdcd` sur `#212121` = **10.13**,
-                    // Claude `#898781` sur `#20201f` = **4.54** (juste au seuil).
-                    // Mon `#8B98A5` plein donne **5.19** : au-dessus de Claude, sobre.
-                    Text(
-                        text = "Écrire à l'agent…",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TetherTextSecondary,
-                    )
-                }
-                CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
-                    BasicTextField(
-                        value = value,
-                        onValueChange = onValueChange,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // ⚠️ `heightIn` ET `verticalScroll`, les deux : `heightIn` seul
-                            // plafonne la hauteur mais **coupe le texte** au-dela — le curseur
-                            // sort du cadre et on ecrit dans le vide. Le scroll interne est ce
-                            // qui rend le plafond utilisable.
-                            //
-                            // ⚠️ Plafond a **10 lignes** (240 dp), pas 6. Mesure : la plainte
-                            // la plus documentee chez Grok est justement un plafond trop bas
-                            // (~6 lignes), au point qu'un fork entier existe pour le monter a
-                            // 15-16. Ecrire un prompt long est le cas NORMAL dans un cockpit.
-                            .heightIn(min = 24.dp, max = 240.dp)
-                            .verticalScroll(scrollState),
-                        // ⚠️ **16 sp — c'est LE bug de fond.** Le composer etait en `bodyMedium`
-                        // (14 sp) alors que la reponse s'affiche en `bodyLarge` (16 sp, defaut M3).
-                        // Le champ ou l'on ecrit etait donc **plus petit que le texte qu'il
-                        // produit** : on tape petit, on lit gros, et la barre parait chétive.
-                        // Ecrire et lire doivent partager la meme echelle.
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = TetherTextPrimary,
-                        ),
-                        // Curseur teal : le seul accent de la zone, et il marque l'insertion.
-                        cursorBrush = SolidColor(TetherAccent),
-                        keyboardOptions = KeyboardOptions(
+                    CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
+                        BasicTextField(
+                            value = value,
+                            onValueChange = onValueChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // ⚠️ `heightIn` ET `verticalScroll`, les deux : `heightIn` seul
+                                // plafonne la hauteur mais **coupe le texte** au-dela — le curseur
+                                // sort du cadre et on ecrit dans le vide. Le scroll interne est ce
+                                // qui rend le plafond utilisable.
+                                //
+                                // ⚠️ Plafond a **10 lignes** (240 dp), pas 6 : ecrire un prompt
+                                // long est le cas NORMAL dans un cockpit.
+                                .heightIn(min = 24.dp, max = 240.dp)
+                                .verticalScroll(scrollState),
+                            // ⚠️ **16 sp — c'est LE bug de fond.** Le composer etait en `bodyMedium`
+                            // (14 sp) alors que la reponse s'affiche en `bodyLarge` (16 sp, defaut
+                            // M3). Le champ ou l'on ecrit etait donc **plus petit que le texte
+                            // qu'il produit**.
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = TetherTextPrimary,
+                            ),
+                            cursorBrush = SolidColor(TetherAccent),
                             // ⚠️ `Default` et NON `Send` : sur un clavier mobile, `ImeAction.Send`
                             // remplace le retour a la ligne par une touche d'envoi. Dans un
                             // cockpit, ecrire un prompt multi-lignes est le cas NORMAL.
                             // On envoie par le bouton, jamais par le clavier.
-                            imeAction = ImeAction.Default,
-                            capitalization = KeyboardCapitalization.Sentences,
-                        ),
-                        keyboardActions = KeyboardActions(),
-                    )
-                }
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Default,
+                            ),
+                            keyboardActions = KeyboardActions(),
+                        )
                     }
+                }
 
-                    // -------------------------------- LE MICRO, DANS LA MEME SURFACE
-                    //
-                    // ⚠️ Il vit **dans** la surface, en fin de champ, parce que dicter est une facon
-                    // d'ECRIRE — comme joindre un fichier. Le sortir dans une barre d'outils en ferait
-                    // une fonction a part alors que c'est la meme intention.
-                    //
-                    // ⚠️ **Et il est a l'interieur, pas a cote du bouton d'envoi.** C'est la raison qui
-                    // a fait reculer Apple en iOS 27 : un micro colle a la fleche d'envoi declenche des
-                    // dictees accidentelles. Ici la distance est celle du champ, et la forme differe
-                    // (icone transparente contre cercle plein) : deux signaux qui evitent le mis-tap.
+                // ─────────────────────────────────────────── LA BARRE D'OUTILS
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    // `+` — joindre. A gauche, comme sur les quatre references (ChatGPT, Claude,
+                    // Gemini, Perplexity) : un controle unique a gauche du champ.
+                    if (onAttach != null) {
+                        ComposerIcon(
+                            icon = Lucide.Paperclip,
+                            label = "Joindre un fichier",
+                            onClick = onAttach,
+                        )
+                    }
+                    // `Agents` — la feuille des 4 agents selectionnables. Le libelle porte le
+                    // contenu (« Agents »), pas un mot generique : c'etait la faute du bouton
+                    // « Outils », qui nommait une categorie et cachait ce qu'il ouvrait.
+                    if (onOpenAgents != null) {
+                        ComposerLabelIcon(
+                            icon = Lucide.Bot,
+                            label = "Agents",
+                            onClick = onOpenAgents,
+                            emphasised = false,
+                        )
+                    }
+                    // L'espace elastique : tout ce qui est « a moi » colle a gauche, tout ce
+                    // qui est « a moi aussi » colle a droite. Pas de `Spacer` fixe — la
+                    // separation suit la largeur, donc elle ne laisse jamais un trou bizarre.
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Le modele, la, a portee de pouce. Une seule ligne, ellipsis : c'est un
+                    // coup d'oeil, l'audit se fait dans la feuille.
+                    if (onPickModelAgent != null) {
+                        ComposerLabelIcon(
+                            icon = Lucide.Blocks,
+                            label = currentModelLabel ?: "—",
+                            onClick = onPickModelAgent,
+                            contentDescription = "Modele courant, changer",
+                            // ⚠️ **Emphase** : le modele est un **etat**, l'agent une
+                            // action. Le design-soul (§4) demande une hierarchie par
+                            // *quatre* moyens — taille, poids, **couleur**, position — et
+                            // interdit la taille seule. Ici la couleur fait le travail : le
+                            // modele est en texte primaire, l'action en secondaire.
+                            emphasised = true,
+                        )
+                    }
+                    // Le micro, juste avant l'envoi mais **pas colle** : l'icone est nu, sans
+                    // disque, et la distance au champ reste celle d'un controle ordinary.
                     if (onVoice != null) {
-                        Box(
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(percent = 50))
-                                // ⚠️ La teinte dit l'etat d'ecoute : sans elle, appuyer sur le micro ne
-                                // produirait aucun retour local, et on ne saurait pas si le geste a ete
-                                // pris en compte avant l'ouverture du dialogue systeme.
-                                .background(
-                                    if (listening) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
-                                )
-                                .clickable(enabled = !listening, onClick = onVoice)
-                                .semantics {
-                                    role = Role.Button
-                                    contentDescription =
-                                        if (listening) "Dictee en cours" else "Dicter le message"
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
+                        ComposerIcon(
+                            icon = Lucide.Mic,
+                            label = if (listening) "Dictee en cours" else "Dicter le message",
+                            onClick = onVoice,
+                            enabled = !listening,
+                            tint = if (listening) TetherAccent else TetherTextSecondary,
+                        )
+                    }
+                    // L'envoi. Deux seuls etats utiles : fleche (envoyer) et carre d'arret.
+                    // ⚠️ `minimumInteractiveComponentSize` : l'icone fait 20 dp, mais Material
+                    // étend la zone sensible a **48 dp**. C'est le controle qu'on presse le plus
+                    // dans l'app — le rater est le pire des defauts d'ergonomie.
+                    Box(
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(percent = 50))
+                            .clickable(
+                                enabled = showStop || hasContent,
+                                onClick = { if (showStop) onStop() else onSend() },
+                            )
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = when {
+                                    showStop -> "Arreter l'execution"
+                                    hasContent -> "Envoyer le message"
+                                    else -> "Envoyer (aucun texte)"
+                                }
+                                // ⚠️ L'etat change sans que le focus bouge : sans `liveRegion`,
+                                // c'est un changement **silencieux** pour un lecteur d'ecran.
+                                liveRegion = LiveRegionMode.Polite
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (arrowAlpha > 0f) {
                             Icon(
-                                imageVector = Lucide.Mic,
+                                imageVector = Lucide.ArrowUp,
                                 contentDescription = null,
-                                tint = if (listening) TetherAccent else TetherTextSecondary,
-                                modifier = Modifier.size(16.dp),
+                                tint = buttonColor.copy(alpha = arrowAlpha),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        if (stopAlpha > 0f) {
+                            Icon(
+                                imageVector = Lucide.CircleStop,
+                                contentDescription = null,
+                                tint = buttonColor.copy(alpha = stopAlpha),
+                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }
-                }
-            }
-
-
-
-          // ------------------------------------------------ L'ACTION, DANS LA MEME SURFACE
-            //
-            // ⚠️ `minimumInteractiveComponentSize` : le bouton fait 30-34 dp a l'ecran, mais
-            // Material garantit une **cible tactile de 48 dp** en etirant la zone sensible
-            // autour. Sans lui, on rate le bouton sur une barre fine — et c'est le bouton qu'on
-            // presse le plus dans l'app.
-            Box(
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .size(buttonSize)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(buttonColor)
-                    .clickable(
-                        enabled = showStop || hasContent || onPickModelAgent != null,
-                    ) {
-                        when {
-                            showStop -> onStop()
-                            hasContent -> onSend()
-                            // ⚠️ Champ vide et rien en cours : le bouton n'a rien a envoyer, donc
-                            // il propose le reglage qui sert **avant** d'ecrire — le modele et
-                            // l'agent. Sans ce cas, le bouton resterait inerte et l'utilisateur
-                            // n'aurait aucun point d'entree vers le selecteur.
-                            onPickModelAgent != null -> onPickModelAgent.invoke()
-                            else -> Unit
-                        }
-                    }
-                    .semantics {
-                        // ⚠️ `role` : sans lui, TalkBack ne dit pas « double-tap pour activer ».
-                        role = Role.Button
-                        // ⚠️ Une seule description, celle de l'action REELLE. Les icones
-                        // internes portent `contentDescription = null` : sinon TalkBack lit deux
-                        // fois.
-                        contentDescription = when {
-                            showStop -> "Arrêter l'exécution"
-                            hasContent -> "Envoyer le message"
-                            onPickModelAgent != null -> "Modèle et agent"
-                            else -> "Envoyer (aucun texte)"
-                        }
-                        // ⚠️ `liveRegion` : l'etat change sans que le focus bouge, donc sans
-                        // annonce c'est un changement **silencieux** pour un lecteur d'ecran.
-                        liveRegion = LiveRegionMode.Polite
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (arrowAlpha > 0f) {
-                    Icon(
-                        imageVector = Lucide.ArrowUp,
-                        contentDescription = null,
-                        // Sur le teal, l'icone doit etre SOMBRE : un blanc sur teal clair est
-                        // illisible (contraste 2:1). Le fond sombre de l'app donne le contraste.
-                        tint = ComposerOnAccent.copy(alpha = arrowAlpha),
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                if (stopAlpha > 0f) {
-                    Icon(
-                        imageVector = Lucide.CircleStop,
-                        contentDescription = null,
-                        tint = ComposerOnAccent.copy(alpha = stopAlpha),
-                        modifier = Modifier.size(18.dp),
-                    )
                 }
             }
         }
@@ -473,6 +459,89 @@ fun Composer(
                 .height(2.dp)
                 .background(edgeColor),
         ) {}
+    }
+}
+
+/**
+ * **Une icone seule dans la barre d'outils.**
+ *
+ * ⚠️ La cible tactile est de 48 dp grace a `minimumInteractiveComponentSize`, sur une icone de
+ * 20 dp : l'icone est ce qu'on voit, la cible est ce qu'on rate pas. Les deux ne peuvent pas
+ * etre la meme chose sur une barre dense.
+ */
+@Composable
+private fun ComposerIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    tint: androidx.compose.ui.graphics.Color = TetherTextSecondary,
+) {
+    Box(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .size(32.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics {
+                role = Role.Button
+                contentDescription = label
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+    }
+}
+
+/**
+ * **Une icone **accompagnee de son libelle** — c'est ce qui distingue un bouton d'action
+ * (« Outils ») d'un etat (« Max »).
+ *
+ * ⚠️ Le libelle est **d'une seule ligne avec ellipsis** : au-dela, il tronque, et un libelle
+ * tronque qui signifie « autre chose » est pire que pas de libelle. Le modele courant tombe
+ * donc sur son nom court quand le serveur en donne un, et sur son id sinon.
+ */
+@Composable
+private fun ComposerLabelIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    contentDescription: String? = null,
+    /** `true` pour un **etat** (le modele), `false` pour une **action** (les agents). */
+    emphasised: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
+            .semantics {
+                role = Role.Button
+                this.contentDescription = contentDescription ?: label
+            },
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = TetherIconMuted,
+            modifier = Modifier.size(14.dp),
+        )
+        // ⚠️ **`bodyMedium`, pas `TetherDataStyle`.** Le style des donnees est du
+        // monospace 11 sp : c'est fait pour des chiffres alignes en colonne (cout, tokens), et
+        // mettre un libelle dedans melangeait deux systemes typographiques dans le meme
+        // composer — le champ en proportionnel 16 sp juste au-dessus. Le modele, lui, est bien
+        // une donnee, mais il est ici en **etat** et pas en colonne : la couleur porte la
+        // hierarchie, pas la police.
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (emphasised) TetherTextPrimary else TetherTextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
