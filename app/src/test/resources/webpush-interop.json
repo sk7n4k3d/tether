@@ -1,0 +1,28 @@
+{
+  "_comment": "Genere par plugin/tether/webpush.ts. Ne pas editer a la main.",
+  "_cles": "Cles de TEST issues de l'annexe A de la RFC 8291. Jamais des cles d'un appareil reel.",
+  "_pourquoi_la_cle_privee": "Sans elle, l'app ne peut pas dechiffrer. C'est la seule facon de tester l'interoperabilite.",
+  "p256dh": "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4",
+  "privateKey": "q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94",
+  "auth": "BTBZMqHH6r4Tts7J_aSIgg",
+  "cas": [
+    {
+      "body": "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_e3c0XWOO2NFXZq_pb4Adz-CXwp7pDC8CJs30PlfrkTubSVzaAySyWFBL33QzGj1UwK6dCoxa2mZQl8Z-cfH6-4DDpj5duWPvVS7oJbxB_0vUt9D0H0O_ruIrbsiE_deub78YqwLY",
+      "text": "Le travail est terminé",
+      "sessionID": "ses_0d4df7287001Lk3iDpJYLWLyxR",
+      "progress": false
+    },
+    {
+      "body": "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_e3c0XWOO2NFXZq_pb4AdM9WDoufsPStqJ9n0MweuiC7KZHj0gCGGYGkPhywzciVQXJsFau0egj7hK9MmbOGWuqHW22NRHQLueNb4xQzlVnCs_fElxq4eQtaRjaZRHJ0U",
+      "text": "shell : sleep 12 && echo",
+      "sessionID": "ses_abc",
+      "progress": true
+    },
+    {
+      "body": "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_e3c0XWOO2NFXZq_pb4Adc8mjptLVRD4mG_GgVInP1C67jUCwmFGbfRFvi3BDIkl4KHLhJo0nxma5m5sKXdADI-j37zMNRbLDFdeg-NGYtjz6T8bAf-C2AoTF_Iwc",
+      "text": "commande copiée :\ntether:progress=1",
+      "sessionID": "ses_xyz",
+      "progress": false
+    }
+  ]
+}
