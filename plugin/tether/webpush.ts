@@ -50,7 +50,7 @@
  * transiter dans un en-tete.
  */
 
-import { createCipheriv, createECDH, createHmac, createSign, createPrivateKey, randomBytes } from "node:crypto"
+import { createCipheriv, createECDH, createHmac, createSign, createPrivateKey, createPublicKey, randomBytes } from "node:crypto"
 
 /** Abonnement push, tel que l'app l'enregistre via `subscribe`. */
 export interface PushSubscription {
@@ -246,47 +246,98 @@ export function pushHeaders(): Record<string, string> {
  * Le distributor n'exige VAPID que s'il relaye par FCM. Un topic ntfy ou
  * autopush l'ignore. On l'active donc **seulement si une cle est fournie**, sinon
  * on n'envoie pas d'en-tete `Authorization` plutot qu'un en-tete invalide.
+ *
+ * `aud` est l'**origine** de l'endpoint (VAPID exige une URL absolue, pas un
+ * chemin), et `sub` doit etre une `mailto:` ou une URL HTTPS selon la RFC 8292 §2.1.
  */
-export function vapidHeader(publicKeyPem: string, privateKeyPem: string, audience: string, subject: string): string {
-  const audienceB64 = b64u(enc.encode(audience))
+export function vapidHeader(privateKeyPem: string, audience: string, subject: string): string {
   const header = { typ: "JWT", alg: "ES256" }
-  const payload = { aud: audienceB64, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject }
-
+  const payload = { aud: b64u(enc.encode(audience)), exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject }
   const signingInput = `${b64u(enc.encode(JSON.stringify(header)))}.${b64u(enc.encode(JSON.stringify(payload)))}`
 
-  const key = createPrivateKey(privateKeyPem)
-  const signature = createSign("SHA256").update(signingInput).end().sign(key)
-  // ES256 = R || S, chacune sur 32 octets. Node peut renvoyer DER : on retire
-  // l'enveloppe ASN.1 avant de mettre le JWT au format attendu par les distillateurs.
+  const signature = createSign("SHA256")
+    .update(signingInput)
+    .end()
+    .sign(createPrivateKey(privateKeyPem))
+  // ES256 = R || S, 32 octets chacun. Node renvoie du DER : on retire l'enveloppe
+  // ASN.1, sinon le distributeur refuse la signature.
   const raw = toJoseFormat(signature)
 
-  return `vapid t=${signingInput}.${b64u(raw)}, k=${b64u(spkiToRaw(publicKeyPem))}`
+  return `vapid t=${signingInput}.${b64u(raw)}, k=${b64u(jwkPublicKey(privateKeyPem))}`
 }
 
-/** Retire l'enveloppe DER et renvoie R || S sur 64 octets (format JWS "ES256"). */
+/**
+ * La cle publique JWK non compressee (65 octets, `0x04 || X || Y`), deduite de la
+ * cle privee. Les distillateurs attendent ce format brut, base64url.
+ *
+ * On passe par `createPublicKey` plutot que par un parseur DER maison : Node lit
+ * deja le PKCS#8, et un parseur maison serait un code de plus a maintenir sans
+ * aucun gain.
+ */
+function jwkPublicKey(privateKeyPem: string): Buffer {
+  const publicKey = createPublicKey(createPrivateKey(privateKeyPem))
+  // L'export DER SPKI d'une cle P-256 finit par `0x04 || X(32) || Y(32)`.
+  const der = publicKey.export({ type: "spki", format: "der" })
+  return der.subarray(der.length - 65)
+}
+
+/**
+ * Retire l'enveloppe DER et renvoie R || S sur 64 octets (format JWS "ES256").
+ *
+ * ⚠️ **Trois pieges mesures sur 5 000 signatures**, tous silencieux — une signature
+ * fausse ne leve aucune erreur, elle fait simplement perdre la notification.
+ *
+ * **1. `der[1]` est la longueur du CONTENU**, pas un drapeau de forme longue. Un
+ * test `der[1] & 0x80` saute deux octets de trop et lit n'importe quoi.
+ *
+ * **2. Un INTEGER DER de 33 octets** porte un octet nul de tete quand son bit de
+ * poids fort est a 1 (le nombre doit rester positif). C'est le cas le plus fréquent :
+ * 2 497 occurrences sur 5 000 signatures. Il faut le **retirer**.
+ *
+ * **3. 🔴 Et un INTEGER de 31 octets**, quand le bit de poids fort du nombre est a 0
+ * et que DER omet l'octet nul. Mesure : 12 occurrences sur 5 000, soit **environ une
+ * signature sur 400**. C'est le bug que le stress-test a sorti.
+ *
+ * ⚠️ Completer a gauche par des zeros — ce qu'on ferait naturesllement — **inverse
+ * les bits** : on place `R << 8` la ou il faut `R`, et la signature devient fausse.
+ * La correction est un decalage a droite, pas un remplissage.
+ */
 function toJoseFormat(der: Buffer): Buffer {
-  if (der.length === 64) return der // deja au format brut
-  // Structure DER : SEQUENCE { INTEGER r, INTEGER s }. On extrait les deux entiers.
-  let offset = der[1] & 0x80 ? 2 + (der[1] & 0x7f) : 2
-  const readInt = (): Buffer => {
-    if (der[offset] !== 0x02) throw new Error("DER inattendu : INTEGER manquant")
-    const length = der[offset + 1]
-    let value = der.subarray(offset + 2, offset + 2 + length)
-    // Un INTEGER DER peut avoir un octet nul de tete pour rester positif.
-    if (value.length > 32 && value[0] === 0x00) value = value.subarray(1)
-    if (value.length < 32) value = Buffer.concat([Buffer.alloc(32 - value.length), value])
-    offset += 2 + length
-    return value
-  }
-  offset += 1 // 0x30, la longueur
-  return Buffer.concat([readInt(), readInt()])
-}
+  // SEQUENCE (0x30) puis soit une longueur courte, soit 0x81 + longueur sur un octet.
+  if (der[0] !== 0x30) throw new Error("signature DER : SEQUENCE attendue")
+  let offset = 1
+  if (der[offset] & 0x80) offset += 1 + (der[offset] & 0x7f)
+  else offset += 1
 
-/** Point de curve non compresse (65 octets) depuis un SPKI PEM. */
-function spkiToRaw(pem: string): Buffer {
-  const der = Buffer.from(pem.replace(/-----(BEGIN|END) PUBLIC KEY-----|\s/g, ""), "base64")
-  // SEQUENCE { SEQUENCE { OID, OID }, BIT STRING { 0x00, 0x04 || X || Y } }
-  const bitString = der.subarray(der.length - 65)
-  if (bitString[0] !== 0x04) throw new Error("cle publique P-256 non compressee attendue")
-  return bitString
+  const readInt = (): Buffer => {
+    if (der[offset] !== 0x02) throw new Error("signature DER : INTEGER attendu")
+    const length = der[offset + 1]
+    const value = der.subarray(offset + 2, offset + 2 + length)
+    offset += 2 + length
+
+    if (value.length > 32) {
+      // 33 octets : le premier est un zero de tete, a retirer.
+      if (value.length !== 33 || value[0] !== 0x00) {
+        throw new Error(`signature DER : entier de ${value.length} octets, 33 attendu`)
+      }
+      return value.subarray(1)
+    }
+
+    if (value.length === 32) return value
+
+    // 31 octets : DER a **omis** des zeros de tete (le bit de poids fort de la valeur
+    // est a 0, donc pas d'octet nul a ajouter). Il faut un zero a gauche pour
+    // reconstituer la valeur sur 32 — un remplissage a gauche, donc, mais ici c'est
+    // correct, et c'est le SEUL cas ou il l'est.
+    //
+    // ⚠️ C'est le cas que le stress-test a sorti : ~1 signature sur 166. Une version
+    // anterieure le traitait comme le cas general et produisait des signatures fausses
+    // — silencieuses, puisque rien ne leve d'erreur : la notification est simplement
+    // refusee par le distributeur.
+    if (value.length === 31) return Buffer.concat([Buffer.alloc(1), value])
+
+    throw new Error(`signature DER : entier de ${value.length} octets, trop court pour P-256`)
+  }
+
+  return Buffer.concat([readInt(), readInt()])
 }
