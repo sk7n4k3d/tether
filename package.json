@@ -32,28 +32,18 @@
     "casserait quand le TUI monte d'une version, sans que la version du plugin change.",
     "",
     "",
-    "Bun ne lit que le `tsconfig.json` du **projet qui contient le fichier compile**. Mesure :",
+    "## La source JSX : une pragma, pas un `tsconfig.json`",
     "",
-    "  - pose dans `plugin/tether/` → ignore, erreur `react` ;",
-    "  - pose dans le `package.json` (`jsx`, `jsxImportSource`) → ignore, erreur `react` ;",
-    "  - pose a la racine → lu, l'erreur devient `Cannot find package '@opentui/solid'`.",
+    "`plugin/tether/tui.tsx` porte en tete :",
     "",
-    "Comme le paquet installe vit dans un cache npm dont on ne controle pas la racine, le",
-    "tsconfig livre ici sert aux developpeurs et a la verification ; c'est l'installation",
-    "des dependances ci-dessus qui rend le module chargeable en production.",
-    "## Ou vit le `tsconfig.json`, et pourquoi c'est la racine du paquet",
+    "    /** @jsxImportSource @opentui/solid */",
     "",
-    "Il est dans `plugin/tether/` — c'est-a-dire **la racine du paquet installe**.",
-    "Bun remonte les repertoires depuis le fichier compile et s'arrete au premier",
-    "`tsconfig.json` ; mesure, chaque palier donne un resultat different :",
-    "",
-    "  - `plugin/tether/tsconfig.json`  -> lu, l'erreur devient `@opentui/solid` ;",
-    "  - a la racine du **projet**       -> ignore si le fichier est sous node_modules ;",
-    "  - dans le `package.json`         -> ignore, Bun n'y lit pas `jsx`.",
-    "",
-    "C'est pour cela qu'il est pose dans `plugin/tether/` et qu'un second, a la racine",
-    "du depot, avait l'air correct et ne servait a rien : c'etait le fichier au mauvais",
-    "endroit, pour la mauvaise raison qu'il etait elegant."
+    "C'est la seule forme qui survit a l'installation. Bun remonte les repertoires depuis le",
+    "fichier compile et s'arrete au premier `tsconfig.json` ; le paquet installe vit sous le",
+    "`node_modules` d'un cache npm dont on ne controle pas la racine, donc un tsconfig y est",
+    "ignore. Un tsconfig pose dans `plugin/tether/` a d'abord paru correct — et a ete",
+    "supprime au profit de la pragma : `jsxImportSource` ne s'applique que sous `react-jsx`,",
+    "et `preserve` n'existe pas chez Bun (mesure : `bun.sh/docs/runtime/jsx`)."
   ],
   "exports": {
     "./server": "./plugin/tether/index.ts",
@@ -64,7 +54,8 @@
     "plugin/tether"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test plugin/tether/*.test.mjs"
+    "test": "node --experimental-strip-types --test plugin/tether/index.test.mjs plugin/tether/qr.test.mjs plugin/tether/registry.test.mjs plugin/tether/tui-config.test.mjs plugin/tether/tui-logic.test.mjs plugin/tether/ui-model.test.mjs plugin/tether/vapid.test.mjs plugin/tether/webpush.mutation.test.mjs plugin/tether/webpush.test.mjs",
+    "test:tui": "bun test plugin/tether/tui-setup.test.mjs"
   },
   "dependencies": {
     "@opentui/solid": ">=0.5.10",

@@ -11,7 +11,7 @@
 #   - `plugin list` affiche le plugin **avant** que le TUI ne le charge ;
 #   - le serveur demarre sans erreur, parce que le module TUI n'est charge qu'a
 #     l'ouverture du client ;
-#   - et le `tsconfig.json` du plugin etait au bon endroit pour paraitre correct.
+#   - et le `tsconfig.json` du plugin ne pouvait pas fonctionner la ou Bun lit le paquet.
 #
 # Aucun de ces controles ne **charge** le module. C'est ce que fait celui-ci, dans un
 # sandbox jetable, avec le vrai transpiler de Bun.
@@ -105,7 +105,7 @@ echo
 echo "== 3. Le module TUI se charge-t-il vraiment ? =="
 # C'est le test que rien d'autre ne fait. On **importe** le point d'entree du TUI avec
 # le transpiler de Bun, depuis le paquet reellement installe. Une erreur JSX, un module
-# manquant, un tsconfig mal place : tout sort ici, en clair.
+# manquant, une pragma absente : tout sort ici, en clair.
 PKG=$(find "$XDG_CACHE_HOME" -type d -name tether -path "*/node_modules/tether" 2>/dev/null | head -1)
 if [ -z "$PKG" ]; then
   echo "   ECHEC : paquet installe introuvable sous $XDG_CACHE_HOME"
@@ -113,15 +113,14 @@ if [ -z "$PKG" ]; then
 fi
 echo "   paquet : ${PKG#"$SANDBOX"/}"
 
-# Le tsconfig doit etre a la racine du **projet installe** : c'est la que Bun le lit.
-# Un tsconfig pose dans plugin/tether/ serait ignore, et l'erreur serait `react`.
-RACINE_PKG=$(dirname "$(dirname "$(dirname "$(dirname "$PKG")")")")
-echo "   racine du projet installe : $RACINE_PKG"
-if [ -f "$RACINE_PKG/tsconfig.json" ]; then
-  echo "   tsconfig.json present — source JSX : $(grep -o '"jsxImportSource": *"[^"]*"' "$RACINE_PKG/tsconfig.json" | head -1)"
+# La source JSX est declaree par une pragma en tete de `tui.tsx`, pas par un
+# `tsconfig.json` : le paquet installe vit sous `node_modules`, ou Bun ne lit pas de
+# tsconfig (mesure au commit 80f9156). Sans la pragma, Bun transpille en React.
+if grep -q '@jsxImportSource @opentui/solid' "$PKG/plugin/tether/tui.tsx" 2>/dev/null; then
+  echo "   pragma JSX presente dans tui.tsx"
 else
-  echo "   ECHEC : aucun tsconfig.json a la racine. Bun ignorera la source JSX et"
-  echo "            transpillera en React — exactement l'erreur qu'on cherche a attraper."
+  echo "   ECHEC : aucune pragma @jsxImportSource dans tui.tsx. Bun transpille en React —"
+  echo "            exactement l'erreur qu'on cherche a attraper."
   exit 1
 fi
 

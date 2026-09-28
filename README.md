@@ -153,14 +153,15 @@ notifications.
 ### 1. The plugin
 
 ```bash
-cp -r plugin/tether ~/.config/opencode/plugins/
+opencode plugin add git+https://github.com/sk7n4k3d/tether.git
 ```
 
-That is the whole step. OpenCode discovers plugins in `~/.config/opencode/plugins/` — the
-plural, and each plugin is a **directory** (or a symlink to one). A bare `.ts` file dropped
-in that folder is not picked up; `opencode plugin list` will say "No plugins found". No
-`opencode.jsonc` entry is needed to load it — the `plugins` field there is for npm packages
-like `"cc-safety-net@latest"`.
+That installs the plugin, registers it in your global `opencode.jsonc`, and pulls in the two
+dependencies the TUI half needs. It is also the path this repository is tested against:
+`scripts/verifie-install.sh` runs exactly this command in a throwaway sandbox and then loads
+the TUI module to prove it works. A plain `cp -r plugin/tether ~/.config/opencode/plugins/`
+copies the source but not those dependencies — the server half would load and the TUI half
+would not.
 
 Restart OpenCode, then:
 
