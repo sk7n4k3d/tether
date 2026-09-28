@@ -30,7 +30,7 @@ data class PendingAttachment(
  *
  * ```
  *   data:text/plain;base64,aGVsbG8=                            -> 200
- *   file:///home/utilisateur/Projects/tether/settings.gradle.kts -> 200
+ *   file:///home/user/Projects/tether/settings.gradle.kts -> 200
  *   Projects/tether/README.md                                  -> 400 Invalid attachment URI
  *   https://example.com/x.md                                   -> 400 Unsupported
  * ```

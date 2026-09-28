@@ -207,7 +207,7 @@ class SessionListViewModelTest {
 
     private fun viewModel(
         gateway: FakeGateway,
-        settings: ConnectionSettings = ConnectionSettings(password = "x", directory = "/home/utilisateur"),
+        settings: ConnectionSettings = ConnectionSettings(password = "x", directory = "/home/user"),
     ): SessionListViewModel {
         lastDefaults = SessionDefaultsStore(newDataStore("defaults"))
         return SessionListViewModel(
@@ -323,7 +323,7 @@ class SessionListViewModelTest {
     fun `refresh mappe l echec en message sans mot de passe`() = runBlocking<Unit> {
         val vm = viewModel(
             FakeGateway(failure = java.net.ConnectException("connexion refusee")),
-            settings = ConnectionSettings(password = "s3cret", directory = "/home/utilisateur"),
+            settings = ConnectionSettings(password = "s3cret", directory = "/home/user"),
         )
 
         val state = settled(vm)

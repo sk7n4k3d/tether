@@ -123,7 +123,7 @@ class ChatAttachmentsTest {
         files += file
         val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create(scope = scope) { file }
         val store = ConnectionStore(dataStore, InMemoryCredentialsProvider())
-        runBlocking { store.save(ConnectionSettings(password = "x", directory = "/home/utilisateur")) }
+        runBlocking { store.save(ConnectionSettings(password = "x", directory = "/home/user")) }
         return ChatViewModel(
             savedStateHandle = SavedStateHandle(mapOf("sessionID" to "ses_1")),
             store = store,

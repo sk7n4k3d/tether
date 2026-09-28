@@ -190,7 +190,7 @@ fun ConnectionScreen(
 
         Field(
             label = "Repertoire de travail",
-            hint = "/home/utilisateur",
+            hint = "/chemin/vers/le/depot",
             value = state.directory,
             onValueChange = viewModel::onDirectoryChange,
             keyboardType = KeyboardType.Uri,

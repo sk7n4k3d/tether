@@ -240,7 +240,7 @@ class ChatMessageMapperTest {
                 MessageDto(
                     id = "m",
                     type = "assistant",
-                    content = listOf(tool("""{"path":"/home/utilisateur/.claude/projects/-home-utilisateur/memory/MEMORY.md"}""")),
+                    content = listOf(tool("""{"path":"/home/user/.claude/projects/-home-utilisateur/memory/MEMORY.md"}""")),
                 ),
             )!!.tools.first().summary,
         )

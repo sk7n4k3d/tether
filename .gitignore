@@ -6,3 +6,7 @@ local.properties
 build/
 backup-owui/
 logs/
+
+# Les captures d'ecran montrent des sessions reelles (contenu, noms de fichiers,
+# adresses). Elles restent sur le disque, hors du depot publie.
+docs/evidence/

@@ -42,11 +42,15 @@ class ConnectionStoreTest {
     }
 
     @Test
-    fun `les valeurs par defaut visent le LAN et le repertoire de le serveur`() = runBlocking {
+    fun `les valeurs par defaut ne designent personne`() = runBlocking {
+        // ⚠️ Ces deux defauts pointaient sur l'infra de l'auteur. Publie, l'app de tous
+        // les autres essayait de se connecter a sa machine, et dans le LAN d'un ami la
+        // connexion aboutissait reellement quelque part. La version publiee n'a le droit
+        // de designer que la machine de l'utilisateur.
         val store = ConnectionStore(dataStore, InMemoryCredentialsProvider())
         val settings = store.current()
-        assertEquals("http://192.0.2.10:4096", settings.baseUrl)
-        assertEquals("/home/utilisateur", settings.directory)
+        assertEquals("http://127.0.0.1:4096", settings.baseUrl)
+        assertEquals("", settings.directory, "un repertoire vide signifie « celui du serveur »")
         assertEquals("", settings.password)
         assertFalse(settings.isConfigured, "sans mot de passe, la connexion n'est pas configuree")
     }
@@ -92,8 +96,8 @@ class ConnectionStoreTest {
         store.save(ConnectionSettings(baseUrl = "   ", password = "x", directory = "  "))
 
         val settings = store.current()
-        assertEquals("http://192.0.2.10:4096", settings.baseUrl)
-        assertEquals("/home/utilisateur", settings.directory)
+        assertEquals("http://127.0.0.1:4096", settings.baseUrl)
+        assertEquals("", settings.directory)
     }
 
     @Test

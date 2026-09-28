@@ -72,7 +72,7 @@ class DiffViewModel @Inject constructor(
      * ⚠️ C'est celui de la **session**, quand il est connu, et seulement a defaut celui des
      * reglages. Une session travaille dans son propre repertoire : mesurer les modifications du
      * depot configure pour l'app donnerait le diff d'un **autre** projet. Mesure du 2026-09-25 :
-     * les reglages pointent `/home/utilisateur` (pas un depot), alors qu'une session peut travailler
+     * les reglages pointent `/home/user` (pas un depot), alors qu'une session peut travailler
      * dans `Projects/tether` (depot git, avec des modifications reelles).
      *
      * ⚠️ Resolu **une fois** au chargement et garde : le redemander a chaque portee ferait
@@ -128,7 +128,7 @@ class DiffViewModel @Inject constructor(
 
                 if (raw.isEmpty()) {
                     // ⚠️ **On verifie AVANT de dire « aucun changement ».** Mesure du
-                    // 2026-09-25 : `/home/utilisateur` n'est pas un depot (`{"branch":{}}`, sans
+                    // 2026-09-25 : `/home/user` n'est pas un depot (`{"branch":{}}`, sans
                     // `provider`), et la route rend une liste vide. Dire « aucune modification »
                     // y serait faux — et dangereux : dans un repertoire non versionne, **rien ne
                     // peut etre annule**, ce qui est l'inverse d'un constat rassurant.

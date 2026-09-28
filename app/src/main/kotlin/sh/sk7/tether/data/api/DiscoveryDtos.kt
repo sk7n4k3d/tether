@@ -190,7 +190,7 @@ data class VcsFileStatusDto(
  *
  * ⚠️ C'est le seul moyen de distinguer « aucune modification » de « pas un depot ». Mesure du
  * 2026-09-25 :
- *  - `/home/utilisateur`         -> `{"branch":{}}`, **aucun `provider`** : pas un depot ;
+ *  - `/home/user`         -> `{"branch":{}}`, **aucun `provider`** : pas un depot ;
  *  - `Projects/tether`        -> `{"provider":"git","branch":{"current":"master",…}}`.
  *
  * Sans cette distinction, l'ecran afficherait « aucune modification » pour un repertoire ou

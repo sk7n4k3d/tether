@@ -84,7 +84,7 @@ class FilesViewModelTest {
         files += file
         val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create(scope = scope) { file }
         val store = ConnectionStore(dataStore, InMemoryCredentialsProvider())
-        runBlocking { store.save(ConnectionSettings(password = "x", directory = "/home/utilisateur")) }
+        runBlocking { store.save(ConnectionSettings(password = "x", directory = "/home/user")) }
         return FilesViewModel(store, gateway, Dispatchers.Unconfined)
     }
 

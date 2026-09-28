@@ -619,7 +619,7 @@ class EventReducerTest {
         var s = SessionUiState(sessionID = "ses_1")
         s = EventReducer.reduce(
             s,
-            ev("session.tool.called", """{"id":"call_r","name":"read","input":{"path":"/home/utilisateur/.claude/projects/-home-utilisateur/memory/user_sebastien.md"}}"""),
+            ev("session.tool.called", """{"id":"call_r","name":"read","input":{"path":"/home/user/.claude/projects/-home-utilisateur/memory/user_sebastien.md"}}"""),
         )
         // Tronque par le debut : trois fichiers differents s'affichaient « /home/sk7n4k… ».
         assertEquals("…/memory/user_sebastien.md", s.streamingTools.single().summary)

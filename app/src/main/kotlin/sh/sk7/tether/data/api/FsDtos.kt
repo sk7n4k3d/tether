@@ -16,7 +16,7 @@ import kotlinx.serialization.Serializable
  *
  * ```
  * GET /api/fs/list?path=Projects/tether
- *   -> {"location":{"directory":"/home/utilisateur"},
+ *   -> {"location":{"directory":"/home/user"},
  *       "data":[{"path":"Projects/tether/app/","type":"directory"}, ...]}
  *
  * GET /api/fs/find?query=gradlew&type=file&limit=3
@@ -29,7 +29,7 @@ import kotlinx.serialization.Serializable
  * ⚠️ **Deux pieges mesures, et ils sont silencieux :**
  *
  * 1. `path` est **relatif au `location`**. Un chemin **absolu** est refuse :
- *    `GET /api/fs/read/home/utilisateur/...` rend `404 FileNotFoundError`. Meme chose pour `list`.
+ *    `GET /api/fs/read/home/user/...` rend `404 FileNotFoundError`. Meme chose pour `list`.
  *    Le prefixe `{path}` de `read` est un **joker** (`/api/fs/read/<chemin>` dans l'OpenAPI), pas un
  *    parametre nomme : on ne peut donc pas l'encoder comme une query.
  * 2. `read` renvoie du **binaire brut**, jamais l'enveloppe `{location, data}` des deux autres.

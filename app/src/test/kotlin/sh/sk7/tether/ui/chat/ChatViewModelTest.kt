@@ -298,7 +298,7 @@ class ChatViewModelTest {
         source: FakeEventSource,
         graceMillis: Long = 250,
     ): ChatViewModel {
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val factory = EventSourceFactory { source }
         return ChatViewModel(
             savedStateHandle = SavedStateHandle(mapOf("sessionID" to "ses_1")),

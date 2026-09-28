@@ -57,9 +57,9 @@ class SessionListMapperTest {
     @Test
     fun `le repertoire provient de location`() {
         assertEquals(
-            "/home/utilisateur",
+            "/home/user",
             SessionListMapper.toItem(
-                session().copy(location = sh.sk7.tether.data.api.LocationInfo("/home/utilisateur")),
+                session().copy(location = sh.sk7.tether.data.api.LocationInfo("/home/user")),
             ).directory,
         )
         assertNull(SessionListMapper.toItem(session()).directory)

@@ -37,7 +37,7 @@ class GatewayLiveTest {
 
     private val baseUrl: String = System.getProperty("tether.baseUrl") ?: "http://127.0.0.1:4096"
     private val password: String = System.getProperty("tether.password") ?: ""
-    private val directory: String = System.getProperty("tether.directory") ?: "/home/utilisateur"
+    private val directory: String = System.getProperty("tether.directory") ?: "/home/user"
 
     private fun gateway(): KtorOpenCodeGateway {
         val http = HttpClient(OkHttp) { configureTether() }

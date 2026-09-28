@@ -32,8 +32,20 @@ data class ConnectionSettings(
         password.takeIf { it.isNotBlank() }?.let { BasicAuthCredentials(password = it) }
 
     companion object {
-        const val DEFAULT_BASE_URL: String = "http://192.0.2.10:4096"
-        const val DEFAULT_DIRECTORY: String = "/home/utilisateur"
+        /**
+         * ⚠️ `127.0.0.1` et non une adresse de developpement.
+         *
+         * La version precedente pointait sur le serveur de l'auteur. Publie, cela
+         * signifiait que l'app de tous les autres essayait de se connecter a sa machine
+         * — et, dans le LAN d'un ami, que la connexion aboutissait reellement quelque part.
+         * Un defaut qui ne marche que chez celui qui l'ecrit n'est pas un defaut, c'est
+         * une adresse fuitee.
+         *
+         * C'est aussi le port par defaut d'opencode : un utilisateur qui fait tourner
+         * le serveur sur la meme machine tombe juste.
+         */
+        const val DEFAULT_BASE_URL: String = "http://127.0.0.1:4096"
+        const val DEFAULT_DIRECTORY: String = ""
 
         /** Ramene une valeur vide ou blanche a son defaut : un champ vide n'ecrase pas le defaut. */
         fun normalize(baseUrl: String, directory: String): ConnectionSettings = ConnectionSettings(

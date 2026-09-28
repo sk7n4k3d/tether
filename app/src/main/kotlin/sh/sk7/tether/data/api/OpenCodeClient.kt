@@ -87,7 +87,11 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         val envelope = http.get("$baseUrl/api/session") {
             auth(credentials)
-            parameter("directory", directory)
+            // ⚠️ Un repertoire vide **n'est pas** envoye : `directory=` est un
+            // parametre present et vide, pas son absence, et le serveur le
+            // traiterait comme un chemin inexistant. L'absence lui dit « celui du
+            // serveur », ce qui est le seul defaut neutre possible.
+            directory.ifBlank { null }?.let { parameter("directory", it) }
             limit?.let { parameter("limit", it) }
             cursor?.let { parameter("cursor", it) }
             parent?.let { parameter("parentID", it.wire) }
@@ -147,7 +151,7 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl/api/model") {
             auth(credentials)
-            parameter("location[directory]", location)
+            location.ifBlank { null }?.let { parameter("location[directory]", it) }
         }.body<DataEnvelope<Model>>().data
     }
 
@@ -160,7 +164,7 @@ class OpenCodeClient(
         val credentials = credentialsProvider.credentials()
         return http.get("$baseUrl/api/agent") {
             auth(credentials)
-            parameter("location[directory]", location)
+            location.ifBlank { null }?.let { parameter("location[directory]", it) }
         }.body<DataEnvelope<Agent>>().data
     }
 
@@ -589,7 +593,7 @@ class OpenCodeClient(
     /**
      * `GET /api/worktree` : les arbres de travail connus.
      *
-     * ⚠️ **`projectID`, pas un chemin.** Mesure : `directory=/home/utilisateur` rend
+     * ⚠️ **`projectID`, pas un chemin.** Mesure : `directory=/home/user` rend
      * `400 InvalidRequestError Missing key at ["projectID"]`. Le hash se recupere par
      * [location]. L'appelant le fournit donc, et c'est pour ca que la signature prend un
      * `projectID` et non un `directory`.
@@ -747,7 +751,7 @@ class OpenCodeClient(
      * `/api/permission/request`. Se tromper d'enveloppe rend une liste vide **sans erreur**, donc
      * un ecran qui affirme « rien a repondre » alors que l'agent est bloque.
      *
-     * ⚠️ Mesure du 2026-09-26 : `GET /api/form?location[directory]=/home/utilisateur` ne voit **pas**
+     * ⚠️ Mesure du 2026-09-26 : `GET /api/form?location[directory]=/home/user` ne voit **pas**
      * un formulaire cree a `/tmp/opencode` — le filtre par repertoire est reel. Un formulaire
      * `sessionID:"global"` (elicitation MCP) suit cette meme regle.
      */
@@ -891,7 +895,7 @@ class OpenCodeClient(
      * `location[directory]=...`. Passer simplement `directory=...` est **ignore sans erreur** et
      * le serveur retombe sur son repertoire de travail courant.
      *
-     * Mesure du 2026-09-25 : avec `directory=/tmp`, `/api/command` repond `location=/home/utilisateur`
+     * Mesure du 2026-09-25 : avec `directory=/tmp`, `/api/command` repond `location=/home/user`
      * (le cwd) ; avec `location[directory]=/tmp`, il repond `location=/tmp`. Les sept routes
      * marchaient **par accident**, parce que le cwd du serveur se trouvait etre le repertoire
      * configure. Des que les deux different, l'app afficherait les donnees du mauvais projet sans
@@ -1081,7 +1085,7 @@ class OpenCodeClient(
      * 1. **Le chemin va dans l'URL**, apres `/read/` — c'est un joker (`/api/fs/read/<chemin>`), pas un
      *    parametre nomme. Les segments sont encodes un par un pour qu'une barre oblique reste un
      *    separateur de chemin et ne devienne pas `%2F` (ce que le serveur refuserait).
-     * 2. **Le chemin est relatif au `location`** : `/api/fs/read/home/utilisateur/...` rend `404`.
+     * 2. **Le chemin est relatif au `location`** : `/api/fs/read/home/user/...` rend `404`.
      * 3. La reponse est du **binaire brut** (`application/octet-stream`), jamais l'enveloppe JSON
      *    de `list` et `find`. On lit donc les octets, pas un corps type.
      *

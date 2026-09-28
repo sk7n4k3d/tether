@@ -210,7 +210,7 @@ data class ContentPart(
  *
  * ```
  * files:  [{"uri":"data:text/plain;base64,aGVsbG8=","name":"x"}]   -> 200
- * files:  [{"uri":"file:///home/utilisateur/.../settings.gradle.kts"}] -> 200
+ * files:  [{"uri":"file:///home/user/.../settings.gradle.kts"}] -> 200
  * agents: [{"name":"build"}]                                        -> 200
  * skills: [{"id":"test-driven-development"}]                        -> 200
  * ```

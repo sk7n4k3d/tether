@@ -70,9 +70,9 @@ class PromptAttachmentsTest {
 
     @Test
     fun `un chemin absolu devient une URI file avec son nom`() {
-        val attachment = PromptAttachments.fromServerPath("/home/utilisateur/Projects/tether/settings.gradle.kts")
+        val attachment = PromptAttachments.fromServerPath("/home/user/Projects/tether/settings.gradle.kts")
         requireNotNull(attachment)
-        assertEquals("file:///home/utilisateur/Projects/tether/settings.gradle.kts", attachment.uri)
+        assertEquals("file:///home/user/Projects/tether/settings.gradle.kts", attachment.uri)
         assertEquals("settings.gradle.kts", attachment.name)
     }
 

@@ -82,7 +82,7 @@ class ActivityMonitorTest {
             Session(id = "ses_parent", title = "Parent", time = TimeInfo(idle = 100, viewed = 100)),
             Session(id = "ses_sub", parentID = "ses_parent", title = "Sous-agent"),
         )
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val gateway = FakeGateway(sessions, active = setOf("ses_sub"))
         val monitor = monitor(gateway, store)
 
@@ -100,7 +100,7 @@ class ActivityMonitorTest {
         // Sans le report du compte precedent, « 2 en file » retomberait a zero a chaque cycle de
         // 12 s et l'en-tete clignoterait.
         val sessions = listOf(Session(id = "ses_1", title = "S", time = TimeInfo(idle = 100, viewed = 100)))
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val gateway = FakeGateway(sessions, active = emptySet())
         val monitor = monitor(gateway, store)
 
@@ -116,7 +116,7 @@ class ActivityMonitorTest {
     @Test
     fun `une session en file est classee Queued`() = runBlocking<Unit> {
         val sessions = listOf(Session(id = "ses_1", title = "S", time = TimeInfo(idle = 100, viewed = 100)))
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val monitor = monitor(FakeGateway(sessions, active = emptySet()), store)
 
         monitor.refresh()
@@ -129,7 +129,7 @@ class ActivityMonitorTest {
     fun `publishQueue sur une session inconnue ne fait rien`() = runBlocking<Unit> {
         // ⚠️ Le chat peut pousser avant que la liste n'ait alimenté le monitor : on ignore plutôt
         // que de créer une entrée fantôme sans les autres champs.
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val monitor = monitor(FakeGateway(emptyList(), emptySet()), store)
         monitor.refresh()
 
@@ -144,7 +144,7 @@ class ActivityMonitorTest {
         // schema OpenAPI annonce seulement `metadata: {type: object}` — s'y fier laissait croire
         // qu'un shell n'etait rattachable a rien. C'est de la lecture de forme, invisible a la
         // compilation.
-        val store = realStore(ConnectionSettings(password = "x", directory = "/home/utilisateur"))
+        val store = realStore(ConnectionSettings(password = "x", directory = "/home/user"))
         val gateway = object : NeutralGateway() {
             override suspend fun allSessions(
                 settings: ConnectionSettings,

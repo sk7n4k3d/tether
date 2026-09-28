@@ -114,7 +114,7 @@ class SseParserTest {
         assertEquals(1790277876926L, created.created)
         assertEquals("ses_f2b1f8344ffe7N0fGcpz3sNX0q", created.sessionID)
         assertNotNull(created.location)
-        assertEquals("/home/utilisateur", created.location.directory)
+        assertEquals("/home/user", created.location.directory)
         // `durable` est un OBJET, pas un booleen (spike 7)
         assertEquals("ses_f2b1f8344ffe7N0fGcpz3sNX0q", created.durable?.aggregateID)
         assertEquals(0, created.durable?.seq)

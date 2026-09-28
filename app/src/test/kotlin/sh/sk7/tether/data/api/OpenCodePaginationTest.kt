@@ -102,11 +102,37 @@ class OpenCodePaginationTest {
     fun `sessionsPage signe directory et pas location`() = runBlocking<Unit> {
         val client = client { """{"data":[],"cursor":null}""" }
 
-        client.sessionsPage("/home/utilisateur", limit = 200)
+        val repertoire = "/srv/depot"
+        client.sessionsPage(repertoire, limit = 200)
 
         val url = requests.first()
-        assertTrue(url.contains("directory=%2Fhome%2Futilisateur") || url.contains("directory=/home/utilisateur"), url)
+        // On teste le **nom** du parametre, pas sa forme encodee : ce qui compte ici est
+        // `directory` et non `location[directory]`, et une assertion sur l'encodage
+        // casserait au moindre changement de la bibliotheirie cliente sans que rien ne
+        // change au comportement.
+        assertTrue(url.contains("directory="), url)
         assertTrue(!url.contains("location"), url)
+        assertTrue(url.contains("limit=200"), url)
+        assertTrue(url.contains(repertoire) || url.contains("srv%2Fdepot"), url)
+    }
+
+    /**
+     * ⚠️ Un repertoire vide ne doit **pas** partir du tout.
+     *
+     * `directory=` est un parametre present et vide, pas son absence. Le serveur le
+     * traiterait comme un chemin — un chemin vide, donc inexistant — et la liste
+     * reviendrait vide sans erreur. C'est le defaut « aucun depot configure » qui
+     * ressemblerait a « aucune session », sans aucun signe.
+     */
+    @Test
+    fun `un repertoire vide est omis plutot qu envoye vide`() = runBlocking<Unit> {
+        val client = client { """{"data":[],"cursor":null}""" }
+
+        client.sessionsPage("", limit = 200)
+
+        val url = requests.first()
+        assertTrue(!url.contains("directory"), "le parametre vide ne doit pas partir : $url")
+        // Le reste de la requete est inchange : on n'a pas casse la pagination.
         assertTrue(url.contains("limit=200"), url)
     }
 

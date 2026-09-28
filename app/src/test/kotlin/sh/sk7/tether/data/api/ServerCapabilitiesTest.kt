@@ -131,10 +131,10 @@ class ServerCapabilitiesTest {
 
     @Test
     fun `fsList envoie location et path relatif`() = runBlocking {
-        val body = """{"location":{"directory":"/home/utilisateur"},"data":[
+        val body = """{"location":{"directory":"/home/user"},"data":[
             {"path":"app/","type":"directory"},{"path":"build.gradle.kts","type":"file"}]}"""
         val c = client(body)
-        val entries = c.fsList("/home/utilisateur", "Projects/tether")
+        val entries = c.fsList("/home/user", "Projects/tether")
 
         assertEquals(2, entries.size)
         assertEquals("build.gradle.kts", entries[1].path)
@@ -144,7 +144,7 @@ class ServerCapabilitiesTest {
         val req = lastRequest!!
         assertEquals("http://host:4096/api/fs/list", req.url.toString().substringBefore("?"))
         assertEquals("Projects/tether", req.url.parameters["path"])
-        assertEquals("/home/utilisateur", req.url.parameters["location[directory]"])
+        assertEquals("/home/user", req.url.parameters["location[directory]"])
     }
 
     @Test
@@ -169,7 +169,7 @@ class ServerCapabilitiesTest {
     @Test
     fun `fsRead met le chemin dans l URL sans encoder les separateurs`() = runBlocking {
         val c = client("pluginManagement { }", contentType = "application/octet-stream")
-        val bytes = c.fsRead("/home/utilisateur", "Projects/tether/settings.gradle.kts")
+        val bytes = c.fsRead("/home/user", "Projects/tether/settings.gradle.kts")
 
         assertEquals("pluginManagement { }", bytes?.decodeToString())
         val req = lastRequest!!
@@ -182,7 +182,7 @@ class ServerCapabilitiesTest {
         // fichier nomme « Projects/tether/settings.gradle.kts » a la racine — 404 silencieux. On
         // ne regarde donc que la partie chemin : le `location` en query, lui, s'encode legitimement.
         assertTrue(!pathOnly.contains("%2F"), "aucune barre oblique encodee dans le chemin : $pathOnly")
-        assertEquals("/home/utilisateur", req.url.parameters["location[directory]"])
+        assertEquals("/home/user", req.url.parameters["location[directory]"])
     }
 
     @Test
@@ -199,7 +199,7 @@ class ServerCapabilitiesTest {
 
         // ⚠️ Mesure : un fichier absent rend `404 FileNotFoundError`. C'est une **absence**, pas un
         // echec — meme distinction que « pas un depot » pour `vcsInfo`.
-        assertNull(c.fsRead("/home/utilisateur", "n/existe/pas.txt"))
+        assertNull(c.fsRead("/home/user", "n/existe/pas.txt"))
     }
 
     // ------------------------------------------------------------------

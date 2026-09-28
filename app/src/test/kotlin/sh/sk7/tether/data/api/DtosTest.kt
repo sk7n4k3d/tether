@@ -41,7 +41,7 @@ class DtosTest {
         assertEquals(1790277771722, s.time?.updated)
         assertEquals(1790277398601, s.time?.idle)
         assertEquals(1790277398601, s.time?.viewed)
-        assertEquals("/home/utilisateur", s.location?.directory)
+        assertEquals("/home/user", s.location?.directory)
     }
 
     @Test
@@ -138,7 +138,7 @@ class DtosTest {
     fun `l enveloppe location et data decode le listing modeles reel`() {
         val env = json.decodeFromString<DataEnvelope<Model>>(fixture("model-list.json"))
         assertEquals(37, env.data.size)
-        assertEquals("/home/utilisateur", env.location?.directory)
+        assertEquals("/home/user", env.location?.directory)
         val m = env.data.first { it.id == "deepseek-v4.1-flash" }
         assertEquals("ollama-cloud", m.providerID)
         assertEquals("DeepSeek V4.1 Flash", m.name)
@@ -148,7 +148,7 @@ class DtosTest {
     fun `une enveloppe permission vide se decode`() {
         val env = json.decodeFromString<DataEnvelope<PermissionRequest>>(fixture("permission-request.json"))
         assertTrue(env.data.isEmpty())
-        assertEquals("/home/utilisateur", env.location?.directory)
+        assertEquals("/home/user", env.location?.directory)
     }
 
     @Test

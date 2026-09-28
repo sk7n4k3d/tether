@@ -48,7 +48,7 @@ object ToolPayload {
                     ?.takeIf { it.isNotBlank() } ?: continue
                 val oneLine = value.replace('\n', ' ').trim()
                 // ⚠️ Un chemin se lit par sa FIN. Tronque par la fin (le defaut de l'UI),
-                // `/home/utilisateur/.claude/projects/-home-utilisateur/memory/user_sebastien.md`
+                // `/home/user/.claude/projects/-home-utilisateur/memory/user_sebastien.md`
                 // devenait `/home/sk7n4k…` — trois fichiers differents, meme texte affiche.
                 // On garde donc les deux derniers segments : `…/memory/user_sebastien.md`.
                 val display = if (key in PATH_KEYS) shortenPath(oneLine) else oneLine
