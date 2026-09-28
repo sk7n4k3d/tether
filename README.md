@@ -150,8 +150,19 @@ A QR should appear. If it does not, see [Troubleshooting](#troubleshooting).
 ./gradlew :app:installDebug
 ```
 
-On first launch, open the settings and enter the server address and password. The default is
+On first launch, fill in the server address and password. The default is
 `http://127.0.0.1:4096`, which only works if the server runs on the phone — it does not.
+
+OpenCode can print them for you:
+
+```bash
+opencode pair
+```
+
+It shows the URL, the username, the password, and a QR encoding all three. Type them in, or
+scan the QR with any app. **That QR contains your server password** — treat the terminal as
+a secret from that moment, and rotate the password if the output ever ends up in a
+screenshot, a log, or a shell history.
 
 ### 3. Pairing
 
@@ -163,6 +174,41 @@ In the TUI:
 
 Scan the QR. **Check the address it shows you** before accepting — that is the only check
 that is worth anything. Nothing is transmitted until you press "Authorize".
+
+#### This is not `opencode pair`
+
+OpenCode has its own pairing command, and the two are easy to confuse. They do different
+jobs:
+
+| | `opencode pair` | `/tether` |
+|---|---|---|
+| **Purpose** | Give an app the server credentials | Authorize a device for **push** |
+| **Payload** | JSON: `urls`, `username`, **`password`** | A one-time token, 128 bits |
+| **Valid for** | Until the password changes | 30 minutes, then consumed |
+| **Password leaves the terminal** | **Yes** | **Never** |
+| **Run it** | Once, to configure the app | Once, to authorize notifications |
+
+`opencode pair` puts the server password in a QR code. That is the master credential:
+whoever photographs that screen can drive your agent, read your sessions and run tools.
+`/tether` never transmits it — it mints a token that authorizes exactly one thing, on one
+device, once.
+
+You need **both**, in this order:
+
+```bash
+opencode pair          # scan with any app, to fill in address and password
+```
+
+then, in the TUI:
+
+```
+/tether                # scan with Tether, to authorize notifications
+```
+
+⚠️ Scanning the wrong one does nothing, because the formats are unrelated: `opencode pair`
+encodes raw JSON, `/tether` encodes `opencode://pair?s=…&t=…`. There is deliberately no
+automatic import of credentials from a QR — that is the pattern behind GHSA-2xqv-hwrf-983f.
+Enter the address and password in Settings instead.
 
 The palette entry *Tether: paired devices* lists what is registered and lets you remove
 one.
