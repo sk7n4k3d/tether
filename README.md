@@ -365,7 +365,6 @@ plugin/tether/
   tui.tsx               dialog and palette
   tui-logic.ts          TUI logic without JSX — node:test cannot read JSX
   config.ts             options and environment variables
-docs/                   design specifications and diagnostic notes
 scripts/                pre-publication verification
 ```
 

@@ -10,3 +10,13 @@ logs/
 # Les captures d'ecran montrent des sessions reelles (contenu, noms de fichiers,
 # adresses). Elles restent sur le disque, hors du depot publie.
 docs/evidence/
+
+# Notes de travail : etat d'avancement, diagnostics, comptes rendus de spike,
+# specifications interne. Elles citent l'infra, les adresses et les decisions
+# du jour, et n'ont rien a faire dans un depot public.
+docs/superpowers/
+docs/swag/
+docs/*-2026-*.md
+docs/design-soul.md
+docs/push-diagnostic.md
+docs/remaining-work.md
