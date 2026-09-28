@@ -36,6 +36,14 @@ data class PairingUiState(
     val enCours: Boolean = false,
     /** Un message sous les boutons. `null` tant qu'il n'y a rien a dire. */
     val erreur: String? = null,
+    /**
+     * L'appareil vient d'etre enregistre : l'ecran doit **partir** vers les sessions.
+     *
+     * ⚠️ C'est un drapeau a consommer, pas un etat d'affichage. Sans lui, l'ecran restait
+     * sur « aucun appairage en attente » apres un « Autoriser » reussi — l'utilisateur
+     * venait d'autoriser et l'app lui repondait qu'il n'y avait rien.
+     */
+    val appaire: Boolean = false,
 ) {
     /** Peut-on autoriser ? Il faut une demande **et** un abonnement. */
     val peutAutoriser: Boolean get() = demande != null && abonnement != null && !enCours
@@ -142,6 +150,17 @@ class PairingViewModel @Inject constructor(
     }
 
     /**
+     * L'ecran a tenu compte de l'appairage reussi : on peut partir.
+     *
+     * Une seule fois. Le drapeau vit dans l'etat, qui survit a la recreation d'activite ;
+     * le laisser arme ferait repartir vers les sessions a chaque recomposition de l'ecran
+     * d'appairage, et l'utilisateur ne pourrait plus ouvrir cet ecran.
+     */
+    fun appairageConsomme() {
+        _state.update { it.copy(appaire = false) }
+    }
+
+    /**
      * Enregistre cet appareil aupres du serveur demande.
      *
      * ⚠️ Le jeton est **a usage unique** et le serveur le consomme **avant** d'eregistrer.
@@ -179,7 +198,7 @@ class PairingViewModel @Inject constructor(
                         // Le jeton, lui, n'est **pas** conserve : a usage unique, un secret
                         // deja consomme ne sert plus a rien.
                         DeviceRegistration.remember(context, demande.server, settings.directory)
-                        _state.value = PairingUiState(abonnement = abonnement)
+                        _state.value = PairingUiState(abonnement = abonnement, appaire = true)
                     } else {
                         _state.update {
                             it.copy(enCours = false, erreur = Res.of(R.string.serveur_refuse_enregistrement_c712cf))

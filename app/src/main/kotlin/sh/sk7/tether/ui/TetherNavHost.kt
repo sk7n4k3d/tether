@@ -14,6 +14,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -222,6 +223,26 @@ fun TetherNavHost(
         routeFromIntent(intent)?.let { route -> navController.navigate(route) }
     }
 
+    /**
+     * **Une fois connecte, on atterrit sur les sessions.**
+     *
+     * Deux chemins y menent : la premiere configuration ([Routes.ONBOARDING]) et un
+     * appairage reussi ([Routes.PAIRING]). Aucun ne doit laisser l'utilisateur sur
+     * l'ecran qui vient de se terminer.
+     *
+     * ⚠️ On **remplace** la pile au lieu de revenir en arriere. `popBackStack()` ne faisait
+     * rien : l'ecran de connexion est la route de depart au premier lancement, et la seule
+     * de la pile apres une deconnexion — il n'y avait donc rien a depiler, et l'app restait
+     * bloquee sur un ecran deja valide. Revenir sur une connexion faite n'a de toute facon
+     * aucun sens.
+     */
+    fun repartirSurLesSessions() {
+        navController.navigate(Routes.SESSIONS) {
+            popUpTo(navController.graph.startDestinationId) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+
     DisposableEffect(activity, navController) {
         if (activity == null) return@DisposableEffect onDispose { }
         // Intent deja present (lancement depuis la notification ou le QR).
@@ -301,6 +322,16 @@ fun TetherNavHost(
             // conversation en cours, ce qui donne l'impression d'avoir ete ejecte. Refuser
             // ferme, et c'est la seule sortie.
             val state by pairingViewModel.state.collectAsStateWithLifecycle()
+
+            // L'appairage est enregistre : on quitte l'ecran de confirmation pour les
+            // sessions. Le drapeau est consomme d'abord, sinon la recomposition suivante
+            // relancerait la navigation.
+            LaunchedEffect(state.appaire) {
+                if (!state.appaire) return@LaunchedEffect
+                pairingViewModel.appairageConsomme()
+                repartirSurLesSessions()
+            }
+
             PairingScreen(
                 state = state,
                 onAuthorize = pairingViewModel::autoriser,
@@ -356,7 +387,7 @@ fun TetherNavHost(
         composable(Routes.ONBOARDING) {
             ConnectionScreen(
                 firstRun = true,
-                onConnected = { navController.popBackStack() },
+                onConnected = { repartirSurLesSessions() },
             )
         }
     }
