@@ -40,6 +40,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   did not pass
 - About a hundred French strings that were missed by the first extraction, showing as
   French fragments inside an English screen
+- Twelve strings showing a literal `%1$s`: the argument was lost during extraction, and
+  no compilation error says so
+- « sur 1 sessions »: the `(s)` workaround replaced by real French plurials, where the
+  singular covers zero as well as one
 
 ### Security
 
