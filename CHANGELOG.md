@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- In-app QR scanner for pairing: read the `/tether` code without leaving Tether, then the
+  same consent screen as `opencode://pair` (CameraX + ZXing, no Google service involved,
+  and the camera stays optional)
 - Native Android client for OpenCode V2: sessions, live chat, diffs, files, worktrees,
   server inventory, approvals
 - Tether plugin: device registry, Web Push over UnifiedPush (RFC 8291/8292), VAPID signing,
@@ -27,6 +30,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- After connecting or pairing, the app stayed on the screen that had just finished:
+  `popBackStack()` from the connection screen does nothing when it is the start
+  destination, and a successful pairing did not navigate at all. Both now land on sessions
 - Pairing from the TUI failed with `RPC pair : HTTP 401`: the plugin called
   `/api/rpc/tether/...` with a hand-rolled `fetch` that resolved authentication from
   `ctx.client.getConfig()` — a method the TUI client does not have. Every request went

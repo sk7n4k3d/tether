@@ -202,6 +202,9 @@ In the TUI:
 Scan the QR. **Check the address it shows you** before accepting — that is the only check
 that is worth anything. Nothing is transmitted until you press "Authorize".
 
+You do not need a second app for this: **Settings → Pair a device** opens a scanner inside
+Tether (camera optional — any other camera app can still scan the same code).
+
 #### This is not `opencode pair`
 
 OpenCode has its own pairing command, and the two are easy to confuse. They do different

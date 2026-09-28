@@ -14,6 +14,10 @@ coil = "2.7.0"
 unifiedpush = "3.3.5"
 lucide = "1.1.0"
 datastore = "1.1.7"
+# Scanner QR de l'appairage. CameraX est de l'AndroidX pur (aucun GMS) ; `zxing:core`
+# est du Java pur, donc le decodage se teste en JVM, sans appareil.
+camera = "1.6.2"
+zxing = "3.5.4"
 # ⚠️ `highlights` arrive deja en TRANSITIF de `multiplatform-markdown-renderer-code`.
 # On le declare explicitement parce que `ChatScreen` l'utilise en direct (theme de
 # coloration) : sans cette ligne, une montee de version du renderer qui changerait sa
@@ -48,6 +52,12 @@ lucide = { group = "com.composables", name = "icons-lucide", version.ref = "luci
 # dans son manifest : ne PAS les redupliquer, un doublon casse le routage.
 unifiedpush-connector = { group = "org.unifiedpush.android", name = "connector", version.ref = "unifiedpush" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+# Scanner QR : apercu CameraX + decodage ZXing. Aucun service Google n'est implique.
+camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camera" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camera" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camera" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
 # Instrumentation : ce qui se prouve sur l'appareil, pas dans une JVM.
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version = "1.2.1" }

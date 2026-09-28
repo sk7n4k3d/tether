@@ -38,6 +38,7 @@ import sh.sk7.tether.ui.chat.ChatScreen
 import sh.sk7.tether.ui.pairing.PairingScreen
 import sh.sk7.tether.ui.pairing.PairingViewModel
 import sh.sk7.tether.ui.permissions.PermissionsScreen
+import sh.sk7.tether.ui.scanner.QrScannerScreen
 import sh.sk7.tether.ui.server.ServerScreen
 import sh.sk7.tether.ui.sessions.SessionListScreen
 import sh.sk7.tether.ui.settings.AboutScreen
@@ -90,6 +91,15 @@ object Routes {
      * l'activite — ce qui est exactement la duree de vie d'un consentement.
      */
     const val PAIRING = "pairing"
+
+    /**
+     * Le scanner du QR d'appairage, ouvert depuis [PAIRING].
+     *
+     * ⚠️ Une route a part, et pas un etat de [PAIRING] : la camera a un cycle de vie, et
+     * ouvrir le scanner doit **arreter** l'analyse en la quittant. Un booleen dans
+     * l'ecran d'appairage aurait laisse la camera tourner derriere la confirmation.
+     */
+    const val SCAN = "scan"
 
     /**
      * Hors connexion : le serveur ne repond pas, on explique et on propose d'agir.
@@ -339,6 +349,19 @@ fun TetherNavHost(
                     pairingViewModel.refuser()
                     navController.popBackStack()
                 },
+                onScan = { navController.navigate(Routes.SCAN) },
+            )
+        }
+        composable(Routes.SCAN) {
+            // Le scanner rend une demande validee, jamais un texte brut : un QR d'un autre
+            // format est ignore par l'ecran lui-meme. On revient sur la confirmation, qui
+            // affiche l'adresse du serveur avant tout envoi.
+            QrScannerScreen(
+                onLien = { demande ->
+                    pairingViewModel.ouvrir(demande)
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() },
             )
         }
         composable(Routes.ABOUT) {
@@ -354,6 +377,7 @@ fun TetherNavHost(
                 onOpenAbout = { navController.navigate(Routes.ABOUT) },
                 onOpenWorktrees = { navController.navigate(Routes.WORKTREES) },
                 onOpenFiles = { navController.navigate(Routes.FILES) },
+                onOpenPairing = { navController.navigate(Routes.PAIRING) },
                 onDisconnected = {
                     navController.navigate(Routes.ONBOARDING) {
                         // ⚠️ On vide la pile : apres une deconnexion, revenir en arriere ne doit

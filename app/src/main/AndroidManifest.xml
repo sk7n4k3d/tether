@@ -22,6 +22,17 @@
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+      Scanner du QR d'appairage. La camera est demandee a l'execution, dans l'ecran de
+      scan, et refusee par defaut : l'app fonctionne entierement sans elle.
+
+      `required="false"` : un appareil sans camera peut installer Tether et se faire
+      appairer par un scan externe (deep link `opencode://pair`), qui reste la voie
+      d'origine. Exiger la camera fermerait cette porte.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
 
     <application
         android:name=".TetherApp"

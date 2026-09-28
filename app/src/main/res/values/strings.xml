@@ -36,6 +36,8 @@
     <string name="annulation_refusee_serveur_beccd1">Cancellation refused by the server.</string>
     <string name="annuler_49ba32">Cancel</string>
     <string name="annuler_message_attente_812a6f">Cancel this pending message</string>
+    <string name="appairer_appareil_3c7d18">Pair a device</string>
+    <string name="appairer_appareil_detail_84f2ab">Scan the QR from /tether to get its notifications</string>
     <string name="appairer_cet_appareil_be875b">Pair this device</string>
     <string name="apparence_80b37d">Appearance</string>
     <string name="appels_outil_0dbfd1">tool calls</string>
@@ -81,12 +83,15 @@
     <string name="autorisation_requise_703188">Permission required</string>
     <string name="autorisations_ae3a20">Permissions</string>
     <string name="autorisee_fois_971c3e">Allowed once</string>
+    <string name="autoriser_camera_6e2b90">Allow the camera</string>
     <string name="autoriser_ff8398">Allow</string>
     <string name="autoriser_fois_35c774">Allow once</string>
     <string name="autoriser_notifications_e58324">Allow notifications</string>
     <string name="binaire_diff_trop_f5c1ff">(binary, or diff too large).</string>
     <string name="cache_aefcd9">cache read</string>
     <string name="cache_b03592">cache</string>
+    <string name="camera_refusee_9d3f71">The camera is not allowed</string>
+    <string name="camera_refusee_detail_5a8e0c">Tether needs it to read the pairing QR. Nothing was sent, and any other app can scan it instead.</string>
     <string name="capacite_ecriture_serveur_915a9f">• It is a write capability: this server will be able to send you a</string>
     <string name="caracteres_maximum_5d98f2">%1$s characters maximum</string>
     <string name="caracteres_minimum_3ae93a">%1$s characters minimum</string>
@@ -361,6 +366,9 @@
     <string name="rien_fenetre_344f52">Nothing in the window</string>
     <string name="sans_autorisation_tether_efa72b">Without this permission, Tether cannot reach the opencode server</string>
     <string name="sans_titre_679c67">Untitled</string>
+    <string name="scanner_consigne_7c21a8">Point the camera at the QR that /tether shows in the terminal</string>
+    <string name="scanner_pas_appairage_2b9c54">That QR is not a Tether pairing code</string>
+    <string name="scanner_qr_1f4e1d">Scan the QR</string>
     <string name="secret_authentification_authsecret_f109cb">auth secret: %1$s bytes, 16 expected</string>
     <string name="sections_indisponibles_abb861">Unavailable sections:</string>
     <string name="selection_d7eeed">Selecting…</string>

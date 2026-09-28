@@ -36,6 +36,8 @@
     <string name="annulation_refusee_serveur_beccd1">Annulation refusée par le serveur.</string>
     <string name="annuler_49ba32">Annuler</string>
     <string name="annuler_message_attente_812a6f">Annuler ce message en attente</string>
+    <string name="appairer_appareil_3c7d18">Appairer un appareil</string>
+    <string name="appairer_appareil_detail_84f2ab">Scannez le QR de /tether pour recevoir ses notifications</string>
     <string name="appairer_cet_appareil_be875b">Appairer cet appareil</string>
     <string name="apparence_80b37d">Apparence</string>
     <string name="appels_outil_0dbfd1">appels d\'outil</string>
@@ -81,12 +83,15 @@
     <string name="autorisation_requise_703188">Autorisation requise</string>
     <string name="autorisations_ae3a20">Autorisations</string>
     <string name="autorisee_fois_971c3e">Autorisée une fois</string>
+    <string name="autoriser_camera_6e2b90">Autoriser la caméra</string>
     <string name="autoriser_ff8398">Autoriser</string>
     <string name="autoriser_fois_35c774">Autoriser une fois</string>
     <string name="autoriser_notifications_e58324">Autoriser les notifications</string>
     <string name="binaire_diff_trop_f5c1ff">(binaire, ou diff trop volumineux).</string>
     <string name="cache_aefcd9">cache lu</string>
     <string name="cache_b03592">cache</string>
+    <string name="camera_refusee_9d3f71">La caméra n\'est pas autorisée</string>
+    <string name="camera_refusee_detail_5a8e0c">Tether en a besoin pour lire le QR d\'appairage. Rien n\'a été envoyé, et une autre application peut le scanner à sa place.</string>
     <string name="capacite_ecriture_serveur_915a9f">• C\'est une capacité d\'écriture : ce serveur pourra vous envoyer une</string>
     <string name="caracteres_maximum_5d98f2">%1$s caractères maximum</string>
     <string name="caracteres_minimum_3ae93a">%1$s caractères minimum</string>
@@ -361,6 +366,9 @@
     <string name="rien_fenetre_344f52">Rien dans la fenêtre</string>
     <string name="sans_autorisation_tether_efa72b">Sans cette autorisation, Tether ne peut pas joindre le serveur opencode</string>
     <string name="sans_titre_679c67">Sans titre</string>
+    <string name="scanner_consigne_7c21a8">Visez le QR que /tether affiche dans le terminal</string>
+    <string name="scanner_pas_appairage_2b9c54">Ce QR n\'est pas un code d\'appairage Tether</string>
+    <string name="scanner_qr_1f4e1d">Scanner le QR</string>
     <string name="secret_authentification_authsecret_f109cb">secret d\'authentification : %1$s octets, 16 attendu</string>
     <string name="sections_indisponibles_abb861">Sections indisponibles :</string>
     <string name="selection_d7eeed">Sélection…</string>

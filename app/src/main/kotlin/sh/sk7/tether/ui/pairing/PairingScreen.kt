@@ -74,6 +74,7 @@ fun PairingScreen(
     state: PairingUiState,
     onAuthorize: () -> Unit,
     onRefuse: () -> Unit,
+    onScan: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val demande = state.demande
@@ -103,6 +104,12 @@ fun PairingScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TetherTextMuted,
             )
+            // Le scanner integre : c'est la porte d'entree normale quand l'utilisateur a
+            // le terminal sous les yeux. Le deep link `opencode://pair` reste l'autre
+            // chemin, scanne par n'importe quelle application.
+            Button(onClick = onScan, modifier = Modifier.padding(top = Spacing.md)) {
+                Text(stringResource(R.string.scanner_qr_1f4e1d))
+            }
         }
         return
     }

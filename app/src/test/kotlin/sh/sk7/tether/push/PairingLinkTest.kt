@@ -138,4 +138,49 @@ class PairingLinkTest {
         assertEquals("https://exemple.fr", demande?.server)
         assertEquals(jetonValide, demande?.token)
     }
+
+    // ---- Le texte brut d'un QR, entre du scanner integre ----
+
+    @Test
+    fun `le texte du QR se lit comme le deep link`() {
+        // Le scanner n'a qu'une chaine : pas d'`Uri`, pas d'`Intent`. On exige le meme
+        // resultat que le chemin Android, sinon les deux portes d'appairage divergeraient.
+        val demande = PairingLink.depuisTexte("opencode://pair?s=https%3A%2F%2Fexemple.fr&t=$jetonValide")
+        assertEquals("https://exemple.fr", demande?.server)
+        assertEquals(jetonValide, demande?.token)
+    }
+
+    @Test
+    fun `le texte d un QR se lit meme avec des espaces ou un retour ligne autour`() {
+        // Certains encodeurs terminent la charge par un saut de ligne.
+        val demande = PairingLink.depuisTexte("\n  opencode://pair?s=https%3A%2F%2Fexemple.fr&t=$jetonValide\n")
+        assertEquals("https://exemple.fr", demande?.server)
+    }
+
+    @Test
+    fun `le QR de credentials n est pas un lien d appairage`() {
+        // Les deux QR vivent dans le meme terminal et se ressemblent. Celui-ci porte le
+        // mot de passe du serveur : il ne doit jamais entrer par la porte de l'appairage.
+        val credentials = """{"urls":["https://exemple.fr"],"username":"opencode","password":"secret"}"""
+        assertNull(PairingLink.depuisTexte(credentials))
+    }
+
+    @Test
+    fun `un deep link de session n est pas un lien d appairage`() {
+        assertNull(PairingLink.depuisTexte("opencode://session/ses_abc"))
+    }
+
+    @Test
+    fun `un serveur en clair est refuse meme scanne`() {
+        // La validation est la meme que par deep link : le scanner ne doit pas etre une
+        // porte derobee vers un serveur non chiffre.
+        assertNull(PairingLink.depuisTexte("opencode://pair?s=http%3A%2F%2Fexemple.fr&t=$jetonValide"))
+    }
+
+    @Test
+    fun `un texte quelconque ne leve pas`() {
+        assertNull(PairingLink.depuisTexte(""))
+        assertNull(PairingLink.depuisTexte("bonjour"))
+        assertNull(PairingLink.depuisTexte("https://exemple.fr"))
+    }
 }

@@ -47,6 +47,7 @@ import com.composables.icons.lucide.GitBranch
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.LogOut
+import com.composables.icons.lucide.QrCode
 import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Server
 import com.composables.icons.lucide.Shuffle
@@ -114,6 +115,8 @@ fun SettingsScreen(
     onOpenWorktrees: () -> Unit = {},
     /** L'explorateur de fichiers : verifier un chemin avant de l'envoyer. */
     onOpenFiles: () -> Unit = {},
+    /** L'appairage d'un appareil : autoriser les notifications, en scannant un QR. */
+    onOpenPairing: () -> Unit = {},
     onDisconnected: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -225,6 +228,12 @@ fun SettingsScreen(
                             detail = stringResource(R.string.verifier_chemin_lire_e96d96),
                             icon = Lucide.FolderOpen,
                             onClick = onOpenFiles,
+                        )
+                        ActionRow(
+                            label = stringResource(R.string.appairer_appareil_3c7d18),
+                            detail = stringResource(R.string.appairer_appareil_detail_84f2ab),
+                            icon = Lucide.QrCode,
+                            onClick = onOpenPairing,
                         )
                         ActionRow(
                             label = stringResource(R.string.propos_5345ad),

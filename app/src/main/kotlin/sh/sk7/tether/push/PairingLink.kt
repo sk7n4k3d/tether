@@ -97,6 +97,27 @@ object PairingLink {
     fun depuisUri(scheme: String?, host: String?, query: String?): Demande? =
         fromParts(scheme, host, decoderQuery(query) ?: return null)
 
+    /**
+     * Analyse le **texte brut** d'un QR : `opencode://pair?s=…&t=…`.
+     *
+     * C'est l'entree du scanner integre, qui ne dispose que d'une chaine — pas d'un
+     * `android.net.Uri` ni d'un `Intent`. On decoupe avec `java.net.URI` (JDK, donc
+     * testable) et on delegue a [depuisUri] : une **seule** validation pour les deux
+     * chemins, sinon ils finiraient par diverger sur ce que l'app accepte.
+     *
+     * ⚠️ On passe `rawQuery`, pas `query` : [depuisUri] decode lui-meme, et lui donner
+     * une query deja decodee reviendrait a decoder deux fois — un `%25` deviendrait un
+     * `%` puis un octet invalide.
+     */
+    fun depuisTexte(brut: String): Demande? {
+        val uri = try {
+            java.net.URI(brut.trim())
+        } catch (_: Exception) {
+            return null
+        }
+        return depuisUri(uri.scheme, uri.host, uri.rawQuery)
+    }
+
     /** `a=b&c=d` vers une map, ou `null` si la query est malformee. */
     private fun decoderQuery(brute: String?): Map<String, String>? {
         if (brute.isNullOrEmpty()) return emptyMap()
