@@ -3,121 +3,116 @@ import assert from "node:assert/strict"
 
 import { rpc, adresseServeur, declarationsCommandes } from "./tui-logic.ts"
 
-/** Un `fetch` factice qui repond ce qu'on lui dit, et note ce qu'il a recu. */
-function fauxFetch(reponse) {
+/**
+ * Un `client` factice qui expose `rpc(definition)`, comme l'`OpenCodeClient` du TUI.
+ *
+ * ⚠️ C'est la forme **reelle**, pas un `fetch` : la version precedente testait un `fetch`
+ * factice, donc validait le bug. Le client porte l'authentification, et c'est ce passage
+ * qu'on verifie ici.
+ */
+function fauxClient(resultat = {}) {
   const appels = []
-  const f = async (url, options) => {
-    appels.push({ url, options })
-    return {
-      ok: reponse.ok ?? true,
-      status: reponse.status ?? 200,
-      json: async () => reponse.corps ?? { output: {} },
-    }
-  }
-  return { f, appels }
+  const rpc = (definition) =>
+    Object.fromEntries(
+      Object.keys(definition.methods).map((name) => [
+        name,
+        async (input, options) => {
+          appels.push({ id: definition.id, method: name, input, options })
+          if (resultat.erreur) throw resultat.erreur
+          return resultat.corps ?? {}
+        },
+      ]),
+    )
+  return { client: { rpc }, appels }
 }
 
-/** Un `fetch` dont `json()` echoue, comme le fait une page d'erreur de proxy. */
-const fetchCassee = async () => ({
-  ok: false,
-  status: 502,
-  json: async () => {
-    throw new Error("pas du JSON")
-  },
-})
+const ctxDe = (client, directory) => ({ client, location: directory ? { directory } : undefined })
 
-const ctxDe = (config, directory) => ({
-  client: { getConfig: () => config },
-  location: directory ? { directory } : undefined,
-})
+test("rpc passe par le client, avec l'identifiant du RPC et le repertoire", async () => {
+  const { client, appels } = fauxClient({ corps: { ok: true } })
+  const sortie = await rpc(ctxDe(client, "/home/user/projet"), "devices", {})
 
-test("rpc construit l'URL avec le repertoire, et sans barre finale en trop", async () => {
-  const { f, appels } = fauxFetch({ corps: { output: { ok: true } } })
-  await rpc(ctxDe({ baseUrl: "http://127.0.0.1:4096/" }, "/home/user/projet"), "devices", {}, { fetch: f })
-
-  assert.equal(appels[0].url, "http://127.0.0.1:4096/api/rpc/tether/devices?directory=%2Fhome%2Fuser%2Fprojet")
-  assert.equal(appels[0].options.method, "POST")
-  assert.deepEqual(JSON.parse(appels[0].options.body), { input: {} })
+  assert.deepEqual(sortie, { ok: true })
+  assert.equal(appels.length, 1)
+  assert.equal(appels[0].id, "tether")
+  assert.equal(appels[0].method, "devices")
+  assert.deepEqual(appels[0].input, {})
+  assert.deepEqual(appels[0].options, { location: { directory: "/home/user/projet" } })
 })
 
 test("rpc omet le repertoire quand il n'y en a pas", async () => {
-  const { f, appels } = fauxFetch({ corps: { output: {} } })
-  await rpc(ctxDe({ baseUrl: "http://127.0.0.1:4096" }), "devices", {}, { fetch: f })
-  assert.equal(appels[0].url, "http://127.0.0.1:4096/api/rpc/tether/devices")
+  const { client, appels } = fauxClient()
+  await rpc(ctxDe(client), "devices", {})
+  assert.equal(appels[0].options, undefined)
 })
 
-test("rpc resout l'authentification comme le SDK : identifiants bruts, prefixe en Basic", async () => {
-  const { f, appels } = fauxFetch({ corps: { output: {} } })
-  const config = {
-    baseUrl: "http://x",
-    auth: async () => "opencode:motdepasse",
-  }
-  await rpc(ctxDe(config), "devices", {}, { fetch: f })
-
-  const attendu = `Basic ${btoa("opencode:motdepasse")}`
-  assert.equal(appels[0].options.headers.Authorization, attendu)
-  assert.equal(appels[0].options.headers["Content-Type"], "application/json")
-})
-
-test("rpc n'invente pas d'authentification quand il n'y en a pas", async () => {
-  const { f, appels } = fauxFetch({ corps: { output: {} } })
-  await rpc(ctxDe({ baseUrl: "http://x" }), "devices", {}, { fetch: f })
-  assert.equal("Authorization" in appels[0].options.headers, false)
-})
-
-test("rpc accepte un en-tete deja forme, sans le prefixer deux fois", async () => {
-  const { f, appels } = fauxFetch({ corps: { output: {} } })
-  await rpc(ctxDe({ baseUrl: "http://x", auth: "Basic deja-la" }), "devices", {}, { fetch: f })
-  assert.equal(appels[0].options.headers.Authorization, "Basic deja-la")
-})
-
-test("rpc remonte le message de l'erreur declaree, pas un code HTTP nu", async () => {
+test("rpc remonte l'erreur declaree, telle que le client la leve", async () => {
   // C'est tout l'interet des erreurs nommees : l'utilisateur doit pouvoir distinguer
-  // « QR expire » de « serveur injoignable ».
-  const { f } = fauxFetch({
-    ok: false,
-    status: 400,
-    corps: { type: "unpaired", message: "jeton d'appairage expire ou deja utilise" },
-  })
+  // « QR expire » de « serveur injoignable ». `makeRpc` leve `{ type, message }`, pas un
+  // `Error` — et `tui.tsx` affiche `message`.
+  const { client } = fauxClient({ erreur: { type: "unpaired", message: "jeton d'appairage expire ou deja utilise" } })
+  // ⚠️ `makeRpc` leve un objet `{ type, message }`, pas un `Error` : un `assert.rejects`
+  // avec une RegExp testerait `String(objet)` = `[object Object]`. On lit `message`.
   await assert.rejects(
-    () => rpc(ctxDe({ baseUrl: "http://x" }), "subscribe", {}, { fetch: f }),
-    /expire ou deja utilise/,
+    () => rpc(ctxDe(client), "subscribe", {}),
+    (cause) => {
+      assert.equal(cause.type, "unpaired")
+      assert.match(cause.message, /expire ou deja utilise/)
+      return true
+    },
   )
 })
 
-test("rpc retombe sur un message lisible quand le corps n'est pas du JSON", async () => {
-  await assert.rejects(
-    () => rpc(ctxDe({ baseUrl: "http://x" }), "devices", {}, { fetch: fetchCassee }),
-    /HTTP 502/,
-  )
+test("rpc refuse un client sans rpc, au lieu de partir sans authentification", async () => {
+  // ⚠️ C'est le bug d'origine : sans `rpc`, un `fetch` sans en-tete `Authorization`
+  // partait, et le serveur repondait 401. On echoue ici, avec une raison lisible.
+  await assert.rejects(() => rpc(ctxDe({}), "pair", {}), /ne sait pas appeler/)
 })
 
-test("adresseServeur : la configuration gagne sur la detection", () => {
-  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
-  assert.equal(adresseServeur(ctx), "http://127.0.0.1:4096")
+test("rpc refuse une methode que la definition ne declare pas", async () => {
+  const { client } = fauxClient()
+  await assert.rejects(() => rpc(ctxDe(client), "inconnu", {}), /inconnu/)
+})
+
+test("adresseServeur : la configuration gagne sur le defaut", () => {
+  assert.equal(adresseServeur(undefined, {}), "http://127.0.0.1:4096")
   // Un telephone ne peut pas joindre 127.0.0.1 : c'est pourquoi la configuration existe.
-  assert.equal(adresseServeur(ctx, { serverUrl: "https://opencode.exemple.fr" }), "https://opencode.exemple.fr")
-  assert.equal(adresseServeur(ctx, { tether: { serverUrl: "https://nid.exemple.fr/" } }), "https://nid.exemple.fr")
-  // Une configuration vide ne doit pas casser la detection.
-  assert.equal(adresseServeur(ctx, { serverUrl: "" }), "http://127.0.0.1:4096")
+  assert.equal(adresseServeur({ serverUrl: "https://opencode.exemple.fr" }), "https://opencode.exemple.fr")
+  assert.equal(adresseServeur({ tether: { serverUrl: "https://nid.exemple.fr/" } }), "https://nid.exemple.fr")
+  // Une configuration vide ne doit pas casser le defaut.
+  assert.equal(adresseServeur({ serverUrl: "" }, {}), "http://127.0.0.1:4096")
 })
 
 test("adresseServeur : l'environnement complete, quand le plugin est depose tel quel", () => {
   // ⚠️ Un plugin depose dans `~/.config/opencode/plugins/` recoit `options = {}` — mesure
   // le 2026-09-28, pas suppose. Sans l'environnement, cette adresse n'aurait aucun moyen
   // d'etre reglee, et le QR porterait un `127.0.0.1` que le telephone ne peut pas joindre.
-  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
-  assert.equal(adresseServeur(ctx, undefined, {}), "http://127.0.0.1:4096")
+  assert.equal(adresseServeur(undefined, {}), "http://127.0.0.1:4096")
   assert.equal(
-    adresseServeur(ctx, undefined, { TETHER_SERVER_URL: "https://opencode.exemple.fr/" }),
+    adresseServeur(undefined, { TETHER_SERVER_URL: "https://opencode.exemple.fr/" }),
     "https://opencode.exemple.fr",
   )
   // La configuration explicite passe avant l'environnement : c'est elle qui est
   // intentionnelle.
   assert.equal(
-    adresseServeur(ctx, { serverUrl: "https://choisi.fr" }, { TETHER_SERVER_URL: "https://env.fr" }),
+    adresseServeur({ serverUrl: "https://choisi.fr" }, { TETHER_SERVER_URL: "https://env.fr" }),
     "https://choisi.fr",
   )
+})
+
+test("adresseServeur : le reglage du TUI gagne sur la config et l'environnement", () => {
+  // Le geste recent, explicite, doit gagner.
+  assert.equal(
+    adresseServeur({ serverUrl: "https://config.fr" }, { TETHER_SERVER_URL: "https://env.fr" }, { serverUrl: "https://tui.fr/" }),
+    "https://tui.fr",
+  )
+})
+
+test("adresseServeur : une valeur vide dans le magasin est une negation, pas une valeur", () => {
+  // Le TUI retire une option quand on la remet a son defaut ; une chaine vide doit
+  // laisser la config parler, pas ecraser avec une adresse inexistante.
+  assert.equal(adresseServeur({ serverUrl: "https://config.fr" }, {}, { serverUrl: "" }), "https://config.fr")
+  assert.equal(adresseServeur({}, {}, { serverUrl: "   " }), "http://127.0.0.1:4096")
 })
 
 test("les trois commandes sont declarees, et visibles la ou il faut", () => {
@@ -139,21 +134,4 @@ test("les trois commandes sont declarees, et visibles la ou il faut", () => {
   // La liste d'appareils reste en palette seulement : c'est une action de nettoyage, pas
   // une action qu'on lance par megarde en tapant /tether-appareils.
   assert.equal("slash" in par("tether.devices"), false, "la liste d'appareils reste en palette")
-})
-
-test("adresseServeur : le reglage du TUI gagne sur la config et l'environnement", () => {
-  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
-  // Le geste recent, explicite, doit gagner.
-  assert.equal(
-    adresseServeur(ctx, { serverUrl: "https://config.fr" }, { TETHER_SERVER_URL: "https://env.fr" }, { serverUrl: "https://tui.fr/" }),
-    "https://tui.fr",
-  )
-})
-
-test("adresseServeur : une valeur vide dans le magasin est une negation, pas une valeur", () => {
-  // Le TUI retire une option quand on la remet a son defaut ; une chaine vide doit
-  // laisser la config parler, pas ecraser la detection par une adresse inexistante.
-  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
-  assert.equal(adresseServeur(ctx, { serverUrl: "https://config.fr" }, {}, { serverUrl: "" }), "https://config.fr")
-  assert.equal(adresseServeur(ctx, {}, {}, { serverUrl: "   " }), "http://127.0.0.1:4096")
 })

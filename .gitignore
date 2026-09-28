@@ -4,6 +4,7 @@ local.properties
 .gradle/
 .kotlin/
 build/
+node_modules/
 backup-owui/
 logs/
 

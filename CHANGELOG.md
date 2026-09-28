@@ -27,6 +27,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Pairing from the TUI failed with `RPC pair : HTTP 401`: the plugin called
+  `/api/rpc/tether/...` with a hand-rolled `fetch` that resolved authentication from
+  `ctx.client.getConfig()` — a method the TUI client does not have. Every request went
+  out without an `Authorization` header. It now calls the client's own `rpc`, which
+  carries the session's credentials
 - The TUI plugin failed to load with `Keymap.Provider is missing`: `keymap.layer` was
   called from `setup`, which runs after an `await` and therefore outside the component
   tree. It now runs from a slot that is mounted inside it.

@@ -6,76 +6,62 @@
  * transtypage de Node ne retire pas le JSX — donc mettre la logique dans le `.tsx` la
  * rendrait intestable. C'est la seule raison de ce decoupage.
  *
- * Aucune dependance au TUI non plus : `rpc` et `adresseServeur` ne Takes qu'un objet
- * decrivant ce dont ils ont besoin, ce qui permet de les tester avec un `fetch` factice.
+ * Aucune dependance au TUI non plus : `rpc` et `adresseServeur` ne prennent qu'un objet
+ * decrivant ce dont ils ont besoin, ce qui permet de les tester avec un client factice.
  */
+
+import { Tether } from "./rpc.ts"
 
 /** Ce que `rpc` attend du contexte. Le minimum, pour pouvoir le simuler. */
 export interface RpcContext {
-  client: { getConfig?: () => { baseUrl?: string; auth?: unknown } }
+  client: object
   location?: { directory?: string } | undefined
 }
 
 /**
  * Appelle le RPC du plugin serveur.
  *
- * Le SDK genere ne connait pas `/api/rpc` — la route n'est pas dans son schema — donc
- * `client.get()` ne lui mettrait pas d'authentification. On passe par `fetch` et on
- * **resout nous-memes** le jeton, avec la meme convention que le SDK : la fonction
- * `auth` renvoie des identifiants bruts, et le schema decide du prefixe.
+ * ## Pourquoi `client.rpc`, et pas un `fetch` maison
  *
- * `fetch` est injectable : c'est ce qui rend la fonction testable, et c'est aussi ce qui
- * evite d'avoir a lever un serveur pour verifier une URL.
+ * La premiere version faisait un `fetch` sur `/api/rpc/tether/...` et resolvait
+ * l'authentification elle-meme a partir de `ctx.client.getConfig()`. **Cette methode
+ * n'existe pas** sur le client expose au TUI : `ctx.client` est l'`OpenCodeClient`, un
+ * objet d'operations, sans `getConfig`. Le `fetch` partait donc **sans en-tete
+ * `Authorization`**, et le serveur — qui exige l'auth basique des qu'un mot de passe est
+ * pose — repondait `401`. C'etait le bug : « Appairage impossible : RPC pair : HTTP 401 ».
+ *
+ * Le client porte deja l'authentification de la session qui l'a construit, et expose
+ * `/api/rpc` : `client.rpc(definition)` rend une fonction par methode qui appelle
+ * `rpc.call` **avec les en-tetes du client**. On l'utilise plutot que de reconstruire un
+ * transport qui ne peut connaitre ni l'URL du serveur ni son mot de passe.
  */
-export async function rpc<T>(
-  ctx: RpcContext,
-  method: string,
-  input: unknown,
-  options: { fetch?: typeof fetch } = {},
-): Promise<T> {
-  const config = ctx.client?.getConfig?.() ?? {}
-  const base = String(config.baseUrl ?? "http://127.0.0.1:4096").replace(/\/+$/, "")
-  const repertoire = ctx.location?.directory
-  const url = `${base}/api/rpc/tether/${method}${repertoire ? `?directory=${encodeURIComponent(repertoire)}` : ""}`
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  const auth = config.auth as any
-  if (typeof auth === "function") {
-    const identifiants = await auth({ type: "http", in: "header", name: "Authorization", scheme: "basic" })
-    if (identifiants) headers.Authorization = `Basic ${btoa(identifiants)}`
-  } else if (typeof auth === "string" && auth.length > 0) {
-    // Le SDK renvoie soit des identifiants bruts (a prefixer), soit un en-tete complet.
-    headers.Authorization = auth.includes(" ") ? auth : `Basic ${btoa(auth)}`
+export async function rpc<T>(ctx: RpcContext, method: string, input: unknown): Promise<T> {
+  const client = ctx.client as {
+    rpc?: (definition: unknown) => Record<string, (input: unknown, options?: unknown) => Promise<unknown>>
   }
-
-  const envoyer = options.fetch ?? fetch
-  const reponse = await envoyer(url, { method: "POST", headers, body: JSON.stringify({ input }) })
-  const corps: any = await reponse.json().catch(() => ({}))
-  if (!reponse.ok) {
-    // Les erreurs declarees sortent en 400 avec leur `type` et leur message : on les
-    // remonte telles quelles, plutot que de les reduire a « HTTP 500 » — c'est ce qui
-    // permet a l'utilisateur de distinguer « QR expire » de « serveur injoignable ».
-    throw new Error(String(corps?.message ?? `RPC ${method} : HTTP ${reponse.status}`))
+  const appeler = client?.rpc?.(Tether)?.[method]
+  if (typeof appeler !== "function") {
+    throw new Error(`le client ne sait pas appeler le RPC « ${method} »`)
   }
-  return corps.output as T
+  const options = ctx.location?.directory ? { location: { directory: ctx.location.directory } } : undefined
+  return (await appeler(input, options)) as T
 }
 
 /**
  * L'adresse a mettre dans le QR.
  *
- * `options.serverUrl` gagne toujours : c'est la seule valeur forcement joignable depuis
- * un telephone. Detecter le `baseUrl` du TUI ne convient qu'en developpement local — et
- * le dire ici evite d'encoder un `127.0.0.1` dans un QR destine a un autre appareil, ce
- * qui est le genre de faute qui ne se revele qu'a la premiere tentative de scan.
+ * C'est la seule valeur forcement joignable depuis un telephone, et le client ne peut pas
+ * la fournir : `OpenCodeClient` n'expose ni son `baseUrl` ni son mot de passe. Il n'y a
+ * donc pas de « detection du TUI » — il y a trois sources, et un dernier recours qui ne
+ * vaut que pour un serveur local.
  */
 export function adresseServeur(
-  ctx: RpcContext,
   options?: Record<string, any> | undefined,
   env: NodeJS.ProcessEnv = process.env,
   stores: Record<string, string | undefined> = {},
 ): string {
-  // Quatre couches : ce que l'utilisateur a regle dans le TUI, la config opencode
-  // (forme plate ou objet), puis l'environnement, puis la detection du TUI.
+  // Trois couches : ce que l'utilisateur a regle dans le TUI, la config opencode (forme
+  // plate ou objet), puis l'environnement.
   //
   // ⚠️ Le magasin passe **avant** la config : un reglage fait dans l'interface est un
   // geste explicite et recent, il doit gagner sur un fichier ecrit il y a six mois. Mais
@@ -86,7 +72,10 @@ export function adresseServeur(
     ? depuisStore
     : options?.serverUrl ?? options?.tether?.serverUrl ?? env.TETHER_SERVER_URL
   if (typeof configure === "string" && configure.length > 0) return configure.replace(/\/+$/, "")
-  return String(ctx.client?.getConfig?.()?.baseUrl ?? "http://127.0.0.1:4096").replace(/\/+$/, "")
+  // Dernier recours : l'adresse locale du serveur. ⚠️ Un telephone ne peut pas joindre
+  // `127.0.0.1` : un QR qui la porte ne scanne rien. C'est pourquoi `TETHER_SERVER_URL`
+  // (ou le reglage du TUI) existe, et pourquoi ce defaut n'est pas une reponse.
+  return "http://127.0.0.1:4096"
 }
 
 /**

@@ -53,7 +53,12 @@ import {
  * c'est ce qui rend le fichier lisible sans connaitre tout le SDK.
  */
 type Ctx = {
-  client: { getConfig?: () => { baseUrl?: string; auth?: unknown } }
+  /**
+   * L'`OpenCodeClient` de la session. C'est lui qui porte l'authentification : `rpc()`
+   * l'utilise pour joindre le plugin serveur, au lieu de reconstruire un transport qui
+   * ne connaitrait ni l'URL ni le mot de passe (le `401` venait de la).
+   */
+  client: object
   location?: { directory?: string } | undefined
   options?: Record<string, any> | undefined
   theme: any
@@ -83,7 +88,7 @@ export default {
     const appairer = async () => {
       let emis: { link: string; expiresInMs: number }
       try {
-        emis = await rpc<{ link: string; expiresInMs: number }>(ctx, "pair", { server: adresseServeur(ctx, ctx.options) })
+        emis = await rpc<{ link: string; expiresInMs: number }>(ctx, "pair", { server: adresseServeur(ctx.options) })
       } catch (cause) {
         ctx.ui.toast.show({ message: `Appairage impossible : ${(cause as Error).message}`, variant: "error" })
         return
