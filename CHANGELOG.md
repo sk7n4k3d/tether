@@ -16,6 +16,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pairing by QR with a mandatory confirmation screen showing the server address
 - Distributor selection in-app, for any UnifiedPush provider
 - Automatic re-declaration of a rotated push endpoint, without a new pairing token
+- Six selectable accent colours, with brightness computed to keep the 3:1 contrast ratio
+- English and French, following the phone's language, overridable in Settings
+- `/tether-config` in the TUI, writing to the plugin's own store rather than
+  `opencode.jsonc`
+- Instrumentation tests: the contrast measured on the device, the locale actually
+  applied to the context
+
+### Fixed
+
+- The TUI plugin failed to load with `Keymap.Provider is missing`: `keymap.layer` was
+  called from `setup`, which runs after an `await` and therefore outside the component
+  tree. It now runs from a slot that is mounted inside it.
+- The accent colour was a compile-time constant in 26 files; it is now a
+  `CompositionLocal` fed by the user's choice, so it survives a restart and can change
 
 ### Security
 

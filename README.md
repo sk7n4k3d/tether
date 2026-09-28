@@ -104,9 +104,35 @@ human confirmation.
 
 ### Interface
 - **Material 3**, dark theme only — no half-done light mode
+- **Six accent colours**, and the brightness is computed for you
+- **English and French**, following the phone's language by default
 - **Streaming and history are separate items** in the list, not two renderings of one
 - **Offline screen** that says the server is unreachable instead of showing an empty list
 - **Single-server model**, the way OpenCode itself scopes a directory
+
+#### The accent colour is a hue, not a value
+
+You pick a hue; the app computes the brightness. Six are offered, and the one you
+choose is adjusted until it clears the **3:1** contrast ratio against the app's own
+backgrounds — the threshold WCAG sets for interface elements rather than text.
+
+This is deliberate. A free colour picker hands out values nobody can evaluate: a pale
+accent on a dark background, or a hue close to the background, and nothing looks wrong
+until someone who cannot read it complains. Letting the hue be free and deriving the
+brightness is the only way to offer the choice without offering an unreadable screen.
+
+A test fails the build if any accent drops below the threshold, so an unreadable one
+cannot be merged.
+
+#### Language
+
+The app follows the phone's language. You can override that in Settings, and on
+Android 13 and later the app also appears in **Settings → Apps → Languages**, so the
+system can switch it too.
+
+The choice is applied before the first screen is composed, which is why the app
+restarts its activity on a change — a language is not something that can be swapped
+into a tree that already exists.
 
 ---
 
