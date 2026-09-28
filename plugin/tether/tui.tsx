@@ -1,3 +1,5 @@
+/** @jsxImportSource @opentui/solid */
+
 /**
  * Le plugin TUI de Tether — l'appairage par QR, et la liste des appareils.
  *
@@ -34,17 +36,17 @@
 
 import { createSignal, onCleanup } from "solid-js"
 
-import { qrText } from "./qr.js"
-import { rpc, adresseServeur, declarationsCommandes } from "./tui-logic.js"
-import { OPTIONS, valider, afficher, appliquer, configInitiale } from "./tui-config.js"
-import type { ConfigStockee } from "./tui-config.js"
+import { qrText } from "./qr.ts"
+import { rpc, adresseServeur, declarationsCommandes } from "./tui-logic.ts"
+import { OPTIONS, valider, afficher, appliquer, configInitiale } from "./tui-config.ts"
+import type { ConfigStockee } from "./tui-config.ts"
 import {
   nomAppareil,
   optionsAppareils,
   compteARebours,
   AUCUN_APPAREIL,
   type Appairage,
-} from "./ui-model.js"
+} from "./ui-model.ts"
 
 /**
  * La forme du contexte telle qu'on l'utilise. Le plugin n'en depend qu'a travers elle :
