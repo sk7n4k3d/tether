@@ -10,14 +10,26 @@
     "`opencode plugin add`, qui lit le champ `name` puis resout `<name>/server`,",
     "`<name>/tui` et `<name>/rpc` (voir `PluginHost.resolve`).",
     "",
-    "Il ne declare aucune dependance : le plugin n'en a aucune. Le client Android",
-    "est un projet Gradle a cote, et n'a rien a voir avec npm — `private: true`",
-    "l'empeche d'aboutir sur un registre par erreur.",
+    "Il ne declare aucune dependance **pour le serveur** : le plugin n'en a aucune, et le",
+    "client Android est un projet Gradle a cote — `private: true` l'empeche d'aboutir sur",
+    "un registre par erreur.",
     "",
-    "Les `exports` sont explicites, et c'est volontaire. Sans eux, la resolution",
-    "devine l'extension : le fichier du TUI est `tui.tsx`, qu'aucune resolution",
-    "par nom court ne trouve. Nommer chaque point d'entree evite cette dependance",
-    "a la convention d'extension du runner."
+    "Les dependances ci-dessous ne servent **qu'au TUI**, et sont requises. Voir",
+    "`plugin/tether/tsconfig.json` pour pourquoi le JSX ne peut pas se transpiler tout",
+    "seul.",
+    "",
+    "⚠️ Elles sont en `dependencies` et pas en `peerDependencies` parce qu'un plugin",
+    "installe dans son propre `node_modules` ne voit pas les dependances du TUI. Ce sont",
+    "exactement les memes versions que celles que le TUI expose en `peerDependencies`",
+    "(`@opencode/plugin`), donc les deux resolvations donnent le meme module.",
+    "",
+    "`solid-js` est requis par la logique, et se lit directement. `@opentui/solid` est",
+    "requis par le **transpiler** : c'est la source JSX du TUI, et Bun l'injecte dans",
+    "chaque fichier `.tsx` qu'il compile.",
+    "",
+    "Les versions sont des planchers stricts (`>=`), pas des equivalences : le TUI peut",
+    "monter d'une version, et un plugin qui figerait une plage casserait a ce moment-la",
+    "sans que sa propre version change."
   ],
   "exports": {
     "./server": "./plugin/tether/index.ts",
@@ -25,10 +37,15 @@
     "./tui": "./plugin/tether/tui.tsx"
   },
   "files": [
-    "plugin/tether"
+    "plugin/tether",
+    "tsconfig.json"
   ],
   "scripts": {
     "test": "node --experimental-strip-types --test plugin/tether/*.test.mjs"
+  },
+  "dependencies": {
+    "@opentui/solid": ">=0.5.10",
+    "solid-js": ">=1.9.0"
   },
   "engines": {
     "node": ">=22"

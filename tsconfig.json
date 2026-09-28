@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "//": [
+    "Ce fichier ne sert pas au typage : aucun `tsc` ne passe sur ce depot. Il existe",
+    "pour le **transpiler** de Bun, qui lit le `tsconfig.json` du projet pour choisir la",
+    "source JSX des `.tsx`.",
+    "",
+    "## Pourquoi il est a la racine, et pas dans `plugin/tether/`",
+    "",
+    "Bun ne lit le tsconfig que depuis la **racine du projet**. Un `tsconfig.json` pose",
+    "dans le dossier du plugin est ignore — verifie : avec le fichier a cote de `tui.tsx`,",
+    "Bun transpile toujours en React et echoue sur",
+    "`Cannot find package 'react'`.",
+    "",
+    "## Ce que se passe sans ce fichier",
+    "",
+    "    Error: Cannot find package 'react' imported from .../tui.tsx",
+    "",
+    "Le TUI n'est pas en React : il est en Solid, et sa source JSX est",
+    "`@opentui/solid` — la meme valeur que `packages/tui/tsconfig.json` cote opencode.",
+    "Sans ce fichier, le meme JSX se transforme avec deux runtimes differents selon",
+    "l'executable qui le charge.",
+    "",
+    "## Pourquoi `preserve` et pas `react-jsx`",
+    "",
+    "`preserve` laisse la source JSX intacte et la delegue au runtime de l'hote, qui sait",
+    "rendre du Solid. C'est la valeur qu'utilise le TUI. Un transpiler generique ne peut",
+    "pas deviner le runtime d'un hote : il faut le dire.",
+    "",
+    "⚠️ Ce tsconfig n'est **pas** inclus dans le test d'installation, parce qu'il ne sert",
+    "qu'a la transpilation et ne doit pas interferer avec les assertions de type."
+  ],
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
+  }
+}
