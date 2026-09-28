@@ -102,6 +102,24 @@ test("adresseServeur : la configuration gagne sur la detection", () => {
   assert.equal(adresseServeur(ctx, { serverUrl: "" }), "http://127.0.0.1:4096")
 })
 
+test("adresseServeur : l'environnement complete, quand le plugin est depose tel quel", () => {
+  // ⚠️ Un plugin depose dans `~/.config/opencode/plugins/` recoit `options = {}` — mesure
+  // le 2026-09-28, pas suppose. Sans l'environnement, cette adresse n'aurait aucun moyen
+  // d'etre reglee, et le QR porterait un `127.0.0.1` que le telephone ne peut pas joindre.
+  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
+  assert.equal(adresseServeur(ctx, undefined, {}), "http://127.0.0.1:4096")
+  assert.equal(
+    adresseServeur(ctx, undefined, { TETHER_SERVER_URL: "https://opencode.exemple.fr/" }),
+    "https://opencode.exemple.fr",
+  )
+  // La configuration explicite passe avant l'environnement : c'est elle qui est
+  // intentionnelle.
+  assert.equal(
+    adresseServeur(ctx, { serverUrl: "https://choisi.fr" }, { TETHER_SERVER_URL: "https://env.fr" }),
+    "https://choisi.fr",
+  )
+})
+
 test("les deux commandes sont declarees, et visibles la ou il faut", () => {
   const commandes = declarationsCommandes()
   assert.deepEqual(commandes.map((c) => c.id), ["tether.pair", "tether.devices"])

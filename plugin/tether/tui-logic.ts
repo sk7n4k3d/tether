@@ -68,8 +68,12 @@ export async function rpc<T>(
  * le dire ici evite d'encoder un `127.0.0.1` dans un QR destine a un autre appareil, ce
  * qui est le genre de faute qui ne se revele qu'a la premiere tentative de scan.
  */
-export function adresseServeur(ctx: RpcContext, options?: Record<string, any> | undefined): string {
-  const configure = options?.serverUrl ?? options?.tether?.serverUrl
+export function adresseServeur(
+  ctx: RpcContext,
+  options?: Record<string, any> | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configure = options?.serverUrl ?? options?.tether?.serverUrl ?? env.TETHER_SERVER_URL
   if (typeof configure === "string" && configure.length > 0) return configure.replace(/\/+$/, "")
   return String(ctx.client?.getConfig?.()?.baseUrl ?? "http://127.0.0.1:4096").replace(/\/+$/, "")
 }
