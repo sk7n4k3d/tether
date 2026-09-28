@@ -17,6 +17,9 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **L'etat de l'explorateur : ou l'on est, ce qu'on voit, ce qu'on a ouvert.**
@@ -203,7 +206,7 @@ class FilesViewModel @Inject constructor(
                 .onSuccess { bytes ->
                     if (bytes == null) {
                         _state.update {
-                            it.copy(loadingFile = false, error = "Fichier introuvable : $path")
+                            it.copy(loadingFile = false, error = Res.of(R.string.fichier_introuvable_path_003b27))
                         }
                         return@onSuccess
                     }

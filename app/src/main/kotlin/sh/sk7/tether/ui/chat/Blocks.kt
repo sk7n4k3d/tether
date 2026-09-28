@@ -112,7 +112,7 @@ fun ReasoningBlock(
             )
             Icon(
                 imageVector = Lucide.ChevronDown,
-                contentDescription = if (expanded) "Replier le raisonnement" else "Deplier le raisonnement",
+                contentDescription = if (expanded) stringResource(R.string.replier_raisonnement_edce79) else stringResource(R.string.deplier_raisonnement_24ac84),
                 tint = TetherIconMuted,
                 modifier = Modifier
                     .size(14.dp)
@@ -199,7 +199,7 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
             // Statut en TOUTES LETTRES : la couleur seule n'est pas accessible.
             Text(
                 text = when (call.status) {
-                    ToolStatus.Running -> "en cours"
+                    ToolStatus.Running -> stringResource(R.string.cours_db22a7)
                     ToolStatus.Succeeded -> "ok"
                     ToolStatus.Failed -> "echec"
                 },
@@ -220,7 +220,7 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
             if (expandable) {
                 Icon(
                     imageVector = Lucide.ChevronDown,
-                    contentDescription = if (expanded) "Replier la sortie" else "Deplier la sortie",
+                    contentDescription = if (expanded) stringResource(R.string.replier_sortie_3c5195) else stringResource(R.string.deplier_sortie_f1d687),
                     tint = TetherIconMuted,
                     modifier = Modifier
                         .size(14.dp)

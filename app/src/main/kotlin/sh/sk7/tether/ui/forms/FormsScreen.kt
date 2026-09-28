@@ -59,6 +59,7 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Repondre a un formulaire qui bloque l'agent.**
@@ -125,7 +126,7 @@ private fun FormList(
         item(key = "count") {
             Text(
                 text = if (state.forms.size == 1) {
-                    "1 formulaire attend une réponse"
+                    Res.of(R.string.formulaire_attend_reponse_95c199)
                 } else {
                     "${state.forms.size} formulaires attendent une réponse"
                 },
@@ -179,8 +180,8 @@ private fun FormCard(form: FormInfoDto, onClick: () -> Unit) {
         }
         Text(
             text = buildString {
-                append(if (form.fields.size == 1) "1 champ" else "${form.fields.size} champs")
-                if (required > 0) append(" · $required obligatoire" + if (required > 1) "s" else "")
+                append(if (form.fields.size == 1) Res.of(R.string.champ_6c6a0f) else "${form.fields.size} champs")
+                if (required > 0) append(Res.of(R.string.required_obligatoire_368684) + if (required > 1) "s" else "")
             },
             style = TetherDataStyle,
             color = TetherTextSecondary,
@@ -188,7 +189,7 @@ private fun FormCard(form: FormInfoDto, onClick: () -> Unit) {
         // ⚠️ Une elicitation MCP (`sessionID:"global"`) ne vient d'aucune session : le dire evite
         // de croire qu'une conversation est bloquee alors que la question est globale.
         if (form.isGlobal) {
-            Text(stringResource(R.string.question_globale_hors_46c623),
+            Text(Res.of(R.string.question_globale_hors_46c623),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
             )
@@ -222,8 +223,8 @@ private fun FormDetail(
                     color = TetherTextPrimary,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(stringResource(R.string.cochez_recu_ressources_b72d25) +
-                        "la réponse (le serveur exige un acquittement explicite).",
+                Text(Res.of(R.string.cochez_recu_ressources_b72d25) +
+                          " " + stringResource(R.string.reponse_serveur_exige_c2a2d1),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
                 )
@@ -247,7 +248,7 @@ private fun FormDetail(
         if (hidden.isNotEmpty()) {
             item(key = "hidden") {
                 Text(
-                    text = hidden.joinToString(prefix = "Champs fournis par l'agent : ", separator = ", ") { it.label() },
+                    text = hidden.joinToString(prefix = Res.of(R.string.champs_fournis_agent_96cb48), separator = ", ") { it.label() },
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextMuted,
                 )
@@ -440,7 +441,7 @@ private fun ExternalField(field: FormFieldDto) {
         field.url?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = TetherDataStyle, color = LocalAccent.current)
         }
-        Text(stringResource(R.string.sera_confirme_comme_27018c),
+        Text(Res.of(R.string.sera_confirme_comme_27018c),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextMuted,
         )
@@ -453,11 +454,11 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         if (state.fieldErrors.isNotEmpty()) {
             Notice(
-                "Envoi bloqué : " + state.fieldErrors.joinToString(", ") { it.message },
+                Res.of(R.string.envoi_bloque_b58f67) + state.fieldErrors.joinToString(", ") { it.message },
             )
         }
             // La description est lue ici : `semantics` s'execute hors composition.
-            val descEnvoyer_reponse = stringResource(R.string.envoyer_reponse_5783f5)
+            val descEnvoyer_reponse = Res.of(R.string.envoyer_reponse_5783f5)
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
@@ -475,10 +476,10 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
                     strokeWidth = 2.dp,
                     color = LocalAccent.current,
                 )
-                Text(stringResource(R.string.envoi_a62561), style = TetherDataStyle, color = TetherTextSecondary)
+                Text(Res.of(R.string.envoi_a62561), style = TetherDataStyle, color = TetherTextSecondary)
             } else {
                 Icon(Lucide.Send, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(14.dp))
-                Text(stringResource(R.string.envoyer_e9ce24), style = TetherDataStyle, color = LocalAccent.current, fontWeight = FontWeight.SemiBold)
+                Text(Res.of(R.string.envoyer_e9ce24), style = TetherDataStyle, color = LocalAccent.current, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -504,13 +505,13 @@ private fun FieldLabel(field: FormFieldDto): String = buildString {
  */
 private fun FieldSupportingText(field: FormFieldDto): String? {
     val parts = buildList {
-        field.format?.takeIf { it.isNotBlank() }?.let { add("Format : $it") }
-        field.minLength?.let { add("$it caractères minimum") }
-        field.maxLength?.let { add("$it caractères maximum") }
-        field.minBound()?.let { add("Minimum $it") }
-        field.maxBound()?.let { add("Maximum $it") }
-        field.minItems?.let { add("Au moins $it choix") }
-        field.maxItems?.let { add("Au plus $it choix") }
+        field.format?.takeIf { it.isNotBlank() }?.let { add(Res.of(R.string.format_cd1231)) }
+        field.minLength?.let { add(Res.of(R.string.caracteres_minimum_3ae93a)) }
+        field.maxLength?.let { add(Res.of(R.string.caracteres_maximum_5d98f2)) }
+        field.minBound()?.let { add(Res.of(R.string.minimum_cdf7be)) }
+        field.maxBound()?.let { add(Res.of(R.string.maximum_24a511)) }
+        field.minItems?.let { add(Res.of(R.string.moins_choix_2911d8)) }
+        field.maxItems?.let { add(Res.of(R.string.choix_52940f)) }
     }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
@@ -532,7 +533,7 @@ private fun EmptyForms(error: String?, onRetry: () -> Unit) {
             modifier = Modifier.size(32.dp),
         )
         Text(
-            text = if (error != null) "Lecture impossible" else "Aucun formulaire en attente",
+            text = if (error != null) Res.of(R.string.lecture_impossible_f1df6b) else Res.of(R.string.aucun_formulaire_attente_f42b48),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
@@ -540,13 +541,13 @@ private fun EmptyForms(error: String?, onRetry: () -> Unit) {
         Text(
             text = error
                 ?: "L'agent n'attend aucune réponse pour le moment. " +
-                "Un formulaire apparaîtra ici dès qu'il posera une question.",
+                Res.of(R.string.formulaire_apparaitra_ici_58c6e4),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
         if (error != null) {
-            Text(stringResource(R.string.reessayer_895d41),
+            Text(Res.of(R.string.reessayer_895d41),
                 style = TetherDataStyle,
                 color = LocalAccent.current,
                 modifier = Modifier

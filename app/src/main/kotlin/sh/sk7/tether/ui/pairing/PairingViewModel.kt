@@ -22,6 +22,9 @@ import sh.sk7.tether.push.DeviceIdentity
 import sh.sk7.tether.push.DeviceRegistration
 import sh.sk7.tether.push.PairingLink
 import sh.sk7.tether.push.PushSubscription
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /** Ce que l'ecran affiche, et rien de plus. */
 data class PairingUiState(
@@ -179,7 +182,7 @@ class PairingViewModel @Inject constructor(
                         _state.value = PairingUiState(abonnement = abonnement)
                     } else {
                         _state.update {
-                            it.copy(enCours = false, erreur = "Le serveur a refuse l'enregistrement.")
+                            it.copy(enCours = false, erreur = Res.of(R.string.serveur_refuse_enregistrement_c712cf))
                         }
                     }
                 }
@@ -188,9 +191,9 @@ class PairingViewModel @Inject constructor(
                         it.copy(
                             enCours = false,
                             erreur = if (cause is TetherRpcException && cause.jetonPerdu) {
-                                "Ce QR a expire ou a deja servi. Relancez l'appairage."
+                                Res.of(R.string.expire_deja_servi_b13c20)
                             } else {
-                                cause.message ?: "Enregistrement impossible."
+                                cause.message ?: Res.of(R.string.enregistrement_impossible_206044)
                             },
                         )
                     }

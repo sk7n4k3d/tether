@@ -105,7 +105,7 @@ fun ServerScreen(
                                 modifier = Modifier.size(16.dp),
                             )
                             Text(
-                                text = state.version?.let { "opencode $it" } ?: "opencode",
+                                text = state.version?.let { stringResource(R.string.opencode_f119e9) } ?: "opencode",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TetherTextPrimary,
                             )
@@ -352,7 +352,7 @@ private fun NamedLine(
 @Composable
 private fun MoreLine(remaining: Int, what: String) {
     Text(
-        text = "et $remaining autre${if (remaining > 1) "s" else ""} $what",
+        text = stringResource(R.string.remaining_autre_remaining_57e09b, if (remaining > 1) "s" else "", what),
         style = TetherDataStyle,
         color = TetherTextMuted,
     )
@@ -373,7 +373,7 @@ private fun PermissionLine(permission: SavedPermissionDto, onRevoke: () -> Unit)
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = permission.action ?: "(action inconnue)",
+                text = permission.action ?: stringResource(R.string.action_inconnue_ea7b67),
                 style = TetherDataStyle,
                 color = TetherTextPrimary,
                 fontWeight = FontWeight.SemiBold,
@@ -436,7 +436,7 @@ private fun RevokeDialog(
                     )
                 }
                 Text(stringResource(R.string.agent_devra_redemander_a0ffc8) +
-                        "Tu ne pourras la ré-accorder que depuis le serveur.",
+                          " " + stringResource(R.string.pourras_accorder_depuis_fac7df),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherAlert,
                 )

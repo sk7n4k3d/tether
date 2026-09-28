@@ -2,6 +2,9 @@ package sh.sk7.tether.ui.theme
 
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Les accents que l'utilisateur peut choisir, et **comment** les qualiifier.
@@ -40,7 +43,7 @@ enum class Accent(val cle: String, val teinte: Color, val libelle: String) {
     Magenta("magenta", Color(0xFFF472B6), "Rose"),
 
     /** Blanc casse : la seule qui fonctionne en mode clair, quand il y en aura un. */
-    Craie("craie", Color(0xFFD4D4D8), "Gris clair"),
+    Craie("craie", Color(0xFFD4D4D8), Res.of(R.string.gris_clair_62e9ce)),
     ;
 
     companion object {

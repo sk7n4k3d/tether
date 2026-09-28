@@ -1,6 +1,9 @@
 package sh.sk7.tether.push
 
 import sh.sk7.tether.domain.model.PermissionDecision
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Faut-il afficher une notification, et de quelle nature ?**
@@ -195,10 +198,20 @@ val APPROVAL_ACTIONS: List<PermissionDecision> = listOf(
 )
 
 /** Le libelle d'un bouton, qui dit **ce qu'il accorde** et pas seulement « oui ». */
-fun approvalActionLabel(decision: PermissionDecision): String = when (decision) {
-    PermissionDecision.Reject -> "Refuser"
-    PermissionDecision.Once -> "Autoriser une fois"
-    PermissionDecision.Always -> "Toujours"
+/**
+ * Le libelle du bouton d'une decision.
+ *
+ * `chaine` est injectable comme dans `RelativeTime` : un test JVM n'a pas de
+ * ressources. Le test verifie alors **quelles** chaines sont choisies pour quelles
+ * decisions — ce qui est la propriete, et non la phrase affichee.
+ */
+fun approvalActionLabel(
+    decision: PermissionDecision,
+    chaine: (Int, Array<out Any>) -> String = { id, args -> Res.of(id, *args) },
+): String = when (decision) {
+    PermissionDecision.Reject -> chaine(R.string.refuser_628971, emptyArray())
+    PermissionDecision.Once -> chaine(R.string.autoriser_fois_35c774, emptyArray())
+    PermissionDecision.Always -> chaine(R.string.toujours_ec25a7, emptyArray())
 }
 
 /** Plage d'ID reservee a l'avancement, hors des ID fixes du notifier (1001..1004). */

@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.unifiedpush.android.connector.data.PushMessage
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Reception des notifications UnifiedPush** — le seul chemin possible ici.
@@ -133,7 +134,7 @@ class TetherPushService : PushService() {
         notify(
             applicationContext,
             payload.copy(
-                text = payload.text.ifBlank { "Nouvelle activité sur opencode" },
+                text = payload.text.ifBlank { Res.of(R.string.nouvelle_activite_opencode_3a7f4a) },
             ),
         )
     }
@@ -587,13 +588,13 @@ fun describePushStatus(status: PushStatus, chaine: (Int) -> String): PushVerdict
  */
 fun registrationMessage(result: PushRegistrationResult): String = when (result) {
     PushRegistrationResult.Requested ->
-        "Enregistrement demandé au distributeur."
+        Res.of(R.string.enregistrement_demande_distributeur_5b9834)
 
     PushRegistrationResult.NoDistributor ->
-        "Aucun distributeur UnifiedPush installé : installe ntfy, puis reconnecte."
+        Res.of(R.string.aucun_distributeur_unifiedpush_91a0f0)
 
     PushRegistrationResult.Failed ->
-        "L'enregistrement a échoué. Réessaie dans un instant."
+        Res.of(R.string.enregistrement_echoue_reessaie_bcfadb)
 }
 
 /**

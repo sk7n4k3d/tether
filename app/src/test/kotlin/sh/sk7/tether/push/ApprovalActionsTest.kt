@@ -64,9 +64,14 @@ class ApprovalActionsTest {
 
     @Test
     fun `les libelles disent ce qu ils accordent`() {
-        assertEquals("Refuser", approvalActionLabel(PermissionDecision.Reject))
-        assertEquals("Autoriser une fois", approvalActionLabel(PermissionDecision.Once))
-        assertEquals("Toujours", approvalActionLabel(PermissionDecision.Always))
+        // Un resolveur qui note l'identifiant choisi : hors Android, `Res` n'a pas de
+        // ressources, et c'est le **choix** de la chaine qu'on veut verifier ici.
+        // Chaque decision doit avoir sa **propre** chaine, et trois decisions ne
+        // doivent pas se retrouver a la meme : c'est la regle, pas la phrase.
+        val refuse = idDe(PermissionDecision.Reject)
+        val uneFois = idDe(PermissionDecision.Once)
+        val toujours = idDe(PermissionDecision.Always)
+        assertEquals(3, setOf(refuse, uneFois, toujours).size, "trois chaines distinctes")
     }
 
     /**
@@ -93,4 +98,14 @@ class ApprovalActionsTest {
         assertEquals("edit", pending(action = "edit").action)
     }
 
+
+    /** L'identifiant de la chaine choisie pour une decision. */
+    private fun idDe(decision: PermissionDecision): Int {
+        var id = -1
+        approvalActionLabel(decision) { choisi, _ ->
+            id = choisi
+            "texte"
+        }
+        return id
+    }
 }

@@ -115,7 +115,7 @@ fun RevertDialog(
             title = {
                 Text(
                     text = if (current.preview.isEmpty) {
-                        "Revenir ici ?"
+                        stringResource(R.string.revenir_ici_1a6293)
                     } else {
                         "Revenir ici modifiera ${current.preview.fileCount} fichier" +
                             (if (current.preview.fileCount > 1) "s" else "")
@@ -126,7 +126,7 @@ fun RevertDialog(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(stringResource(R.string.tes_messages_apres_cde32f) +
-                            "et les fichiers reviendront à leur état d'alors.",
+                              " " + stringResource(R.string.fichiers_reviendront_leur_7beb48),
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextSecondary,
                     )
@@ -136,7 +136,7 @@ fun RevertDialog(
                         // n'annule **que** la conversation. Le dire evite de croire qu'on ne fait
                         // rien du tout.
                         Text(stringResource(R.string.aucun_fichier_ete_b344b3) +
-                                "seule la conversation sera rembobinée.",
+                                  " " + stringResource(R.string.seule_conversation_sera_fdbe62),
                             style = MaterialTheme.typography.bodySmall,
                             color = LocalAccent.current,
                         )

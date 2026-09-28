@@ -1,5 +1,8 @@
 package sh.sk7.tether.data.event
 
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
+
 /**
  * Leve quand le serveur ne repond pas en `text/event-stream`.
  *
@@ -61,7 +64,7 @@ class SseParser {
          */
         fun requireEventStream(contentType: String?) {
             if (contentType == null || !contentType.startsWith("text/event-stream"))
-                throw NotSseException("Content-Type inattendu : $contentType (fallback SPA ?)")
+                throw NotSseException(Res.of(R.string.content_type_inattendu_824503))
         }
     }
 }

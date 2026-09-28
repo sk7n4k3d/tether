@@ -70,7 +70,7 @@ fun SlashPalette(
             .border(1.dp, TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerMd)),
     ) {
         Text(
-            text = if (commands.isEmpty()) "AUCUNE COMMANDE" else "COMMANDES",
+            text = if (commands.isEmpty()) stringResource(R.string.aucune_commande_361d7a) else "COMMANDES",
             style = TetherDataStyle,
             color = TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
@@ -81,7 +81,7 @@ fun SlashPalette(
             // viennent du serveur : si la liste est vide, c'est que le serveur n'en a pas annonce
             // ou que le chargement a echoue — dans les deux cas, ce n'est pas la faute de la frappe.
             Text(stringResource(R.string.serveur_annonce_commande_20b332) +
-                    "Tu peux écrire ton message normalement.",
+                      " " + stringResource(R.string.peux_ecrire_ton_e4b2ed),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
                 modifier = Modifier.padding(

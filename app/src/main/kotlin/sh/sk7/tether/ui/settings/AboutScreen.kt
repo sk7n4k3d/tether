@@ -80,13 +80,13 @@ fun AboutScreen(
             Block(title = stringResource(R.string.principe_a947e2)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(stringResource(R.string.tether_pilote_ton_1209c6) +
-                            "Tout reste chez toi : l'app ne parle qu'à ton serveur, et tes " +
-                            "conversations ne quittent pas ta machine.",
+                              " " + stringResource(R.string.tout_reste_chez_21343a) +
+                             " " + stringResource(R.string.conversations_quittent_machine_6e0ab9),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TetherTextSecondary,
                     )
                     Text(stringResource(R.string.licence_mit_logiciel_a1a1c7) +
-                            "Google. Conçu pour fonctionner sans Play Services.",
+                              " " + stringResource(R.string.google_concu_fonctionner_ccfa5a),
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextMuted,
                     )

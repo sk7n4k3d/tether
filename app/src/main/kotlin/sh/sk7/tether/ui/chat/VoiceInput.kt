@@ -10,6 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **La dictee vocale, par le systeme — sans Play Services.**
@@ -87,7 +90,7 @@ fun VoiceInput(
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
             )
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Dicte ton message")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, Res.of(R.string.dicte_ton_message_b9c24a))
         }
         try {
             launcher.launch(intent)

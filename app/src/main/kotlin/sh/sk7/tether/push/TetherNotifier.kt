@@ -17,6 +17,9 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.data.settings.ConnectionStore
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Ce qu'il faut d'injection hors d'un point d'entrée Android.**
@@ -180,8 +183,8 @@ object TetherNotifier {
         // On recompose un titre à partir de ce qu'on sait **nous-mêmes** (une décision attend),
         // et on garde le corps reçu tel quel — il reste la seule information du publieur.
         val title = when (decision) {
-            PushDecision.Ongoing -> "Autorisation requise"
-            PushDecision.Progress -> "opencode — en cours"
+            PushDecision.Ongoing -> Res.of(R.string.autorisation_requise_703188)
+            PushDecision.Progress -> Res.of(R.string.opencode_cours_387ac2)
             else -> "opencode"
         }
 
@@ -348,7 +351,7 @@ object TetherNotifier {
         ensureChannel(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
-            .setContentTitle("Notification de test")
+            .setContentTitle(Res.of(R.string.notification_test_888ebf))
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(pendingIntent(context, PushTarget.App, TEST_ID))
@@ -514,7 +517,7 @@ object TetherNotifier {
         ensureChannel(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(sh.sk7.tether.R.drawable.ic_launcher_foreground)
-            .setContentTitle(if (ok) "Décision envoyée" else "Décision non envoyée")
+            .setContentTitle(if (ok) Res.of(R.string.decision_envoyee_80e2e5) else Res.of(R.string.decision_non_envoyee_391c43))
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setContentIntent(pendingIntent(context, PushTarget.App, DECISION_RESULT_ID))
@@ -541,7 +544,7 @@ object TetherNotifier {
                     // défaut doit servir le cas qui compte.
                     NotificationManager.IMPORTANCE_HIGH,
                 ).apply {
-                    description = "Alertes des sessions opencode"
+                    description = Res.of(R.string.alertes_sessions_opencode_c7800b)
                 },
             )
         }
@@ -549,14 +552,14 @@ object TetherNotifier {
             nm.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID_PROGRESS,
-                    "opencode — avancement",
+                    Res.of(R.string.opencode_avancement_f123d4),
                     // ⚠️ IMPORTANCE_LOW et non HIGH, et c'est tout l'anti-spam : l'avancement
                     // s'affiche dans le tiroir **sans son, sans vibration, sans heads-up**. Un
                     // agent qui enchaîne dix appels d'outil reste alors silencieux tout en laissant
                     // une trace lisible — ce que la demande veut exactement.
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = "Étapes intermédiaires d'une session opencode (silencieux)"
+                    description = Res.of(R.string.etapes_intermediaires_session_32e1e5)
                     setShowBadge(false)
                 },
             )

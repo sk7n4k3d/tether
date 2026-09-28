@@ -8,6 +8,7 @@ import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -119,19 +120,26 @@ class ConnectionErrorsTest {
 
     @Test
     fun `le message affiche ne porte pas le code de statut`() {
-        // ⚠️ Ce test **documente la cause du bug** : le message est une traduction, il ne porte
-        // pas le code. C'est précisément pourquoi tester `contains("401")` ne pouvait pas marcher,
-        // et pourquoi `isUnauthorized` existe. Si un jour ce message change de formulation, ce
-        // test le signale — et rappelle que personne ne doit s'appuyer dessus.
-        val message = ConnectionErrors.describe(realError(401))
+        // ⚠️ Ce test **documente la cause du bug** : le message est une traduction, il ne
+        // porte pas le code. C'est precisement pourquoi tester `contains("401")` ne pouvait
+        // pas marcher, et pourquoi `isUnauthorized` existe.
+        //
+        // Le texte vient des ressources, qu'un test JVM n'a pas. Ce qu'on verifie ici est
+        // ce qui doit rester vrai quelle que soit la langue : le message **ne contient
+        // pas le code**, et 401 comme 403 donnent le ** meme** message — parce que
+        // l'utilisateur doit avoir une seule reponse a donner, pas deux.
+        val unauthorized = ConnectionErrors.describe(realError(401))
+        val forbidden = ConnectionErrors.describe(realError(403))
 
         assertFalse(
-            message.contains("401"),
+            unauthorized.contains("401"),
             "le message ne doit pas porter le code : s'appuyer dessus EST le bug qu'on a corrigé",
         )
-        assertTrue(
-            message.contains("Mot de passe"),
-            "mais il doit dire clairement que c'est le mot de passe",
+        assertEquals(
+            unauthorized,
+            forbidden,
+            "401 et 403 doivent dire la meme chose : c'est le meme probleme pour l'utilisateur",
         )
+        assertTrue(unauthorized.isNotBlank(), "le message ne doit pas etre vide")
     }
 }

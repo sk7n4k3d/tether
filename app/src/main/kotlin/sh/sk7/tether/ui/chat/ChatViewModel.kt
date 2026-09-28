@@ -49,6 +49,9 @@ import sh.sk7.tether.domain.model.Role
 import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.domain.model.SessionUiState
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Phase d'envoi, pilote l'affordance de saisie.
@@ -213,7 +216,7 @@ class ChatViewModel @Inject constructor(
 ) : ViewModel() {
 
     val sessionID: String = checkNotNull(savedStateHandle.get<String>("sessionID")) {
-        "sessionID manquant dans la route de navigation"
+        Res.of(R.string.sessionid_manquant_route_b6b1c5)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -355,7 +358,7 @@ class ChatViewModel @Inject constructor(
             val loaded = store.current()
             settings = loaded
             if (!loaded.isConfigured) {
-                _state.update { it.copy(phase = UiPhase.Error, error = "Aucun serveur configuré.") }
+                _state.update { it.copy(phase = UiPhase.Error, error = Res.of(R.string.aucun_serveur_configure_4ca91e)) }
                 return@launch
             }
             connect(loaded)
@@ -638,7 +641,7 @@ class ChatViewModel @Inject constructor(
                 val current = settings ?: store.current().also { settings = it }
                 val ok = gateway.runCommand(current, sessionID, name, text)
                 if (!ok) {
-                    _state.update { it.copy(error = "Commande « /$name » refusée par le serveur.") }
+                    _state.update { it.copy(error = Res.of(R.string.commande_name_refusee_2e2df3)) }
                     return@launch
                 }
                 // L'effet de la commande arrive par le flux, comme un prompt normal.
@@ -684,7 +687,7 @@ class ChatViewModel @Inject constructor(
                         ) ?: SessionMeta(model = model.id, provider = model.providerID.ifBlank { null }),
                     )
                 } else {
-                    _state.update { it.copy(error = "Le serveur a refusé le changement de modèle.") }
+                    _state.update { it.copy(error = Res.of(R.string.serveur_refuse_changement_b2eabd)) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
@@ -705,7 +708,7 @@ class ChatViewModel @Inject constructor(
                         assume = _state.value.meta?.copy(agent = agent) ?: SessionMeta(agent = agent),
                     )
                 } else {
-                    _state.update { it.copy(error = "Le serveur a refusé le changement d'agent.") }
+                    _state.update { it.copy(error = Res.of(R.string.serveur_refuse_changement_0a0a6b)) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
@@ -732,7 +735,7 @@ class ChatViewModel @Inject constructor(
                 if (gateway.activateSkill(current, sessionID, skillID)) {
                     _state.update { if (it.phase == UiPhase.Idle) it.copy(phase = UiPhase.Awaiting) else it }
                 } else {
-                    _state.update { it.copy(error = "Le serveur a refusé d'activer « $skillID ».") }
+                    _state.update { it.copy(error = Res.of(R.string.serveur_refuse_activer_67e27c)) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = ConnectionErrors.describe(e)) }
@@ -942,7 +945,7 @@ class ChatViewModel @Inject constructor(
                 state.copy(
                     chat = state.chat.copy(messages = kept),
                     cancelling = state.cancelling - inboxID,
-                    notice = if (ok) "Message retiré de la file." else "Annulation refusée par le serveur.",
+                    notice = if (ok) Res.of(R.string.message_retire_file_0f14a5) else Res.of(R.string.annulation_refusee_serveur_beccd1),
                 )
             }
             refreshQueue()
@@ -991,16 +994,16 @@ class ChatViewModel @Inject constructor(
                     // change alors qu'il n'en est rien.
                     notice = if (ok) {
                         if (target == "steer") {
-                            "Ce message corrigera le tour en cours."
+                            Res.of(R.string.message_corrigera_tour_1bbd26)
                         } else {
-                            "Ce message attendra son tour."
+                            Res.of(R.string.message_attendra_tour_32f4ec)
                         }
                     } else {
                         // ⚠️ On nomme la cause la plus probable sans l'affirmer : mesure du
                         // 2026-09-26, un `409` signifie que le message est deja en cours de
                         // livraison — auquel cas il n'y a plus de mode a changer, et ce n'est pas
                         // une erreur de l'utilisateur.
-                        "Le serveur a refusé de changer le mode (message déjà en cours de livraison ?)."
+                        Res.of(R.string.serveur_refuse_changer_1439f8)
                     },
                 )
             }
@@ -1028,7 +1031,7 @@ class ChatViewModel @Inject constructor(
         scope.launch {
             val current = settings ?: store.current().also { settings = it }
             if (!current.isConfigured) {
-                _state.update { it.copy(error = "Aucun serveur configuré.") }
+                _state.update { it.copy(error = Res.of(R.string.aucun_serveur_configure_4ca91e)) }
                 return@launch
             }
             runCatching { gateway.backgroundTools(current, sessionID) }
@@ -1036,9 +1039,9 @@ class ChatViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             notice = if (ok) {
-                                "Outils déplacés en arrière-plan s'il y en avait."
+                                Res.of(R.string.outils_deplaces_arriere_e70f43)
                             } else {
-                                "Le serveur a refusé la mise en arrière-plan."
+                                Res.of(R.string.serveur_refuse_mise_2b2c21)
                             },
                         )
                     }
@@ -1207,7 +1210,7 @@ class ChatViewModel @Inject constructor(
                         it.copy(
                             chat = it.chat.copy(messages = it.chat.messages - optimistic),
                             phase = UiPhase.Error,
-                            error = "Aucun serveur configuré.",
+                            error = Res.of(R.string.aucun_serveur_configure_4ca91e),
                         )
                     }
                     return@launch
@@ -1290,7 +1293,7 @@ class ChatViewModel @Inject constructor(
         if (attachment == null) {
             _state.update {
                 it.copy(
-                    error = "« $name » dépasse ${PromptAttachments.formatSize(PromptAttachments.MAX_FILE_BYTES)}.",
+                    error = Res.of(R.string.name_depasse_promptattachments_7f0156, name, PromptAttachments.formatSize(PromptAttachments.MAX_FILE_BYTES)),
                 )
             }
             return
@@ -1316,7 +1319,7 @@ class ChatViewModel @Inject constructor(
     fun attachServerPath(path: String) {
         val attachment = PromptAttachments.fromServerPath(path)
         if (attachment == null) {
-            _state.update { it.copy(error = "Chemin non absolu : « $path ».") }
+            _state.update { it.copy(error = Res.of(R.string.chemin_non_absolu_206c47)) }
             return
         }
         _state.update {

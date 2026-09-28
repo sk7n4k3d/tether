@@ -12,6 +12,9 @@ import sh.sk7.tether.data.api.FileDiffDto
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Ce qu'un retour en arrière toucherait, avant de le faire.**
@@ -99,7 +102,7 @@ class RevertViewModel @Inject constructor(
                     _state.value = RevertUiState.Idle
                     onDone()
                 } else {
-                    _state.value = RevertUiState.Failed("Le serveur a refusé d'appliquer le retour.")
+                    _state.value = RevertUiState.Failed(Res.of(R.string.serveur_refuse_appliquer_b0c92c))
                 }
             } catch (e: Exception) {
                 _state.value = RevertUiState.Failed(ConnectionErrors.describe(e))

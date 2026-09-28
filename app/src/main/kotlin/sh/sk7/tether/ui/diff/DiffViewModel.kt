@@ -15,6 +15,9 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Quelle source de diff on regarde.**
@@ -29,7 +32,7 @@ import sh.sk7.tether.ui.settings.ConnectionErrors
  */
 enum class DiffScope(val label: String, val mode: String?) {
     Session("Session", null),
-    Working("Non commité", "working"),
+    Working(Res.of(R.string.non_commite_87a999), "working"),
     Branch("Branche", "branch"),
     Committed("Commits", "committed"),
 }
@@ -119,7 +122,7 @@ class DiffViewModel @Inject constructor(
                 val raw = when (current) {
                     DiffScope.Session -> {
                         val id = sessionID ?: return@launch run {
-                            _state.value = DiffUiState.Empty("Aucune session associée à cet écran.")
+                            _state.value = DiffUiState.Empty(Res.of(R.string.aucune_session_associee_361daa))
                         }
                         gateway.sessionDiff(settings, id)
                     }
@@ -160,20 +163,20 @@ class DiffViewModel @Inject constructor(
         settings: sh.sk7.tether.data.settings.ConnectionSettings,
         directory: String,
     ): String = when (this) {
-        DiffScope.Session -> "Cette session n'a modifié aucun fichier."
+        DiffScope.Session -> Res.of(R.string.session_modifie_aucun_5075a0)
         DiffScope.Working -> {
             if (isVersioned(settings, directory)) {
-                "Aucune modification non commitée dans ce répertoire."
+                Res.of(R.string.aucune_modification_non_898586)
             } else {
                 // ⚠️ Formulation qui **n'annonce pas** un depot sain : sans gestion de version,
                 // aucune modification ne peut etre annulee. Le dire est le seul service qu'on
                 // puisse rendre ici.
                 "Ce répertoire n'est pas versionné : les modifications faites par l'agent ne " +
-                    "peuvent pas être suivies ni annulées."
+                    Res.of(R.string.peuvent_etre_suivies_c116db)
             }
         }
-        DiffScope.Branch -> "Aucun écart avec la base de la branche."
-        DiffScope.Committed -> "Aucun commit à afficher."
+        DiffScope.Branch -> Res.of(R.string.aucun_ecart_base_b1237d)
+        DiffScope.Committed -> Res.of(R.string.aucun_commit_afficher_c24626)
     }
 
     /**

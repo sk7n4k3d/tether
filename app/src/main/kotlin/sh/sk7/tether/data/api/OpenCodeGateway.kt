@@ -10,6 +10,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Point d'acces unique aux operations de l'API V2 utilisees par l'UI.
@@ -944,7 +947,7 @@ class KtorOpenCodeGateway @Inject constructor(
         settings: ConnectionSettings,
         name: String?,
     ): WorktreeInfoDto {
-        val id = projectID(settings) ?: error("Aucun projet identifié pour ce répertoire")
+        val id = projectID(settings) ?: error(Res.of(R.string.aucun_projet_identifie_47f15f))
         return client(settings).createWorktree(id, name)
     }
 

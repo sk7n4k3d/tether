@@ -78,6 +78,7 @@ import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **La barre de saisie — une piece d'instrument, pas un formulaire.**
@@ -182,7 +183,7 @@ fun Composer(
             // visiblement inactif, pas un controle absent.
             else -> TetherTextSecondary.copy(alpha = 0.55f)
         },
-        label = stringResource(R.string.composer_button_color_c4b0b5),
+        label = Res.of(R.string.composer_button_color_c4b0b5),
     )
     val buttonSize by animateDpAsState(
         // Il grandit quand il devient actif : l'etat se lit a la silhouette, pas seulement
@@ -194,16 +195,16 @@ fun Composer(
         // les 48 dp Material, mais c'est un choix de densite **conscient**, compense par
         // `minimumInteractiveComponentSize()` qui etend la zone sensible a 48 dp.
         targetValue = if (showStop || hasContent) 40.dp else 36.dp,
-        label = stringResource(R.string.composer_button_size_5674e1),
+        label = Res.of(R.string.composer_button_size_5674e1),
     )
     // Icone : rotation douce entre la fleche et le carre (morph visuel).
     val arrowAlpha by animateFloatAsState(
         targetValue = if (showStop) 0f else 1f,
-        label = stringResource(R.string.composer_arrow_e319e7),
+        label = Res.of(R.string.composer_arrow_e319e7),
     )
     val stopAlpha by animateFloatAsState(
         targetValue = if (showStop) 1f else 0f,
-        label = stringResource(R.string.composer_stop_f8a665),
+        label = Res.of(R.string.composer_stop_f8a665),
     )
 
     // ⚠️ La couleur se lit **avant** le `remember` : dans un `remember { }` sans cle,
@@ -228,7 +229,7 @@ fun Composer(
     // Sans animation, le lisere reste **teal plein** : l'information « ca tourne » est toujours
     // la, elle ne clignote simplement plus.
     val pulseEnabled = animationsAllowed()
-    val pulseTransition = rememberInfiniteTransition(label = stringResource(R.string.composer_874ad8))
+    val pulseTransition = rememberInfiniteTransition(label = Res.of(R.string.composer_874ad8))
     val pulse by pulseTransition.animateFloat(
         initialValue = 0.15f,
         targetValue = 0.55f,
@@ -236,7 +237,7 @@ fun Composer(
             animation = tween(1400),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = stringResource(R.string.composer_pulse_6bf03d),
+        label = Res.of(R.string.composer_pulse_6bf03d),
     )
     val pulseAlpha = if (pulseEnabled) pulse else 0.40f
     // Lisere teal sous la barre : la version du fil qui passe par la zone de saisie.
@@ -309,7 +310,7 @@ fun Composer(
                         // Mesure : mon ancien placeholder a 60 % d'opacite donnait **2.96** de
                         // contraste, sous le seuil de 4.5 — illisible. Mon `#8B98A5` plein
                         // donne **5.19** : au-dessus de Claude, sobre.
-                        Text(stringResource(R.string.ecrire_agent_146209),
+                        Text(Res.of(R.string.ecrire_agent_146209),
                             style = MaterialTheme.typography.bodyLarge,
                             color = TetherTextSecondary,
                         )
@@ -363,7 +364,7 @@ fun Composer(
                     if (onAttach != null) {
                         ComposerIcon(
                             icon = Lucide.Paperclip,
-                            label = stringResource(R.string.joindre_fichier_d0f75a),
+                            label = Res.of(R.string.joindre_fichier_d0f75a),
                             onClick = onAttach,
                         )
                     }
@@ -373,7 +374,7 @@ fun Composer(
                     if (onOpenAgents != null) {
                         ComposerLabelIcon(
                             icon = Lucide.Bot,
-                            label = stringResource(R.string.agents_64acf7),
+                            label = Res.of(R.string.agents_64acf7),
                             onClick = onOpenAgents,
                             emphasised = false,
                         )
@@ -390,7 +391,7 @@ fun Composer(
                             icon = Lucide.Blocks,
                             label = currentModelLabel ?: "—",
                             onClick = onPickModelAgent,
-                            contentDescription = stringResource(R.string.modele_courant_changer_b2b5db),
+                            contentDescription = Res.of(R.string.modele_courant_changer_b2b5db),
                             // ⚠️ **Emphase** : le modele est un **etat**, l'agent une
                             // action. Le design-soul (§4) demande une hierarchie par
                             // *quatre* moyens — taille, poids, **couleur**, position — et
@@ -404,7 +405,7 @@ fun Composer(
                     if (onVoice != null) {
                         ComposerIcon(
                             icon = Lucide.Mic,
-                            label = if (listening) "Dictee en cours" else "Dicter le message",
+                            label = if (listening) Res.of(R.string.dictee_cours_fdda57) else Res.of(R.string.dicter_message_ed4e18),
                             onClick = onVoice,
                             enabled = !listening,
                             tint = if (listening) LocalAccent.current else TetherTextSecondary,
@@ -426,9 +427,9 @@ fun Composer(
                             .semantics {
                                 role = Role.Button
                                 contentDescription = when {
-                                    showStop -> "Arreter l'execution"
-                                    hasContent -> "Envoyer le message"
-                                    else -> "Envoyer (aucun texte)"
+                                    showStop -> Res.of(R.string.arreter_execution_8a52ed)
+                                    hasContent -> Res.of(R.string.envoyer_message_649908)
+                                    else -> Res.of(R.string.envoyer_aucun_texte_dc0718)
                                 }
                                 // ⚠️ L'etat change sans que le focus bouge : sans `liveRegion`,
                                 // c'est un changement **silencieux** pour un lecteur d'ecran.

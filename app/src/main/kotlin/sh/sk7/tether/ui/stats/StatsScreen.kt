@@ -160,7 +160,7 @@ private fun StatsContent(
                     // 5,5 Md de tokens de cache pour 249 M d'entree — le cache est **94 %** du
                     // volume. Sans cette note, « 249 M in » parait faux quand on voit la facture.
                     text = "Le cache représente ${percent(stats.tokenCacheRatio)} de l'entrée. " +
-                        "C'est ce qui évite de renvoyer tout le contexte à chaque étape.",
+                        stringResource(R.string.evite_renvoyer_tout_584f02),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextMuted,
                 )
@@ -220,18 +220,18 @@ private fun CostRow(stats: UsageStats) {
 @Composable
 private fun ScaleRow(stats: UsageStats) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-        Figure(count(stats.inputTokens), "tokens in")
-        Figure(count(stats.outputTokens), "tokens out")
+        Figure(count(stats.inputTokens), stringResource(R.string.tokens_f0ab08))
+        Figure(count(stats.outputTokens), stringResource(R.string.tokens_out_332354))
         // ⚠️ Le cache est compte a part, jamais additionne aux entrees : le confondre ferait
         // paraitre la consommation 20 fois plus grosse qu'elle n'est.
-        Figure(count(stats.cacheReadTokens), "cache lu")
+        Figure(count(stats.cacheReadTokens), stringResource(R.string.cache_aefcd9))
     }
 }
 
 @Composable
 private fun ReliabilityRow(stats: UsageStats) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-        Figure(stats.toolCalls.toString(), "appels d'outil")
+        Figure(stats.toolCalls.toString(), stringResource(R.string.appels_outil_0dbfd1))
         Figure(
             value = percent(stats.toolFailureRate),
             label = stringResource(R.string.taux_echec_6c8876),
@@ -244,7 +244,7 @@ private fun ReliabilityRow(stats: UsageStats) {
             label = stringResource(R.string.jours_actifs_1ccefa),
         )
         if (stats.streak > 1) {
-            Figure("${stats.streak} j", "d'affilée")
+            Figure("${stats.streak} j", stringResource(R.string.affilee_493ba7))
         }
     }
 }
@@ -332,7 +332,7 @@ private fun ModelLine(usage: ModelUsage, totalCost: Double) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = usage.model.ifBlank { "(modèle inconnu)" },
+                text = usage.model.ifBlank { stringResource(R.string.modele_inconnu_c23df9) },
                 style = TetherDataStyle,
                 color = TetherTextPrimary,
                 fontWeight = FontWeight.SemiBold,

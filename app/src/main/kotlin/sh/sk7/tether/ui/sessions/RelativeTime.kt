@@ -1,6 +1,9 @@
 package sh.sk7.tether.ui.sessions
 
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Age relatif d'un horodatage epoch (millisecondes), pour la liste des sessions.
@@ -15,14 +18,28 @@ object RelativeTime {
     private const val DAY = 24 * HOUR
     private const val WEEK = 7 * DAY
 
-    fun format(nowMillis: Long, timestampMillis: Long?): String {
+    /**
+     * Un temps relatif, en toutes lettres.
+     *
+     * `chaine` est le resolveur de traduction, **injectable** pour une raison precise :
+     * un test JVM n'a pas de `Context`, donc pas de ressources, donc pas de texte
+     * francais a comparer. Avec un resolveur fourni, le test continue de verifier ce
+     * qui compte — le format, l'arrondi, le seuil — sans dependre d'une langue.
+     *
+     * Sans lui, l'appel est `Res.of`, ce qui lit la langue en vigueur.
+     */
+    fun format(
+        nowMillis: Long,
+        timestampMillis: Long?,
+        chaine: (Int, Array<out Any>) -> String = { id, args -> Res.of(id, *args) },
+    ): String {
         if (timestampMillis == null) return "—"
         val elapsed = nowMillis - timestampMillis
         // Un horodatage dans le futur (horloge desynchronisee) ne rend pas de duree negative.
-        if (elapsed < MINUTE) return "à l'instant"
-        if (elapsed < HOUR) return "il y a ${elapsed / MINUTE} min"
-        if (elapsed < DAY) return "il y a ${elapsed / HOUR} h"
-        if (elapsed < WEEK) return "il y a ${elapsed / DAY} j"
+        if (elapsed < MINUTE) return chaine(R.string.instant_2427aa, emptyArray())
+        if (elapsed < HOUR) return chaine(R.string.elapsed_minute_min_517d83, arrayOf(elapsed / MINUTE))
+        if (elapsed < DAY) return chaine(R.string.elapsed_hour_74a62f, arrayOf(elapsed / HOUR))
+        if (elapsed < WEEK) return chaine(R.string.elapsed_day_21154c, arrayOf(elapsed / DAY))
         return shortDate(timestampMillis)
     }
 

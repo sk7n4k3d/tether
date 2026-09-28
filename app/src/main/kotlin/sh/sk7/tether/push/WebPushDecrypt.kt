@@ -15,6 +15,9 @@ import javax.crypto.KeyAgreement
 import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Le dechiffrement d'un message Web Push — **RFC 8291**, cote recepteur.
@@ -123,7 +126,7 @@ object WebPushDecrypt {
     fun encodeUncompressed(pair: KeyPair): ByteArray {
         val x509 = pair.public.encoded
         val point = x509.copyOfRange(x509.size - 65, x509.size)
-        require(point[0] == 0x04.toByte()) { "point non compresse attendu (prefixe 0x04)" }
+        require(point[0] == 0x04.toByte()) { Res.of(R.string.point_non_compresse_3ee4c7) }
         return point
     }
 
@@ -147,12 +150,12 @@ object WebPushDecrypt {
      */
     internal fun decryptOrExplain(body: ByteArray, keys: SubscriptionKeys, authSecret: ByteArray): Result<String> {
         if (body.size < HEADER_BYTES + 16 + 1) return Result.failure(IllegalArgumentException("corps trop court : ${body.size} octets"))
-        if (authSecret.size != 16) return Result.failure(IllegalArgumentException("secret d'authentification : ${authSecret.size} octets, 16 attendu"))
+        if (authSecret.size != 16) return Result.failure(IllegalArgumentException(Res.of(R.string.secret_authentification_authsecret_f109cb, authSecret.size)))
 
         val keyIdLength = body[20].toInt()
-        if (keyIdLength != 65) return Result.failure(IllegalArgumentException("keyid : $keyIdLength octets, 65 attendu"))
+        if (keyIdLength != 65) return Result.failure(IllegalArgumentException(Res.of(R.string.keyid_keyidlength_octets_191206)))
         val asPublic = body.copyOfRange(21, 21 + keyIdLength)
-        if (asPublic[0] != 0x04.toByte()) return Result.failure(IllegalArgumentException("keyid sans prefixe 0x04"))
+        if (asPublic[0] != 0x04.toByte()) return Result.failure(IllegalArgumentException(Res.of(R.string.keyid_sans_prefixe_270a29)))
 
         val salt = body.copyOfRange(0, 16)
         val record = body.copyOfRange(HEADER_BYTES, body.size)
@@ -172,7 +175,7 @@ object WebPushDecrypt {
             // chose, le message est rejete plutot que tronque (RFC 8291 §4).
             val delimiter = plain[plain.size - 1].toInt()
             if (delimiter != PADDING_DELIMITER) {
-                throw IllegalStateException("delimiteur 0x%02x, 0x%02x attendu".format(delimiter, PADDING_DELIMITER))
+                throw IllegalStateException(Res.of(R.string.delimiteur_02x_02x_374b84).format(delimiter, PADDING_DELIMITER))
             }
             String(plain, 0, plain.size - 1, Charsets.UTF_8)
         }
@@ -272,7 +275,7 @@ object WebPushDecrypt {
      */
     private fun pointToECPoint(uncompressed: ByteArray): ECPoint {
         require(uncompressed.size == 65 && uncompressed[0] == 0x04.toByte()) {
-            "point P-256 non compresse attendu (65 octets, prefixe 0x04)"
+            Res.of(R.string.point_256_non_ad8426)
         }
         return ECPoint(
             java.math.BigInteger(1, uncompressed.copyOfRange(1, 33)),

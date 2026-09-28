@@ -388,7 +388,7 @@ private fun PermissionQueue(
                 item(key = "count") {
                     Text(
                         text = if (state.pending.size == 1) {
-                            "1 action attend une réponse"
+                            stringResource(R.string.action_attend_reponse_0da269)
                         } else {
                             "${state.pending.size} actions attendent une réponse"
                         },
@@ -441,13 +441,13 @@ private fun EmptyApprovals(formsWaiting: Int) {
         Text(
             text = if (formsWaiting > 0) {
                 if (formsWaiting == 1) {
-                    "1 formulaire attend une réponse dans l'onglet « Formulaires »."
+                    stringResource(R.string.formulaire_attend_reponse_06efba)
                 } else {
-                    "$formsWaiting formulaires attendent une réponse dans l'onglet « Formulaires »."
+                    stringResource(R.string.formswaiting_formulaires_attendent_6acd09)
                 }
             } else {
                 "L'agent travaille avec les droits qu'il a déjà. " +
-                    "Une demande apparaîtra ici dès qu'il aura besoin d'autre chose."
+                    stringResource(R.string.demande_apparaitra_ici_8d18c3)
             },
             style = MaterialTheme.typography.bodySmall,
             color = if (formsWaiting > 0) TetherAlert else TetherTextSecondary,

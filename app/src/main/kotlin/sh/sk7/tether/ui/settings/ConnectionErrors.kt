@@ -1,5 +1,8 @@
 package sh.sk7.tether.ui.settings
 
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
+
 /**
  * Traduit une erreur de connexion en message affichable.
  *
@@ -10,18 +13,23 @@ package sh.sk7.tether.ui.settings
 object ConnectionErrors {
 
     fun describe(error: Throwable): String = when (error) {
-        is io.ktor.client.plugins.ClientRequestException ->
-            when (error.response.status.value) {
-                401, 403 -> "Mot de passe refusé par le serveur."
-                in 400..499 -> "Requête refusée (${error.response.status.value}). Vérifie l'URL."
-                else -> "Erreur serveur (${error.response.status.value})."
+        is io.ktor.client.plugins.ClientRequestException -> {
+            val code = error.response.status.value
+            when (code) {
+                401, 403 -> Res.of(R.string.mot_passe_refuse_3ee22f)
+                in 400..499 -> Res.of(R.string.requete_refusee_error_5a1f5d, code)
+                else -> Res.of(R.string.erreur_serveur_error_063339, code)
             }
+        }
         is io.ktor.client.plugins.ServerResponseException ->
-            "Le serveur a répondu ${error.response.status.value}."
-        is java.net.UnknownHostException -> "Hôte introuvable : vérifie l'adresse."
-        is java.net.ConnectException -> "Connexion refusée. Le serveur est-il joignable sur ce port ?"
-        is java.net.SocketTimeoutException -> "Délai dépassé : le serveur ne répond pas."
-        else -> "Échec de la connexion : ${error::class.simpleName ?: "erreur inconnue"}."
+            Res.of(R.string.serveur_repondu_error_146bc6, error.response.status.value)
+        is java.net.UnknownHostException -> Res.of(R.string.hote_introuvable_verifie_05248c)
+        is java.net.ConnectException -> Res.of(R.string.connexion_refusee_serveur_89c562)
+        is java.net.SocketTimeoutException -> Res.of(R.string.delai_depasse_serveur_8629d4)
+        else -> Res.of(
+            R.string.echec_connexion_error_42ecac,
+            error::class.simpleName ?: "erreur inconnue",
+        )
     }
 
     /**

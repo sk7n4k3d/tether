@@ -54,6 +54,7 @@ import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Le serveur ne repond pas — voici pourquoi, et quoi faire.**
@@ -98,10 +99,10 @@ fun OfflineScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val (icon, title) = when (state.status) {
-            ConnectionStatus.Unauthorized -> Lucide.KeyRound to "Identifiants refusés"
-            ConnectionStatus.NotConfigured -> Lucide.Settings to "Aucun serveur configuré"
-            ConnectionStatus.Online -> Lucide.PlugZap to "Serveur joignable"
-            else -> Lucide.WifiOff to "Serveur injoignable"
+            ConnectionStatus.Unauthorized -> Lucide.KeyRound to Res.of(R.string.identifiants_refuses_085fd1)
+            ConnectionStatus.NotConfigured -> Lucide.Settings to Res.of(R.string.aucun_serveur_configure_380be4)
+            ConnectionStatus.Online -> Lucide.PlugZap to Res.of(R.string.serveur_joignable_9759d5)
+            else -> Lucide.WifiOff to Res.of(R.string.serveur_injoignable_a136dc)
         }
 
         Icon(
@@ -144,7 +145,7 @@ fun OfflineScreen(
         }
 
         Action(
-            label = if (state.checking) "Vérification…" else "Réessayer",
+            label = if (state.checking) Res.of(R.string.verification_30a679) else "Réessayer",
             icon = Lucide.RefreshCw,
             primary = true,
             enabled = !state.checking,
@@ -154,7 +155,7 @@ fun OfflineScreen(
         )
 
         Action(
-            label = stringResource(R.string.reglages_00d632),
+            label = Res.of(R.string.reglages_00d632),
             icon = Lucide.Settings,
             primary = false,
             enabled = true,
@@ -176,15 +177,15 @@ private fun explain(status: ConnectionStatus): String = when (status) {
     ConnectionStatus.Unauthorized ->
         "Le serveur répond, mais il refuse ce mot de passe. " +
             "Vérifie le mot de passe dans les réglages — il doit correspondre à " +
-            "OPENCODE_SERVER_PASSWORD sur la machine."
+            Res.of(R.string.opencode_server_password_b2a5ab)
     ConnectionStatus.NotConfigured ->
-        "Renseigne l'adresse du serveur opencode et le mot de passe pour commencer."
+        Res.of(R.string.renseigne_adresse_serveur_3961ac)
     ConnectionStatus.Online ->
-        "Le serveur répond de nouveau."
+        Res.of(R.string.serveur_repond_nouveau_923f04)
     else ->
         "Le serveur opencode est injoignable depuis ce téléphone. " +
             "Les causes les plus fréquentes : la machine est éteinte, le tunnel Tailscale est " +
-            "coupé, ou l'adresse est celle de la machine locale (127.0.0.1) au lieu de son IP."
+            Res.of(R.string.coupe_adresse_celle_dce2ae)
 }
 
 /**
@@ -208,20 +209,20 @@ private fun AddressCard(host: String, status: ConnectionStatus) {
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        Text(stringResource(R.string.adresse_ab87f8),
+        Text(Res.of(R.string.adresse_ab87f8),
             style = TetherDataStyle,
             color = TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = host.ifBlank { "non renseignée" },
+            text = host.ifBlank { Res.of(R.string.non_renseignee_183c75) },
             style = TetherDataStyle,
             color = TetherTextPrimary,
         )
         if (looksLocal && status != ConnectionStatus.Online) {
             // ⚠️ Le cas qui merite d'etre dit : sur un telephone, `127.0.0.1` est le telephone.
-            Text(stringResource(R.string.telephone_127_designe_d8d31a) +
-                    "Utilise l'IP de la machine qui fait tourner opencode.",
+            Text(Res.of(R.string.telephone_127_designe_d8d31a) +
+                      " " + stringResource(R.string.utilise_machine_fait_c8b7d4),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherAlert,
             )

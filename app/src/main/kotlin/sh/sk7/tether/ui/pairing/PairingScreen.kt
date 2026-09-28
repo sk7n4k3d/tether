@@ -165,7 +165,7 @@ fun PairingScreen(
                 )
             }
             Text(stringResource(R.string.adresse_doit_etre_e10114) +
-                    "Un QR qui en affiche une autre ne vient pas de votre serveur.",
+                      " " + stringResource(R.string.affiche_autre_vient_83d532),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
             )
@@ -185,13 +185,13 @@ fun PairingScreen(
                 color = TetherTextMuted,
             )
             Text(stringResource(R.string.adresse_point_acces_6af7b3) +
-                    "• C'est une capacité d'écriture : ce serveur pourra vous envoyer une " +
-                    "notification à tout moment.",
+                      " " + stringResource(R.string.capacite_ecriture_serveur_915a9f) +
+                     " " + stringResource(R.string.notification_tout_moment_9875e8),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextPrimary,
             )
             Text(stringResource(R.string.recoit_rien_autre_53be98) +
-                    "le mot de passe opencode.",
+                      " " + stringResource(R.string.mot_passe_opencode_cf487c),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
             )
@@ -200,7 +200,7 @@ fun PairingScreen(
         // ---- L'etat de l'abonnement : sans distributeur, rien a autoriser. ----
         if (abonnement == null) {
             Text(stringResource(R.string.aucun_distributeur_push_e7d8a7) +
-                    "Installez-en un (ntfy, UnifiedPush, Sunup…), puis revenez ici.",
+                      " " + stringResource(R.string.installez_ntfy_unifiedpush_8bdbdc),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TetherAlert,
             )

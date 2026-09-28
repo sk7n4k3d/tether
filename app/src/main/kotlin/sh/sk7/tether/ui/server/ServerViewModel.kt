@@ -23,6 +23,9 @@ import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /** L'inventaire complet du serveur, groupe par nature. */
 data class ServerUiState(
@@ -110,7 +113,7 @@ class ServerViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         loading = false,
-                        error = if (failed.isEmpty()) null else "Sections indisponibles : " +
+                        error = if (failed.isEmpty()) null else Res.of(R.string.sections_indisponibles_abb861) +
                             failed.joinToString(", "),
                         version = info?.version,
                         mcp = mcp,

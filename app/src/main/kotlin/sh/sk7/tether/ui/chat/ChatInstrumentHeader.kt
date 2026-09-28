@@ -33,6 +33,7 @@ import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **L'en-tete d'instrument d'une conversation.**
@@ -157,7 +158,7 @@ private fun StatusDot(status: SessionStatus) {
     // C'est exactement la regle deja appliquee au lisere du Composer, pour que les deux zones
     // disent la meme chose de la meme facon.
     val animationsOn = animationsAllowed()
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = stringResource(R.string.status_dot_c723c1))
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = Res.of(R.string.status_dot_c723c1))
     val pulse by transition.animateFloat(
         initialValue = 0.14f,
         targetValue = 0.42f,
@@ -165,7 +166,7 @@ private fun StatusDot(status: SessionStatus) {
             animation = androidx.compose.animation.core.tween(1400),
             repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
         ),
-        label = stringResource(R.string.status_dot_pulse_f2ffe5),
+        label = Res.of(R.string.status_dot_pulse_f2ffe5),
     )
     val haloAlpha = if (!running) 0f else if (animationsOn) pulse else 0.28f
 
@@ -190,7 +191,7 @@ private fun StatusDot(status: SessionStatus) {
 }
 
 private fun statusLabel(status: SessionStatus): String = when (status) {
-    SessionStatus.Running -> "en cours"
+    SessionStatus.Running -> Res.of(R.string.cours_db22a7)
     SessionStatus.Succeeded -> "terminé"
     SessionStatus.Failed -> "échec"
     SessionStatus.Interrupted -> "interrompu"

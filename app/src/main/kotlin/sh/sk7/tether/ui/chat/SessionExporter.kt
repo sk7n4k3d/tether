@@ -6,6 +6,9 @@ import sh.sk7.tether.domain.model.SessionUiState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Export d'une conversation en Markdown.**
@@ -95,7 +98,7 @@ object SessionExporter {
                 tools.forEach { tool ->
                     appendLine("<details><summary>outil : ${tool.name} — ${
                         when (tool.status) {
-                            sh.sk7.tether.domain.model.ToolStatus.Running -> "en cours"
+                            sh.sk7.tether.domain.model.ToolStatus.Running -> Res.of(R.string.cours_db22a7)
                             sh.sk7.tether.domain.model.ToolStatus.Succeeded -> "ok"
                             sh.sk7.tether.domain.model.ToolStatus.Failed -> "échec"
                         }

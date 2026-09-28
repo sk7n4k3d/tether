@@ -100,13 +100,12 @@ class PushStatusTest {
     @Test
     fun `le cas sans distributeur et le cas pret n ont pas le meme detail`() {
         // ⚠️ « aucun distributeur UnifiedPush » seul laisse l'utilisateur sans piste. La
-        // garantie utile ici est que l'etat « rien a installer » ne dit pas la meme chose que
-        // l'etat « pret » : un detail partage entre les deux ferait croire que tout va bien.
+        // garantie utile est que l'etat « rien a installer » ne dit pas la meme chose
+        // que l'etat « pret » : un detail partage ferait croire que tout va bien.
         //
-        // On ne compare pas le **texte** : a l'execution Android il n'existe que traduit, et un
-        // test qui exigerait du francais casserait a la premiere traduction. Ce qu'on garantit
-        // ici, c'est la **separation** des messages. Le contenu des chaines, y compris « le
-        // detail nomme ntfy », est verifie par `RessourceTest`, sur le fichier lui-meme.
+        // Le **contenu** des chaines — dont « le detail nomme ntfy » — est verifie par
+        // `RessourceTest`, sur le fichier lui-meme. Ici on verifie la separation, qui
+        // ne depend d'aucune langue.
         val sans = describePushStatusIsole(PushStatus(null, true, null))
         val pret = describePushStatusIsole(PushStatus("io.heckel.ntfy", true, "https://ntfy/x"))
         assertNotEquals(sans.detail, pret.detail, "les deux etats doivent avoir des details distincts")
@@ -233,11 +232,18 @@ class PushStatusTest {
     }
 
     @Test
-    fun `le message sans distributeur dit quoi installer`() {
-        // ⚠️ On verrouille le contenu, pas seulement sa presence : « échec » ou « aucun
-        // distributeur » sans nom d'application laisse l'utilisateur sans geste a faire.
-        val message = registrationMessage(PushRegistrationResult.NoDistributor)
-        assertTrue(message.contains("ntfy"), "l'application a installer doit etre nommee : $message")
+    fun `le message sans distributeur est un message a part`() {
+        // ⚠️ « échec » ou « aucun distributeur », seul, laisse l'utilisateur sans geste a
+        // faire. Ce qu'on verifie ici est que l'etat « rien a installer » a son **propre**
+        // message : il ne doit pas Tomber sur celui d'un echec d'enregistrement, qui ne
+        // dit rien de l'installation.
+        //
+        // Le contenu — « le message nomme ntfy » — est verifie par `RessourceTest`, sur
+        // le fichier des ressources : un test JVM n'a pas de `Context`, donc pas de
+        // traduction, et une comparaison de texte francais testerait une chaine.
+        val sansDistributeur = idMessage(PushRegistrationResult.NoDistributor)
+        val echec = idMessage(PushRegistrationResult.Failed)
+        assertNotEquals(sansDistributeur, echec, "« rien a installer » ne doit pas dire « échec »")
     }
 
     @Test
@@ -250,5 +256,17 @@ class PushStatusTest {
                 "message vide pour $result",
             )
         }
+    }
+
+    /** L'identifiant de la chaine choisie pour un resultat d'enregistrement. */
+    private fun idMessage(result: PushRegistrationResult): Int {
+        var id = -1
+        var trouve = false
+        val message = registrationMessage(result)
+        message.removePrefix("res:").toIntOrNull()?.let { id = it; trouve = true }
+        // Si le message a ete resolu (test d'instrumentation, ou resources presentes),
+        // on ne peut pas deduire l'identifiant : on compare alors les textes.
+        if (!trouve) return message.hashCode()
+        return id
     }
 }

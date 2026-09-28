@@ -88,6 +88,7 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,14 +149,14 @@ fun SessionListScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.sessions_e11e37)) },
+                title = { Text(Res.of(R.string.sessions_e11e37)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = TetherTextPrimary,
                 ),
                 actions = {
                     IconButton(onClick = onOpenStats) {
-                        Icon(Lucide.Activity, contentDescription = stringResource(R.string.statistiques_fdce30))
+                        Icon(Lucide.Activity, contentDescription = Res.of(R.string.statistiques_fdce30))
                     }
                     // ⚠️ L'acces aux approbations est dans la barre principale, pas enfoui dans
                     // les reglages : c'est **la** raison d'etre d'une app compagne (une session
@@ -182,10 +183,10 @@ fun SessionListScreen(
                     // d'une main, lecteur d'ecran). Le swipe reste la voie rapide ; ce bouton est
                     // la voie accessible — deux contraintes differentes, pas un doublon.
                     IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Lucide.RefreshCw, contentDescription = stringResource(R.string.recharger_b10ee5))
+                        Icon(Lucide.RefreshCw, contentDescription = Res.of(R.string.recharger_b10ee5))
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Lucide.Settings, contentDescription = stringResource(R.string.reglages_00d632))
+                        Icon(Lucide.Settings, contentDescription = Res.of(R.string.reglages_00d632))
                     }
                 },
             )
@@ -195,7 +196,7 @@ fun SessionListScreen(
                 Button(onClick = viewModel::newSession) {
                     Icon(Lucide.Plus, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.session_f7f199))
+                    Text(Res.of(R.string.session_f7f199))
                 }
             }
         },
@@ -226,16 +227,16 @@ fun SessionListScreen(
                 SessionListUiState.NeedsSetup -> Centered {
                     InfoBlock(
                         icon = { Icon(Lucide.Server, contentDescription = null, tint = LocalAccent.current) },
-                        title = stringResource(R.string.aucun_serveur_configure_380be4),
-                        body = "Renseigne l'adresse du serveur opencode et le mot de passe.",
-                        action = "Ouvrir les réglages",
+                        title = Res.of(R.string.aucun_serveur_configure_380be4),
+                        body = Res.of(R.string.renseigne_adresse_serveur_db9658),
+                        action = Res.of(R.string.ouvrir_reglages_ca731a),
                         onAction = onOpenSettings,
                     )
                 }
                 is SessionListUiState.Empty -> Centered {
                     InfoBlock(
                         icon = { Icon(Lucide.Server, contentDescription = null, tint = TetherTextSecondary) },
-                        title = stringResource(R.string.aucune_session_a9dbd0),
+                        title = Res.of(R.string.aucune_session_a9dbd0),
                         body = "Aucune session pour ${current.directory}.",
                     )
                 }
@@ -246,12 +247,12 @@ fun SessionListScreen(
                         // impossible » a tout le monde : « refusés » et « injoignable » n'appellent
                         // pas le meme geste, et les confondre envoie chercher au mauvais endroit.
                         title = if (current.unauthorized) {
-                            "Identifiants refusés"
+                            Res.of(R.string.identifiants_refuses_085fd1)
                         } else {
-                            "Serveur injoignable"
+                            Res.of(R.string.serveur_injoignable_a136dc)
                         },
                         body = current.message,
-                        action = "Ouvrir l'écran hors connexion",
+                        action = Res.of(R.string.ouvrir_ecran_hors_08d976),
                         onAction = onOpenOffline,
                     )
                 }
@@ -403,11 +404,11 @@ fun SessionListScreen(
     sessionError?.let { message ->
         AlertDialog(
             onDismissRequest = viewModel::clearSessionError,
-            title = { Text(stringResource(R.string.action_impossible_f9002b), color = TetherTextPrimary) },
+            title = { Text(Res.of(R.string.action_impossible_f9002b), color = TetherTextPrimary) },
             text = { Text(message, color = TetherTextSecondary) },
             confirmButton = {
                 TextButton(onClick = viewModel::clearSessionError) {
-                    Text(stringResource(R.string.fermer_5ab4ec), color = LocalAccent.current)
+                    Text(Res.of(R.string.fermer_5ab4ec), color = LocalAccent.current)
                 }
             },
             containerColor = TetherSurface,
@@ -430,13 +431,13 @@ private fun RenameSessionDialog(
     var draft by remember(item.id) { mutableStateOf(item.title) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.renommer_session_3bb5c3), color = TetherTextPrimary) },
+        title = { Text(Res.of(R.string.renommer_session_3bb5c3), color = TetherTextPrimary) },
         text = {
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 singleLine = true,
-                label = { Text(stringResource(R.string.titre_eb9789)) },
+                label = { Text(Res.of(R.string.titre_eb9789)) },
                 modifier = Modifier.fillMaxWidth(),
             )
         },
@@ -445,11 +446,11 @@ private fun RenameSessionDialog(
                 onClick = { onConfirm(draft) },
                 enabled = draft.isNotBlank() && draft.trim() != item.title,
             ) {
-                Text(stringResource(R.string.renommer_8e8a86), color = LocalAccent.current)
+                Text(Res.of(R.string.renommer_8e8a86), color = LocalAccent.current)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary) }
+            TextButton(onClick = onDismiss) { Text(Res.of(R.string.annuler_49ba32), color = TetherTextSecondary) }
         },
         containerColor = TetherSurface,
     )
@@ -470,22 +471,22 @@ private fun DeleteSessionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.supprimer_session_40a83f), color = TetherTextPrimary) },
+        title = { Text(Res.of(R.string.supprimer_session_40a83f), color = TetherTextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(item.title, color = TetherTextPrimary)
-                Text(stringResource(R.string.action_definitive_conversation_46b6c5) +
-                        "seront perdus.",
+                Text(Res.of(R.string.action_definitive_conversation_46b6c5) +
+                          " " + stringResource(R.string.seront_perdus_eb282d),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherAlert,
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.supprimer_1acfc1), color = TetherAlert) }
+            TextButton(onClick = onConfirm) { Text(Res.of(R.string.supprimer_1acfc1), color = TetherAlert) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary) }
+            TextButton(onClick = onDismiss) { Text(Res.of(R.string.annuler_49ba32), color = TetherTextSecondary) }
         },
         containerColor = TetherSurface,
     )
@@ -619,7 +620,7 @@ private fun SearchField(
             contentAlignment = Alignment.Center,
         ) {
             if (value.isEmpty()) {
-                Text(stringResource(R.string.rechercher_session_3b4d42),
+                Text(Res.of(R.string.rechercher_session_3b4d42),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TetherTextSecondary,
                 )
@@ -655,7 +656,7 @@ private fun SearchField(
             // ⚠️ Boîte de 48 dp explicite : dans `padding().size(15).clickable`, le `clickable`
             // est le plus interne et ne couvre que l'icône. Ici la zone sensible est la boîte.
                 // La description est lue ici : `semantics` s'execute hors composition.
-                val descEffacer_recherche = stringResource(R.string.effacer_recherche_189351)
+                val descEffacer_recherche = Res.of(R.string.effacer_recherche_189351)
             Box(
                 modifier = Modifier
                     .size(TetherDimensions.touchTarget)
@@ -703,17 +704,17 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
             tint = TetherTextSecondary,
             modifier = Modifier.size(28.dp),
         )
-        Text(stringResource(R.string.aucune_session_query_a34620),
+        Text(Res.of(R.string.aucune_session_query_a34620),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
         )
-        Text(stringResource(R.string.recherche_porte_titre_5d8a13),
+        Text(Res.of(R.string.recherche_porte_titre_5d8a13),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
-        Text(stringResource(R.string.effacer_recherche_189351),
+        Text(Res.of(R.string.effacer_recherche_189351),
             style = TetherDataStyle,
             color = LocalAccent.current,
             modifier = Modifier
@@ -762,11 +763,11 @@ private fun FleetHeader(fleet: FleetState) {
     val since = fleet.unseenSince(openedAt)
 
     val (label, tint) = when (fleet.summarySince(openedAt)) {
-        Activity.Waiting -> "Des décisions t'attendent" to TetherAlert
-        Activity.Unseen -> "Du travail vient de se terminer" to TetherTextPrimary
-        Activity.Running -> "En cours d'exécution" to LocalAccent.current
-        Activity.Queued -> "Messages en file" to TetherTextSecondary
-        Activity.Failed -> "Des tours ont échoué" to TetherAlert
+        Activity.Waiting -> Res.of(R.string.decisions_attendent_2d87f1) to TetherAlert
+        Activity.Unseen -> Res.of(R.string.travail_vient_terminer_5fd189) to TetherTextPrimary
+        Activity.Running -> Res.of(R.string.cours_execution_2ecd24) to LocalAccent.current
+        Activity.Queued -> Res.of(R.string.messages_file_b7bc1b) to TetherTextSecondary
+        Activity.Failed -> Res.of(R.string.tours_ont_echoue_321618) to TetherAlert
         Activity.Idle -> "Calme" to TetherTextSecondary
     }
 
@@ -806,21 +807,21 @@ private fun FleetHeader(fleet: FleetState) {
             if (fleet.activeSubagents.isNotEmpty()) {
                 Counter(
                     "${fleet.activeSubagents.size} sous-agent" +
-                        if (fleet.activeSubagents.size > 1) "s actifs ici" else " actif ici",
+                        if (fleet.activeSubagents.size > 1) Res.of(R.string.actifs_ici_5e5959) else " actif ici",
                     LocalAccent.current,
                 )
             } else if (fleet.running.isNotEmpty()) {
                 // ⚠️ Formulation **exacte** : elle porte sur ce qu'on sait, pas sur le serveur
                 // entier. Sans le mot « ici », l'écran affirmerait un fait qu'on ne peut pas
                 // connaître (voir la limite mesurée ci-dessus).
-                Counter("aucun sous-agent actif ici", TetherTextSecondary)
+                Counter(Res.of(R.string.aucun_sous_agent_5e2772), TetherTextSecondary)
             }
         }
 
         // ⚠️ On dit l'erreur d'interrogation au lieu de la taire : un état figé qui a l'air à jour
         // est pire qu'un état qu'on sait périmé.
         fleet.error?.let { message ->
-            Text(stringResource(R.string.etat_non_rafraichi_a51fa8),
+            Text(Res.of(R.string.etat_non_rafraichi_a51fa8),
                 style = sh.sk7.tether.ui.theme.TetherDataStyle,
                 color = TetherAlert.copy(alpha = 0.85f),
                 maxLines = 1,
@@ -850,10 +851,22 @@ private fun Counter(label: String, tint: androidx.compose.ui.graphics.Color) {
  * ⚠️ Fonction **pure**, extraite pour etre verrouillee par un test : c'est elle qui decide si
  * l'icone annonce une demande ou se tait. Un `when` en ligne ne se testerait pas.
  */
-fun approvalsSummary(permissions: Int, forms: Int): String = when {
+/**
+ * Le resume des approbations, en une ligne.
+ *
+ * `chaine` est injectable pour la meme raison que dans `RelativeTime` : un test JVM
+ * n'a pas de ressources, donc pas de texte a comparer. Le test fournit alors un
+ * resolveur et verifie **quelle** branche est choisie et **quels** comptes elle
+ * recoit — la decision reelle, independante de la langue.
+ */
+fun approvalsSummary(
+    permissions: Int,
+    forms: Int,
+    chaine: (Int, Array<out Any>) -> String = { id, args -> Res.of(id, *args) },
+): String = when {
     permissions > 0 && forms > 0 ->
-        "Approbations : $permissions autorisation(s) et $forms formulaire(s) en attente"
-    permissions > 0 -> "Approbations : $permissions autorisation(s) en attente"
-    forms > 0 -> "Approbations : $forms formulaire(s) en attente"
-    else -> "Approbations en attente"
+        chaine(R.string.approbations_permissions_autorisation_04d96e, arrayOf(permissions, forms))
+    permissions > 0 -> chaine(R.string.approbations_permissions_autorisation_d4c620, arrayOf(permissions))
+    forms > 0 -> chaine(R.string.approbations_forms_formulaire_6a8799, emptyArray())
+    else -> chaine(R.string.approbations_attente_6d40ca, emptyArray())
 }

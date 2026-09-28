@@ -147,8 +147,8 @@ fun ConnectionScreen(
                     color = TetherTextPrimary,
                 )
                 Text(stringResource(R.string.tether_pilote_serveur_331338) +
-                        "Renseigne son adresse et son mot de passe : ils restent sur ce " +
-                        "telephone.",
+                          " " + stringResource(R.string.renseigne_adresse_mot_a509b1) +
+                         " " + stringResource(R.string.telephone_27f1e6),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TetherTextSecondary,
                 )
@@ -178,9 +178,9 @@ fun ConnectionScreen(
                     Icon(
                         imageVector = if (passwordVisible) Lucide.EyeOff else Lucide.Eye,
                         contentDescription = if (passwordVisible) {
-                            "Masquer le mot de passe"
+                            stringResource(R.string.masquer_mot_passe_6ef3c0)
                         } else {
-                            "Afficher le mot de passe"
+                            stringResource(R.string.afficher_mot_passe_64153b)
                         },
                         tint = TetherTextSecondary,
                     )
@@ -197,7 +197,7 @@ fun ConnectionScreen(
             imeAction = ImeAction.Done,
             // ⚠️ Aide contextuelle : sans elle, « repertoire » ne veut rien dire pour quelqu'un
             // qui n'a pas ecrit l'API. On dit ce que ca change, pas ce que ca contient.
-            help = "Le dossier ou opencode travaille. Il determine quelles sessions tu vois.",
+            help = stringResource(R.string.dossier_opencode_travaille_4f260e),
         )
 
         // ------------------------------------------------------------ L'ACTION
@@ -231,7 +231,7 @@ fun ConnectionScreen(
                     modifier = Modifier.size(16.dp),
                 )
                 Text(stringResource(R.string.mot_passe_conserve_c8008d) +
-                        "Aucun envoi vers un tiers : Tether ne parle qu'a ton serveur.",
+                          " " + stringResource(R.string.aucun_envoi_vers_514d0b),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
                 )
@@ -339,7 +339,7 @@ private fun ConnectButton(result: ConnectionTestResult, onClick: () -> Unit) {
         } else {
             Icon(Lucide.Server, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(Spacing.sm))
-            Text(if (result is ConnectionTestResult.Failure) "Réessayer" else "Se connecter")
+            Text(if (result is ConnectionTestResult.Failure) "Réessayer" else stringResource(R.string.connecter_fedf24))
         }
     }
 }
@@ -401,7 +401,7 @@ private fun TestOutcome(result: ConnectionTestResult, firstRun: Boolean) {
                         // l'utilisateur deviner. C'est la difference entre un message d'erreur
                         // et une aide.
                         text = "Vérifie que le serveur tourne, que le téléphone est sur le " +
-                            "même réseau, et que l'adresse est la bonne.",
+                            stringResource(R.string.meme_reseau_adresse_54ccc0),
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextSecondary,
                     )

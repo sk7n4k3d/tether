@@ -95,8 +95,8 @@ fun WorktreeScreen(
                 item(key = "explain") {
                     Block(title = stringResource(R.string.quoi_sert_d7aac6)) {
                         Text(stringResource(R.string.arbre_travail_copie_65c59a) +
-                                "travailler sans toucher à l'arbre principal. Tu essaies une " +
-                                "approche risquée, et ton dépôt reste intact.",
+                                  " " + stringResource(R.string.travailler_sans_toucher_d841f4) +
+                                 " " + stringResource(R.string.approche_risquee_ton_b4c895),
                             style = MaterialTheme.typography.bodySmall,
                             color = TetherTextSecondary,
                         )
@@ -107,7 +107,7 @@ fun WorktreeScreen(
                     item(key = "not-versioned") {
                         Notice(
                             text = "Ce répertoire n'est pas versionné. Un arbre de travail " +
-                                "repose sur git : il n'y a rien à isoler ici.",
+                                stringResource(R.string.repose_git_rien_e58e50),
                         )
                     }
                 }
@@ -191,7 +191,7 @@ fun WorktreeScreen(
                                         )
                                     }
                                     Text(
-                                        text = if (state.creating) "Création…" else "Créer",
+                                        text = if (state.creating) stringResource(R.string.creation_2a06d1) else "Créer",
                                         style = TetherDataStyle,
                                         color = LocalAccent.current,
                                         fontWeight = FontWeight.SemiBold,
@@ -233,7 +233,7 @@ fun WorktreeScreen(
                         // avec des modifications non commitées contient du travail qui n'existe
                         // nulle part ailleurs.
                         text = "Les modifications non commitées dans cet arbre seront perdues. " +
-                            "Le reste du dépôt n'est pas touché.",
+                            stringResource(R.string.reste_depot_touche_fe4dc8),
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherAlert,
                     )

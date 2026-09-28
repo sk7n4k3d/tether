@@ -204,7 +204,7 @@ private fun FileCard(file: UnifiedDiff.FileDiff) {
                 // ⚠️ Un fichier sans patch (binaire, ou tronque par le serveur) doit le DIRE. Un
                 // corps vide laisserait croire a un fichier sans changement.
                 Text(stringResource(R.string.serveur_fourni_contenu_ddcc5f) +
-                        "(binaire, ou diff trop volumineux).",
+                          " " + stringResource(R.string.binaire_diff_trop_f5c1ff),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextMuted,
                     modifier = Modifier.padding(

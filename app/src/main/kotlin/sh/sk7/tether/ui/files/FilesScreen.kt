@@ -148,12 +148,12 @@ private fun CurrentPathBar(path: String, canGoUp: Boolean, onUp: () -> Unit) {
         IconButton(onClick = onUp, enabled = canGoUp) {
             Icon(
                 imageVector = Lucide.ArrowLeft,
-                contentDescription = if (canGoUp) "Dossier parent" else "Déjà à la racine",
+                contentDescription = if (canGoUp) stringResource(R.string.dossier_parent_fbf542) else stringResource(R.string.deja_racine_b5691d),
                 tint = if (canGoUp) TetherTextPrimary else TetherTextSecondary.copy(alpha = 0.9f),
             )
         }
         Text(
-            text = path.ifBlank { "racine du répertoire" },
+            text = path.ifBlank { stringResource(R.string.racine_repertoire_fa2f3a) },
             style = TetherDataStyle,
             color = if (path.isBlank()) TetherTextSecondary else TetherTextPrimary,
             maxLines = 1,
@@ -197,9 +197,9 @@ private fun BrowseSection(
                     // a un dossier vide alors qu'un fichier existe sous un autre nom.
                     Text(
                         text = if (term.isBlank()) {
-                            "Ce dossier est vide."
+                            stringResource(R.string.dossier_vide_e999c9)
                         } else {
-                            "Aucun fichier de ce dossier ne contient « $term »."
+                            stringResource(R.string.aucun_fichier_dossier_3c389a)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextSecondary,
@@ -316,7 +316,7 @@ private fun FileViewer(file: OpenFile, onClose: () -> Unit) {
         }
         if (file.binary) {
             Text(stringResource(R.string.fichier_texte_binaire_bfe3a1) +
-                    "Son contenu ne peut pas être affiché ici.",
+                      " " + stringResource(R.string.contenu_peut_etre_3d9df0),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherAlert,
                 modifier = Modifier.padding(horizontal = Spacing.lg),
@@ -355,8 +355,8 @@ private fun TooBigNotice(tooBig: FileTooBig, onClose: () -> Unit) {
             color = TetherAlert,
         )
         Text(
-            text = "${tooBig.path} fait ${tooBig.bytes / 1024} Ko. " +
-                "La limite d'affichage est de ${FilesViewModel.MAX_OPEN_BYTES / 1024} Ko.",
+            text = stringResource(R.string.toobig_path_fait_7149b1, tooBig.path, tooBig.bytes / 1024) +
+                 " " + stringResource(R.string.limite_affichage_filesviewmodel_b4fb78, FilesViewModel.MAX_OPEN_BYTES / 1024),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
         )

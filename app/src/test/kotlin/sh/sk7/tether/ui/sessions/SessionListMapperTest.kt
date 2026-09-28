@@ -27,8 +27,11 @@ class SessionListMapperTest {
 
     @Test
     fun `un titre absent rend un libelle de repli`() {
-        assertEquals("Sans titre", SessionListMapper.toItem(session(title = null)).title)
-        assertEquals("Sans titre", SessionListMapper.toItem(session(title = "   ")).title)
+        // On compare le **repli fourni**, pas « Sans titre » : la regle verifiee est
+        // qu'un titre absent prend le repli, pas que le repli dit un mot en
+        // particulier. Une reecriture de traduction ne doit pas casser ce test.
+        assertEquals("repli", SessionListMapper.toItem(session(title = null), "repli").title)
+        assertEquals("repli", SessionListMapper.toItem(session(title = "   "), "repli").title)
     }
 
     @Test

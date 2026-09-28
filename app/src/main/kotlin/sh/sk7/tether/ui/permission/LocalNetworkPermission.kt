@@ -120,8 +120,8 @@ private fun PermissionRefused(onRetry: () -> Unit, onOpenSettings: () -> Unit) {
             color = TetherTextPrimary,
         )
         Text(stringResource(R.string.android_bloque_defaut_1992b8) +
-                "Sans cette autorisation, Tether ne peut pas joindre le serveur opencode " +
-                "sur 192.0.2.10.",
+                  " " + stringResource(R.string.sans_autorisation_tether_efa72b) +
+                 " " + stringResource(R.string.t_192_ca76d6),
             style = MaterialTheme.typography.bodyMedium,
             color = TetherTextSecondary,
             textAlign = TextAlign.Center,
@@ -131,7 +131,7 @@ private fun PermissionRefused(onRetry: () -> Unit, onOpenSettings: () -> Unit) {
         }
         TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.ouvrir_reglages_systeme_dc1d26)) }
         Text(stringResource(R.string.systeme_propose_demande_3449aa) +
-                "» dans les permissions de l'application.",
+                 " " + stringResource(R.string.permissions_application_be85c6),
             style = MaterialTheme.typography.bodySmall,
             color = TetherAlert,
             textAlign = TextAlign.Center,

@@ -22,6 +22,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `opencode.jsonc`
 - Instrumentation tests: the contrast measured on the device, the locale actually
   applied to the context
+- Full internationalisation: 433 strings in English and French, including error messages
+  prepared outside the component tree
 
 ### Fixed
 
@@ -30,6 +32,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tree. It now runs from a slot that is mounted inside it.
 - The accent colour was a compile-time constant in 26 files; it is now a
   `CompositionLocal` fed by the user's choice, so it survives a restart and can change
+- A corrupted preferences file killed the app at startup: `DataStore` propagates read
+  failures. Preference reads now fall back to defaults and the app starts.
+- A missing space between two concatenated strings, in 20 places: Android trims
+  whitespace at the edges of a string resource, so the separator belongs in the code
+- `approvalsSummary` displayed a literal `%1$s`: the string expected a count the branch
+  did not pass
+- About a hundred French strings that were missed by the first extraction, showing as
+  French fragments inside an English screen
 
 ### Security
 

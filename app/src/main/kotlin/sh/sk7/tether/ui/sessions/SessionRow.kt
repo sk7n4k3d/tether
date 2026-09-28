@@ -461,10 +461,10 @@ private fun ActivityBadge(activity: Activity) {
     // ⚠️ `Idle` et `Unseen` sont traites a part : le premier ne s'affiche pas, le second est
     // deja porte par sa propre information (« termine »). Tout afficher rendrait le tout illisible.
     val (label, tint) = when (activity) {
-        Activity.Waiting -> "t'attend" to TetherAlert
-        Activity.Running -> "en cours" to LocalAccent.current
+        Activity.Waiting -> stringResource(R.string.attend_7ad90b) to TetherAlert
+        Activity.Running -> stringResource(R.string.cours_db22a7) to LocalAccent.current
         Activity.Unseen -> "terminé" to TetherTextPrimary
-        Activity.Queued -> "en file" to TetherTextSecondary
+        Activity.Queued -> stringResource(R.string.file_6e0693) to TetherTextSecondary
         Activity.Failed -> "échec" to TetherAlert
         Activity.Idle -> return
     }

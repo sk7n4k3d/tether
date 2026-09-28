@@ -151,9 +151,9 @@ private fun BackgroundRow(
     // ⚠️ La formulation dit la SOURCE du jugement : « la session tourne encore » est un fait,
     // « en arrière-plan » est notre deduction. Sur une ligne courte, on nomme le fait.
     val (stateLabel, stateTint) = when (foreground) {
-        true -> "sa session tourne" to LocalAccent.current
-        false -> "sa session est finie" to TetherAlert
-        null -> "aucune session" to TetherTextSecondary
+        true -> stringResource(R.string.session_tourne_0424da) to LocalAccent.current
+        false -> stringResource(R.string.session_finie_6cb0e6) to TetherAlert
+        null -> stringResource(R.string.aucune_session_15daed) to TetherTextSecondary
     }
 
     Row(

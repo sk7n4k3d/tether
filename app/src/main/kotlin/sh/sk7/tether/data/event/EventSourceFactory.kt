@@ -5,6 +5,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import sh.sk7.tether.data.api.CredentialsProvider
 import sh.sk7.tether.data.settings.ConnectionSettings
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Construit une [EventSource] pour les reglages courants.
@@ -37,7 +40,7 @@ class DefaultEventSourceFactory @Inject constructor(
 
     override suspend fun create(settings: ConnectionSettings): EventSource {
         val credentials = credentialsProvider.credentials()
-            ?: error("aucun identifiant configuré")
+            ?: error(Res.of(R.string.aucun_identifiant_configure_1c332a))
         return EventStream(
             baseUrl = settings.baseUrl,
             credentials = credentials,

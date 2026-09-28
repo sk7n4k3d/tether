@@ -74,9 +74,9 @@ fun SessionOptionsMenu(
             )
         },
         onRename?.let { SessionAction("Renommer", Lucide.Pencil, it) },
-        onFork?.let { SessionAction("Dupliquer (fork)", Lucide.GitFork, it) },
+        onFork?.let { SessionAction(stringResource(R.string.dupliquer_fork_c14991), Lucide.GitFork, it) },
         onInterrupt?.let { SessionAction("Interrompre", Lucide.Square, it) },
-        onCompact?.let { SessionAction("Compacter le contexte", Lucide.Scissors, it) },
+        onCompact?.let { SessionAction(stringResource(R.string.compacter_contexte_110145), Lucide.Scissors, it) },
         onDelete?.let { SessionAction("Supprimer", Lucide.Trash2, it, destructive = true) },
     )
     // Aucune action disponible : aucun controle. On n'affiche pas un menu vide.

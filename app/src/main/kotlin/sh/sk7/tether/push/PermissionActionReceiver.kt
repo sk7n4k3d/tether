@@ -15,6 +15,9 @@ import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
 import javax.inject.Inject
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Repond a une demande d'autorisation depuis la notification, sans ouvrir l'app.**
@@ -71,7 +74,7 @@ class PermissionActionReceiver : BroadcastReceiver() {
                 // lui qui rend l'appel possible apres un redemarrage du process par le push.
                 val settings = connectionStore.current()
                 if (!settings.isConfigured) {
-                    TetherNotifier.showDecisionResult(context, false, "Serveur non configuré.")
+                    TetherNotifier.showDecisionResult(context, false, Res.of(R.string.serveur_non_configure_022fcf))
                     return@launch
                 }
                 val ok = runCatching {
@@ -98,12 +101,12 @@ class PermissionActionReceiver : BroadcastReceiver() {
                     TetherNotifier.showDecisionResult(
                         context,
                         false,
-                        "Le serveur a refusé. L'agent attend toujours.",
+                        Res.of(R.string.serveur_refuse_agent_2c75af),
                     )
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "action en echec : ${e.javaClass.simpleName}", e)
-                TetherNotifier.showDecisionResult(context, false, "Action impossible.")
+                TetherNotifier.showDecisionResult(context, false, Res.of(R.string.action_impossible_cd5717))
             } finally {
                 scope.cancel()
                 pending.finish()
@@ -113,8 +116,8 @@ class PermissionActionReceiver : BroadcastReceiver() {
 
     private fun PermissionDecision.resultLabel(): String = when (this) {
         PermissionDecision.Reject -> "Refusée"
-        PermissionDecision.Once -> "Autorisée une fois"
-        PermissionDecision.Always -> "Toujours autorisée"
+        PermissionDecision.Once -> Res.of(R.string.autorisee_fois_971c3e)
+        PermissionDecision.Always -> Res.of(R.string.toujours_autorisee_f8f8d9)
     }
 
     companion object {

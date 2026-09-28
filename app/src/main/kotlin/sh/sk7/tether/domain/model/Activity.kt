@@ -1,5 +1,8 @@
 package sh.sk7.tether.domain.model
 
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
+
 /**
  * **Ce qu'une session fait en ce moment, vu du serveur.**
  *
@@ -35,7 +38,7 @@ enum class Activity(val label: String) {
      * pas prise, la session ne peut pas avancer. Afficher « ça tourne » à ce moment-là ferait
      * regarder l'écran sans rien faire, alors que c'est précisément l'instant où l'app sert.
      */
-    Waiting("t'attend"),
+    Waiting(Res.of(R.string.attend_7ad90b)),
 
     /**
      * **Le tour a fini et tu ne l'as pas vu.**
@@ -43,13 +46,13 @@ enum class Activity(val label: String) {
      * ⚠️ Distinct de [Idle] : c'est la différence entre « il s'est passé quelque chose » et
      * « c'est calme ». Sans cette distinction, une app notifierait pour du travail déjà lu.
      */
-    Unseen("terminé, pas vu"),
+    Unseen(Res.of(R.string.termine_ef24a4)),
 
     /** Le serveur travaille. */
-    Running("en cours"),
+    Running(Res.of(R.string.cours_db22a7)),
 
     /** Un message attend son tour (file d'attente, `delivery: queue`). */
-    Queued("en file"),
+    Queued(Res.of(R.string.file_6e0693)),
 
     /** Le tour a échoué ou a été interrompu. */
     Failed("échec"),

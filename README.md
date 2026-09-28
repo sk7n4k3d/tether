@@ -130,6 +130,13 @@ The app follows the phone's language. You can override that in Settings, and on
 Android 13 and later the app also appears in **Settings → Apps → Languages**, so the
 system can switch it too.
 
+Every string is a resource, in both languages — including the error messages a
+`ViewModel` prepares and a `Service` logs, which are resolved outside the component
+tree. A test reads the two XML files directly and fails if a key exists in one language
+only, if a phrase is identical in both (a forgotten translation), or if a `${...}`
+interpolation survived the extraction: Android cannot evaluate it, so it would show up
+on screen as-is.
+
 The choice is applied before the first screen is composed, which is why the app
 restarts its activity on a change — a language is not something that can be swapped
 into a tree that already exists.

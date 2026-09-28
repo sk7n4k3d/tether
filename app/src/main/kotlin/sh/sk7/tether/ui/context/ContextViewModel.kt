@@ -17,6 +17,9 @@ import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.IoDispatcher
 import sh.sk7.tether.ui.settings.ConnectionErrors
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Une categorie de messages dans la fenetre**, avec son poids.
@@ -42,14 +45,14 @@ data class ContextGroup(
     /** Libelle lisible. Le type serveur reste la cle ; ceci n'est qu'un affichage. */
     val label: String
         get() = when (type) {
-            "assistant" -> "Réponses de l'agent"
-            "user" -> "Tes messages"
+            "assistant" -> Res.of(R.string.reponses_agent_629480)
+            "user" -> Res.of(R.string.tes_messages_965c75)
             "compaction" -> "Résumés"
-            "synthetic" -> "Messages synthétiques"
-            "system" -> "Messages système"
-            "idle" -> "Marqueurs de fin de tour"
-            "shell" -> "Commandes shell"
-            "skill" -> "Compétences chargées"
+            "synthetic" -> Res.of(R.string.messages_synthetiques_91e2d0)
+            "system" -> Res.of(R.string.messages_systeme_97f2e3)
+            "idle" -> Res.of(R.string.marqueurs_fin_tour_f41af7)
+            "shell" -> Res.of(R.string.commandes_shell_41a945)
+            "skill" -> Res.of(R.string.competences_chargees_97ac18)
             else -> type
         }
 }
@@ -116,7 +119,7 @@ class ContextViewModel @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private val sessionID: String = checkNotNull(savedStateHandle.get<String>("sessionID")) {
-        "L'ecran Contexte exige un sessionID"
+        Res.of(R.string.ecran_contexte_exige_76e68f)
     }
 
     private val _state = MutableStateFlow<ContextUiState>(ContextUiState.Loading)

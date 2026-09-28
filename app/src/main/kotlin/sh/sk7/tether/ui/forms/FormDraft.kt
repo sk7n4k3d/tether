@@ -10,6 +10,9 @@ import kotlinx.serialization.json.doubleOrNull
 import sh.sk7.tether.data.api.FormAnswerValue
 import sh.sk7.tether.data.api.FormFieldDto
 import sh.sk7.tether.data.api.FormWhenDto
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * **Les types d'un `Form.Field`, nommes une fois.**
@@ -264,7 +267,7 @@ object FormAnswerBuilder {
         val text = (value as? FormDraftValue.Raw)?.text.orEmpty()
         if (text.isEmpty()) {
             // Un requis vide est un manque ; un optionnel vide n'est simplement pas une reponse.
-            if (field.required) errors += FieldError(field.key, field.label(), "Champ requis.")
+            if (field.required) errors += FieldError(field.key, field.label(), Res.of(R.string.champ_requis_c895d4))
             return
         }
         field.validateTextLength(text, errors)
@@ -275,11 +278,11 @@ object FormAnswerBuilder {
             // alignement complet. Utiliser `matches()` refuserait `abc123` que le serveur accepte :
             // une erreur locale qui bloque une reponse valide.
             if (!runCatching { Regex(pattern).containsMatchIn(text) }.getOrDefault(true)) {
-                errors += FieldError(field.key, field.label(), "Ne correspond pas au format attendu.")
+                errors += FieldError(field.key, field.label(), Res.of(R.string.correspond_format_attendu_4fe135))
             }
         }
         if (field.options.isNotEmpty() && !field.custom && text !in field.options.map { it.value }) {
-            errors += FieldError(field.key, field.label(), "Valeur hors des choix proposes.")
+            errors += FieldError(field.key, field.label(), Res.of(R.string.valeur_hors_choix_272474))
         }
         answer[field.key] = FormAnswerValue.Text(text)
     }
@@ -292,12 +295,12 @@ object FormAnswerBuilder {
     ) {
         val raw = (value as? FormDraftValue.Raw)?.text?.trim().orEmpty()
         if (raw.isEmpty()) {
-            if (field.required) errors += FieldError(field.key, field.label(), "Nombre requis.")
+            if (field.required) errors += FieldError(field.key, field.label(), Res.of(R.string.nombre_requis_a59778))
             return
         }
         val number = raw.toDoubleOrNull()
         if (number == null) {
-            errors += FieldError(field.key, field.label(), "Nombre invalide.")
+            errors += FieldError(field.key, field.label(), Res.of(R.string.nombre_invalide_27b477))
             return
         }
         field.validateBounds(number, errors)
@@ -312,14 +315,14 @@ object FormAnswerBuilder {
     ) {
         val raw = (value as? FormDraftValue.Raw)?.text?.trim().orEmpty()
         if (raw.isEmpty()) {
-            if (field.required) errors += FieldError(field.key, field.label(), "Nombre entier requis.")
+            if (field.required) errors += FieldError(field.key, field.label(), Res.of(R.string.nombre_entier_requis_f45373))
             return
         }
         // ⚠️ On accepte « 3 » et « 3.0 » (le serveur accepte 3.0, mesure), mais pas « 3.5 ».
         val asDouble = raw.toDoubleOrNull()
         val asLong = raw.toLongOrNull() ?: asDouble?.takeIf { it == it.toLong().toDouble() }?.toLong()
         if (asLong == null) {
-            errors += FieldError(field.key, field.label(), "Nombre entier attendu.")
+            errors += FieldError(field.key, field.label(), Res.of(R.string.nombre_entier_attendu_ba5230))
             return
         }
         field.validateBounds(asLong.toDouble(), errors)
@@ -334,37 +337,37 @@ object FormAnswerBuilder {
     ) {
         val selected = (value as? FormDraftValue.Choice)?.selected.orEmpty()
         if (selected.isEmpty()) {
-            if (field.required) errors += FieldError(field.key, field.label(), "Selection requise.")
+            if (field.required) errors += FieldError(field.key, field.label(), Res.of(R.string.selection_requise_d87172))
             return
         }
         val values = field.options.map { it.value }
         if (values.isNotEmpty() && !field.custom && selected.any { it !in values }) {
-            errors += FieldError(field.key, field.label(), "Valeur hors des choix proposes.")
+            errors += FieldError(field.key, field.label(), Res.of(R.string.valeur_hors_choix_272474))
         }
         field.minItems?.let {
-            if (selected.size < it) errors += FieldError(field.key, field.label(), "Au moins $it choix.")
+            if (selected.size < it) errors += FieldError(field.key, field.label(), Res.of(R.string.moins_choix_1932fe))
         }
         field.maxItems?.let {
-            if (selected.size > it) errors += FieldError(field.key, field.label(), "Au plus $it choix.")
+            if (selected.size > it) errors += FieldError(field.key, field.label(), Res.of(R.string.choix_76e7e3))
         }
         answer[field.key] = FormAnswerValue.Items(selected.toList())
     }
 
     private fun FormFieldDto.validateTextLength(text: String, errors: MutableList<FieldError>) {
         minLength?.let {
-            if (text.length < it) errors += FieldError(key, label(), "Trop court ($it caracteres minimum).")
+            if (text.length < it) errors += FieldError(key, label(), Res.of(R.string.trop_court_caracteres_2aed12))
         }
         maxLength?.let {
-            if (text.length > it) errors += FieldError(key, label(), "Trop long ($it caracteres maximum).")
+            if (text.length > it) errors += FieldError(key, label(), Res.of(R.string.trop_long_caracteres_b812bc))
         }
     }
 
     private fun FormFieldDto.validateBounds(number: Double, errors: MutableList<FieldError>) {
         minBound()?.let {
-            if (number < it) errors += FieldError(key, label(), "Valeur trop petite.")
+            if (number < it) errors += FieldError(key, label(), Res.of(R.string.valeur_trop_petite_58bff5))
         }
         maxBound()?.let {
-            if (number > it) errors += FieldError(key, label(), "Valeur trop grande.")
+            if (number > it) errors += FieldError(key, label(), Res.of(R.string.valeur_trop_grande_2b14ef))
         }
     }
 }

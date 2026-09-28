@@ -3,6 +3,9 @@ package sh.sk7.tether.ui.sessions
 import java.util.Locale
 import sh.sk7.tether.data.api.Session
 import sh.sk7.tether.ui.theme.NodeState
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
+import sh.sk7.tether.ui.i18n.Res
 
 /**
  * Une session prete a afficher.
@@ -105,12 +108,20 @@ data class SessionItem(
  */
 object SessionListMapper {
 
-    fun toItem(session: Session): SessionItem {
+    /**
+     * Un item de liste, avec son **repli** injectable.
+     *
+     * Le titre absent affiche « Sans titre ». Ce texte vient des ressources, donc un
+     * test JVM ne peut pas le comparer. Il le passe plutot : le test verifie alors
+     * qu'un titre present n'est **pas** remplace, et qu'un titre vide l'est — la
+     * regle, pas la chaine.
+     */
+    fun toItem(session: Session, repli: String = Res.of(R.string.sans_titre_679c67)): SessionItem {
         val model = session.model
         val tokens = session.tokens
         return SessionItem(
             id = session.id,
-            title = session.title?.takeIf { it.isNotBlank() } ?: "Sans titre",
+            title = session.title?.takeIf { it.isNotBlank() } ?: repli,
             timestamp = session.time?.updated ?: session.time?.created,
             agent = session.agent?.takeIf { it.isNotBlank() },
             modelLabel = model?.let { "${it.providerID}/${it.id}" },
@@ -125,7 +136,8 @@ object SessionListMapper {
         )
     }
 
-    fun toItems(sessions: List<Session>): List<SessionItem> = sessions.map(::toItem)
+    fun toItems(sessions: List<Session>, repli: String = Res.of(R.string.sans_titre_679c67)): List<SessionItem> =
+        sessions.map { toItem(it, repli) }
 
     /**
      * Ordonne les sessions **en arbre plutot qu'en liste plate**.
