@@ -68,6 +68,7 @@ type Ctx = {
     }
     select: <Value>(options: any) => Promise<Value | undefined>
     toast: { show: (input: { message: string; variant?: "info" | "success" | "warning" | "error" }) => void }
+    slot: (claim: { prepend: string; render: () => any }) => () => void
   }
 }
 
@@ -212,15 +213,30 @@ export default {
       "tether.devices": () => void appareils(),
     }
 
-    ctx.keymap.layer(() => ({
-      mode: "global",
-      commands: declarationsCommandes().map((declaration) => ({
-        ...declaration,
-        run: executions[declaration.id],
-      })),
-    }))
+    // ⚠️ **Pas ici.** `ctx.keymap.layer` est documente « owned by the calling
+    // component » : il lit le contexte `Keymap.Provider` a la construction. Or `setup`
+    // est appele par le chargeur **apres un `await`** (lecture du fichier, resolution du
+    // paquet), donc hors du rendu : le contexte n'y existe pas, et l'appel leve
+    // `Keymap.Provider is missing`. Le plugin etait donc mort au chargement, et l'erreur
+    // etait noyee dans un avertissement que personne ne lit.
+    //
+    // On passe par un slot `app`, dont le `render` s'execute **dans** l'arbre, sous le
+    // provider. Le composant ne rend rien : il ne sert qu'a porter la declaration.
+    const desabonnerSlot = ctx.ui.slot({
+      prepend: "app",
+      render: () => {
+        ctx.keymap.layer(() => ({
+          mode: "global",
+          commands: declarationsCommandes().map((declaration) => ({
+            ...declaration,
+            run: executions[declaration.id],
+          })),
+        }))
+        return null
+      },
+    })
 
-    return () => {}
+    return () => desabonnerSlot()
   },
 }
 
