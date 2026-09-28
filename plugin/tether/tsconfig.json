@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "//": [
+    "Ce fichier n'existe pas pour TypeScript : aucun `tsc` ne passe sur le plugin.",
+    "Il existe parce que le **transpiler** du runtime lit le `tsconfig.json` le plus proche",
+    "pour choisir la source JSX.",
+    "",
+    "Sans lui, `tui.tsx` est transpilé avec le runtime React par defaut, et le TUI echoue",
+    "au chargement :",
+    "",
+    "    Cannot find package 'react' imported from .../tui.tsx",
+    "",
+    "Le TUI n'est pas en React. Il est en Solid, et son source JSX est",
+    "`@opentui/solid` — c'est ce que declare `packages/tui/tsconfig.json` cote opencode.",
+    "Notre fichier doit dire la meme chose, sinon le meme JSX se transforme avec deux",
+    "runtimes differents selon l'executable qui le charge.",
+    "",
+    "`jsx: preserve` et non `react-jsx` : c'est la valeur qu'utilise le TUI. Le",
+    "transpiler garde alors la source JSX et la delegue au runtime de l'hote, qui sait",
+    "rendre du Solid — ce qu'un transpiler generique ne peut pas deviner."
+  ],
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
+  }
+}
