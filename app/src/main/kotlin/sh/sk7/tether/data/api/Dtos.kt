@@ -608,3 +608,31 @@ sealed interface FormAnswerValue {
         override fun toJson(): JsonElement = JsonArray(value.map { JsonPrimitive(it) })
     }
 }
+
+// ---------------------------------------------------------------------------
+// Le RPC du plugin Tether
+//
+// `/api/rpc/{id}/{method}` n'est pas dans le schema du serveur : c'est une surface
+// ajoutee par les plugins. Le corps est `{ "input": … }` — un objet brut, pas un
+// `@Serializable`, parce que l'input depend de la methode et que l'ecrire en JSON
+// donnerait une classe par methode pour une forme identique.
+// ---------------------------------------------------------------------------
+
+/** `{ "input": { … } }` — l'enveloppe de toute appel RPC. */
+data class RpcRequest(val input: JsonObject)
+
+/**
+ * Une erreur **nommee** du serveur.
+ *
+ * ⚠️ On ne remplace pas ce message par un code HTTP. `type` vaut `invalid` quand la
+ * requete est malformee, et `unpaired` quand le jeton a expire ou a deja servi : l'app
+ * doit pouvoir dire « rescane le QR » plutot que « le serveur a refuse ».
+ */
+class TetherRpcException(
+    val type: String,
+    override val message: String,
+) : Exception(message) {
+
+    /** Le jeton n'est plus valable : l'utilisateur doit rescanner un QR. */
+    val jetonPerdu: Boolean get() = type == "unpaired"
+}

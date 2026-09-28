@@ -258,13 +258,35 @@ export default {
         const problem = validateSubscription(input)
         if (problem) return mctx.error("invalid", problem, { reason: problem })
 
-        // Le jeton d'appairage est **consomme** ici, avant tout enregistrement : c'est
-        // lui qui fait la ceremonie. Un endpoint UnifiedPush est une capacite
-        // d'ecriture sur le telephone ; savoir l'endpoint ne prouve pas le consentement
-        // a le recevoir, et le mot de passe du serveur prouve qu'on peut piloter
-        // opencode, pas qu'on veut etre notifie.
-        const jeton = consumePairing(input.pairingToken)
-        if (jeton) return mctx.error("unpaired", jeton, { reason: jeton })
+        const devices = await load()
+
+        // ⚠️ Le jeton d'appairage n'est exige que pour un appareil **inconnu**. C'est la
+        // condition pour que « idempotent sur deviceId » soit vrai dans les faits, et sans
+        // elle l'app **perd ses notifications au premier renouvellement d'endpoint** — le
+        // distributeur redistribue son point d'acces au redemarrage, l'app n'a plus de
+        // jeton a fournir, et l'ancien endpoint reste enregistre jusqu'a pourrir.
+        //
+        // Pourquoi un appareil deja connu n'a pas a re-prouver quoi que ce soit : cet
+        // appel ne lui accorde **aucune capacite nouvelle**. Le serveur detient deja
+        // l'endpoint de ce `deviceId`, donc celui qui le remplace n'obtient rien de plus
+        // que ce qu'il avait — il deplace un point d'ecriture qui lui est deja acquis.
+        // La vraie barriere reste l'authentification HTTP basic de l'appel : sans le mot
+        // de passe du serveur, `deviceId` seul ne donne rien. Exiger en plus un QR que
+        // l'utilisateur n'a pas sous la main rendrait le canal cassable par le
+        // fonctionnement normal du distributeur, pas plus sur.
+        const dejaEnregistre = devices.some((d) => d.deviceId === String(input.deviceId).slice(0, 64))
+        const jetonFourni = typeof input.pairingToken === "string" && input.pairingToken.length > 0
+
+        if (jetonFourni || !dejaEnregistre) {
+          // Un jeton **fourni** est toujours valide ou refuse — que l appareil soit connu
+          // ou non. Accepter un jeton fabrique pour un appareil deja enregistre
+          // reviendrait a dire « jeton inutile ici » : c'est faux, et ca rendrait le
+          // controle de la ceremonie decoratif. Un jeton mort reste un jeton mort.
+          const jeton = consumePairing(input.pairingToken)
+          if (jeton) return mctx.error("unpaired", jeton, { reason: jeton })
+        }
+        // Sinon : appareil connu, aucun jeton fourni. C'est le renouvellement d'endpoint
+        // du distributeur, il n'a rien a prouver de nouveau.
 
         const device: Device = {
           deviceId: String(input.deviceId).slice(0, 64),
@@ -280,7 +302,6 @@ export default {
           registeredAt: Date.now(),
         }
 
-        const devices = await load()
         const next = upsert(devices, device)
         await save(next)
 

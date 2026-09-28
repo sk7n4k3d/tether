@@ -54,6 +54,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="opencode" android:host="session" />
+                <!--
+                  Appairage : `opencode://pair?s=<serveur>&t=<jeton>`, encode dans le QR
+                  que le TUI affiche. Le serveur et le jeton sont dans la **query**, pas
+                  dans le chemin.
+
+                  Meme filtre que `session`, donc meme schema : Android fait le produit
+                  des `data`, et les deux couples (opencode, session) et (opencode, pair)
+                  sont exactement ceux voulus. Deux filtres distincts auraient produit la
+                  meme chose, en plus long.
+                -->
+                <data android:scheme="opencode" android:host="pair" />
             </intent-filter>
         </activity>
 

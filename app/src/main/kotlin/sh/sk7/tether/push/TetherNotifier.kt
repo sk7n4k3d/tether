@@ -34,6 +34,18 @@ interface PushEntryPoint {
     fun gateway(): OpenCodeGateway
 
     /**
+     * L'identifiant de cet appareil, pour le re-enregistrement d'un endpoint renouvele.
+     *
+     * ⚠️ Il vient d'ici plutot que d'un acces direct au `SharedPreferences` : le service
+     * de push n'est pas injectable, et c'est cette interface qui est sa fenetre sur le
+     * graphe. Voir [PushScope] pour la duree de vie de l'appel qui s'ensuit.
+     */
+    fun identity(): DeviceIdentity
+
+    /** Une portee qui survit a la destruction du service par le systeme. */
+    fun pushScope(): PushScope
+
+    /**
      * Le detenteur d'etat vivant, pour **valider** un identifiant de session recu par push.
      *
      * ⚠️ Il n'est pas utilise pour lire l'activite ici (le push n'a pas a la connaitre), mais

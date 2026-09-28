@@ -156,6 +156,33 @@ open class NeutralGateway : OpenCodeGateway {
 
     override suspend fun projects(settings: ConnectionSettings): List<ProjectDto> = emptyList()
 
+    // ---- Le RPC du plugin Tether ----
+    //
+    // ⚠️ `registerDevice` repond `false`, pas `true`. Un faux qui repond « succes » ferait
+    // passer un test d'ecran d'appairage sans jamais toucher au reseau, et un vrai
+    // parcours d'enregistrement qui ne se prouve pas. Ici, un test qui veut la reussite
+    // doit ecrire son propre faux et le dire.
+
+    override suspend fun registerDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+        endpoint: String,
+        p256dh: String,
+        authSecret: String,
+        pairingToken: String,
+        distributor: String?,
+    ): Boolean = false
+
+    override suspend fun unregisterDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+    ): Boolean = true
+
+    override suspend fun devices(settings: ConnectionSettings, server: String): List<String> =
+        emptyList()
+
     override suspend fun pendingPermissions(settings: ConnectionSettings): List<PermissionRequest> =
         emptyList()
 

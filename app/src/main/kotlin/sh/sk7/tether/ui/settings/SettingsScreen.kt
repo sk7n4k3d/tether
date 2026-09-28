@@ -49,9 +49,11 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.LogOut
 import com.composables.icons.lucide.RefreshCw
 import com.composables.icons.lucide.Server
+import com.composables.icons.lucide.Shuffle
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.ShieldAlert
 import com.composables.icons.lucide.TriangleAlert
+import org.unifiedpush.android.connector.UnifiedPush
 import sh.sk7.tether.push.PushRegistrationResult
 import sh.sk7.tether.push.PushStateKind
 import sh.sk7.tether.push.PushTone
@@ -415,6 +417,10 @@ private fun NotificationsSection() {
     // ⚠️ On retient si le message dit une erreur, pour le teinter : un « enregistrement demandé »
     // en ambre ferait croire a un echec.
     var messageIsError by remember { mutableStateOf(false) }
+    // Le selecteur de distributeur est une boite de dialogue **systeme** : elle vit dans
+    // une autre tache. `choosing` sert a ne pas etoffer le bouton pendant qu'elle est
+    // ouverte — sinon un second tap la relancerait par-dessus la premiere.
+    var choosing by remember { mutableStateOf(false) }
 
     // ⚠️ L'enregistrement et l'octroi de permission sont **asynchrones** : on relit l'etat au
     // retour dans l'ecran (la permission se donne dans une boite systeme, l'endpoint arrive d'un
@@ -499,6 +505,55 @@ private fun NotificationsSection() {
                         }
                     },
                 )
+            }
+
+            // ⚠️ Le choix du distributeur est propose meme quand tout fonctionne.
+            // L'endpoint est une **capacite d'ecriture** : changer de distributeur, c'est
+            // donner a un autre service le droit de pousser sur ce telephone. C'est
+            // justement pour ca que ce n'est pas une action cachee dans un menu — et c'est
+            // aussi pour ca qu'il faut pouvoir revenir en arriere si le nouveau est pire.
+            //
+            // Le selecteur est celui du **connecteur UnifiedPush** lui-meme : c'est lui qui
+            // connait les distributeurs installes, et les-router soi-meme obligerait a
+            // redescouvrir le systeme d'intents a chaque changement de version.
+            ActionRow(
+                label = "Changer de distributeur",
+                detail = status.distributor?.let { "Actuel : $it" }
+                    ?: "Aucun — choisissez qui reçoit vos notifications",
+                icon = Lucide.Shuffle,
+                onClick = {
+                    choosing = true
+                    UnifiedPush.tryPickDistributor(context) { picked ->
+                        choosing = false
+                        // ⚠️ `false` signifie « l'utilisateur a referme sans choisir », pas
+                        // « echec ». Les distinguer afficherait un avertissement sur un geste
+                        // parfaitement normal.
+                        status = pushStatus(context)
+                        if (!picked) return@tryPickDistributor
+                        // Changer de distributeur invalide l'ancien endpoint : il faut
+                        // refaire l'enregistrement, sinon le serveur pousserait vers un
+                        // point d'acces que personne n'ecoute plus.
+                        requestPushRegistration(context) { result ->
+                            messageIsError = result != PushRegistrationResult.Requested
+                            message = registrationMessage(result)
+                        }
+                    }
+                },
+                enabled = !choosing,
+            )
+
+            if (choosing) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = TetherAccent,
+                    )
+                    Text("Sélection…", style = TetherDataStyle, color = TetherTextSecondary)
+                }
             }
 
             ActionRow(

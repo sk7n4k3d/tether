@@ -14,6 +14,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,10 +28,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Lucide
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.sk7.tether.push.APPROVE_ROUTE
+import sh.sk7.tether.push.PairingLink
 import sh.sk7.tether.push.NotificationPermissionRequest
 import sh.sk7.tether.push.routeFromUri
 import sh.sk7.tether.ui.chat.ChatScreen
+import sh.sk7.tether.ui.pairing.PairingScreen
+import sh.sk7.tether.ui.pairing.PairingViewModel
 import sh.sk7.tether.ui.permissions.PermissionsScreen
 import sh.sk7.tether.ui.server.ServerScreen
 import sh.sk7.tether.ui.sessions.SessionListScreen
@@ -71,6 +76,17 @@ object Routes {
 
     /** Explorateur de fichiers : verifier un chemin avant de l'envoyer. */
     const val FILES = "files"
+
+    /**
+     * Confirmation d'appairage : ce serveur veut enregistrer cet appareil.
+     *
+     * ⚠️ C'est une route **sans argument**. Le jeton d'appairage et l'adresse du serveur ne
+     * voyagent **pas** dans la route : ce sont des donnees d'un tiers (un tiers a forge le
+     * QR), et les routes de navigation finissent dans l'historique, les logs de crash et
+     * `savedInstanceState`. Ils restent dans le [PairingViewModel], qui lui ne survit qu'a
+     * l'activite — ce qui est exactement la duree de vie d'un consentement.
+     */
+    const val PAIRING = "pairing"
 
     /**
      * Hors connexion : le serveur ne repond pas, on explique et on propose d'agir.
@@ -134,6 +150,28 @@ fun routeFromIntent(intent: Intent?): String? {
 }
 
 /**
+ * La demande d'appairage portee par cet intent, ou `null`.
+ *
+ * ### Pourquoi une fonction separee de [routeFromIntent]
+ *
+ * [routeFromIntent] ne voit que `pathSegments`, et l'appairage vit dans la **query** :
+ * `opencode://pair?s=<serveur>&t=<jeton>`. La faire passer par la meme fonction
+ * obligerait a y melanger deux formes de liens sans rapport — et surtout a y encoder la
+ * validation d'un contenu tiers dans une fonction qui, elle, ne fait que router.
+ *
+ * L'**analyse** reste dans [PairingLink], en pur et testee sur la JVM ; il n'y a ici que
+ * l'extraction Android (`getQueryParameter`, qui sait decoder le percent-encoding).
+ *
+ * ⚠️ On renvoie `null` indistinctement pour « pas un lien d'appairage » et « lien
+ * d'appairage invalide ». Distinguer les deux offrirait un oracle sur ce que l'app
+ * accepte, et ne changerait rien pour l'utilisateur.
+ */
+fun pairingFromIntent(intent: Intent?): PairingLink.Demande? {
+    val uri = intent?.data ?: return null
+    return PairingLink.depuisUri(uri.scheme, uri.host, uri.query)
+}
+
+/**
  * Navigation de l'application : liste des sessions, reglages de connexion et chat.
  */
 @Composable
@@ -164,17 +202,29 @@ fun TetherNavHost(
     // alors que Tether est en arriere-plan n'ouvrirait **rien** — le cas le plus frequent.
     val context = LocalContext.current
     val activity = remember(context) { context as? androidx.activity.ComponentActivity }
+    val pairingViewModel: PairingViewModel = hiltViewModel()
+
+    // Un lien d'appairage prime sur tout le reste : il porte une demande de consentement
+    // posee par un tiers, et elle expire. Si on la laissait perdre derriere un route
+    // normale, l'utilisateur devrait rescaner.
+    fun router(intent: Intent?) {
+        val demande = pairingFromIntent(intent)
+        if (demande != null) {
+            // `ouvrir` refuse une demande deja traitee : ne pas naviguer alors evite
+            // de repousser l'utilisateur sur l'ecran de confirmation a chaque recreation.
+            if (pairingViewModel.ouvrir(demande)) {
+                navController.navigate(Routes.PAIRING) { launchSingleTop = true }
+            }
+            return
+        }
+        routeFromIntent(intent)?.let { route -> navController.navigate(route) }
+    }
+
     DisposableEffect(activity, navController) {
         if (activity == null) return@DisposableEffect onDispose { }
-        // Intent deja present (lancement depuis la notification).
-        routeFromIntent(activity.intent)?.let { route ->
-            navController.navigate(route)
-        }
-        val listener = androidx.core.util.Consumer<Intent> { intent ->
-            routeFromIntent(intent)?.let { route ->
-                navController.navigate(route)
-            }
-        }
+        // Intent deja present (lancement depuis la notification ou le QR).
+        router(activity.intent)
+        val listener = androidx.core.util.Consumer<Intent> { intent -> router(intent) }
         activity.addOnNewIntentListener(listener)
         onDispose { activity.removeOnNewIntentListener(listener) }
     }
@@ -242,6 +292,21 @@ fun TetherNavHost(
             ScreenScaffold(title = "Approbations", onBack = { navController.popBackStack() }) {
                 PermissionsScreen()
             }
+        }
+        composable(Routes.PAIRING) {
+            // ⚠️ Pas de `ScreenScaffold` a retour : l'appairage s'ouvre sur un **scan**, donc
+            // depuis n'importe quelle position de la pile. Un « retour » ici ramenerait a une
+            // conversation en cours, ce qui donne l'impression d'avoir ete ejecte. Refuser
+            // ferme, et c'est la seule sortie.
+            val state by pairingViewModel.state.collectAsStateWithLifecycle()
+            PairingScreen(
+                state = state,
+                onAuthorize = pairingViewModel::autoriser,
+                onRefuse = {
+                    pairingViewModel.refuser()
+                    navController.popBackStack()
+                },
+            )
         }
         composable(Routes.ABOUT) {
             ScreenScaffold(title = "À propos", onBack = { navController.popBackStack() }) {

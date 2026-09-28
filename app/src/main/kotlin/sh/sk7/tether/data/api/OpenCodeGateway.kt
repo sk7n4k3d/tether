@@ -204,6 +204,38 @@ interface OpenCodeGateway {
      */
     suspend fun stats(settings: ConnectionSettings, fromMillis: Long? = null): UsageStats
 
+    /**
+     * Enregistre cet appareil aupres du serveur demande par le QR.
+     *
+     * ⚠️ [server] vient du QR scanne, **pas** des reglages. C'est le seul cas ou l'app parle
+     * a un serveur different de celui auquel elle est configuree — et c'est volontaire : le
+     * QR a ete produit par ce serveur, dans un TUI ou l'utilisateur venait de s'authentifier.
+     *
+     * Les identifiants restent ceux des reglages. Si le serveur scanne en demande un autre,
+     * l'appel sort en 401 et l'echec est montre tel quel — l'app ne devine pas, et n'essaie
+     * aucun autre mot de passe.
+     */
+    suspend fun registerDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+        endpoint: String,
+        p256dh: String,
+        authSecret: String,
+        pairingToken: String,
+        distributor: String?,
+    ): Boolean
+
+    /** Retire cet appareil. Definitif : il faudra rescaner un QR pour revenir. */
+    suspend fun unregisterDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+    ): Boolean
+
+    /** Les appareils enregistres, en vue publique : ni endpoint ni cles. */
+    suspend fun devices(settings: ConnectionSettings, server: String): List<String>
+
     /** Commandes slash disponibles. */
     suspend fun commands(settings: ConnectionSettings): List<CommandDto>
 
@@ -581,6 +613,15 @@ class KtorOpenCodeGateway @Inject constructor(
     private fun client(settings: ConnectionSettings): OpenCodeClient =
         OpenCodeClient(settings.baseUrl, credentialsProvider, http)
 
+    /**
+     * Un client pour une adresse qui ne vient pas des reglages — celle du QR scanne.
+     *
+     * Meme [credentialsProvider] : le mot de passe de l'utilisateur, pas un autre. Et on ne
+     * tente rien d'autre si le serveur le refuse.
+     */
+    private fun client(baseUrl: String): OpenCodeClient =
+        OpenCodeClient(baseUrl, credentialsProvider, http)
+
     override suspend fun info(settings: ConnectionSettings): ServerInfo =
         client(settings).info()
 
@@ -713,6 +754,35 @@ class KtorOpenCodeGateway @Inject constructor(
 
     override suspend fun mcpServers(settings: ConnectionSettings): List<McpServerDto> =
         client(settings).mcpServers(settings.directory)
+
+    override suspend fun registerDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+        endpoint: String,
+        p256dh: String,
+        authSecret: String,
+        pairingToken: String,
+        distributor: String?,
+    ): Boolean = client(server).registerDevice(
+        deviceId = deviceId,
+        endpoint = endpoint,
+        p256dh = p256dh,
+        authSecret = authSecret,
+        pairingToken = pairingToken,
+        label = null,
+        distributor = distributor,
+        location = settings.directory,
+    )
+
+    override suspend fun unregisterDevice(
+        settings: ConnectionSettings,
+        server: String,
+        deviceId: String,
+    ): Boolean = client(server).unregisterDevice(deviceId, settings.directory)
+
+    override suspend fun devices(settings: ConnectionSettings, server: String): List<String> =
+        client(server).devices(settings.directory)
 
     override suspend fun plugins(settings: ConnectionSettings): List<PluginDto> =
         client(settings).plugins(settings.directory)

@@ -13,6 +13,8 @@ import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.PushService
 import org.unifiedpush.android.connector.UnifiedPush
 import org.unifiedpush.android.connector.data.PushEndpoint
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.launch
 import org.unifiedpush.android.connector.data.PushMessage
 
 /**
@@ -44,14 +46,71 @@ import org.unifiedpush.android.connector.data.PushMessage
 class TetherPushService : PushService() {
 
     /**
-     * Nouvel endpoint : on le transmet au **pont local**, qui le publiera au serveur opencode.
+     * Nouvel endpoint : on le **memorise en entier**, puis on le re-declare au serveur.
      *
-     * ⚠️ On ne garde pas l'endpoint pour nous : sans transmission, le serveur ne saura pas ou
-     * publier et aucune notification n'arrivera. C'est le chainon qui ferme la boucle.
+     * ⚠️ La memorisation est nouvelle, et c'est elle qui rend le canal Web Push possible.
+     * Le serveur chiffre desormais lui-meme (RFC 8291) : il lui faut l'URL **et** la cle
+     * P-256DH **et** le secret d'authentification. Ne garder que l'URL — ce que faisait
+     * l'ancien chemin, parce qu'un topic ntfy ne transporte qu'un message — revenait a
+     * rendre tout chiffrement impossible, sans lever la moindre erreur.
+     *
+     * L'ordre compte : on memorise **avant** de re-declarer, pour que l'appel emporte
+     * bien les nouvelles valeurs et pas les anciennes.
+     *
+     * ⚠️ Aucun jeton n'est ici, et c'est voulu. Il est a usage unique, donc mort apres
+     * l'appairage ; ici on n'a pas de ceremonie a refaire, seulement un endpoint de
+     * remplacement a declarer. Le serveur accepte cette forme pour un appareil deja connu
+     * (voir `subscribe` dans `plugin/tether/index.ts`), et refuse tout appareil inconnu.
      */
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
         Log.i(TAG, "nouvel endpoint (temporaire=${endpoint.temporary})")
+        val memorise = PushSubscription.remember(applicationContext, endpoint, instance)
+        if (!memorise) {
+            // Un endpoint temporaire ne vaut rien : il meurt avec le distributeur. On ne
+            // le remplace donc pas par l'ancien, qui reste valide, et on ne dit rien de
+            // plus — l'utilisateur n'a rien a faire tant qu'un endpoint definitif n'est pas arrive.
+            Log.w(TAG, "endpoint non memorise (temporaire ou incomplet), abonnement conserve")
+            return
+        }
+        redeclarerAupresDuServeur()
         PushEndpointRelay.publish(applicationContext, endpoint.url)
+    }
+
+    /**
+     * Re-declare l'abonnement courant aupres du serveur appaire, s'il y en a un.
+     *
+     * ⚠️ Silencieux par conception : c'est un rattrapage, pas une action demandee. Un
+     * echec ici n'a rien a afficher — l'endpoint memorise reste bon, et le prochain
+     * redemarrage du distributeur retentera. Le logged suffit, et un message visible
+     * pour un-channel arriere-plan alarma l'utilisateur sans raison.
+     */
+    private fun redeclarerAupresDuServeur() {
+        val enregistrement = DeviceRegistration.load(applicationContext)
+        if (enregistrement == null) {
+            // Pas encore appaire : rien a re-declarer. L'ecran de confirmation fera
+            // l'appel complet, jeton compris.
+            return
+        }
+        val abonnement = PushSubscription.load(applicationContext) ?: return
+        val point = EntryPointAccessors.fromApplication(applicationContext, PushEntryPoint::class.java)
+        point.pushScope().coroutines.launch {
+            try {
+                val ok = point.gateway().registerDevice(
+                    settings = point.connectionStore().current(),
+                    server = enregistrement.server,
+                    deviceId = point.identity().id(),
+                    endpoint = abonnement.url,
+                    p256dh = abonnement.p256dh,
+                    authSecret = abonnement.auth,
+                    // Aucun jeton : appareil deja connu. Une chaine vide vaut absence.
+                    pairingToken = "",
+                    distributor = abonnement.distributor,
+                )
+                Log.i(TAG, "re-declaration ${if (ok) "acceptee" else "refusee"} par le serveur")
+            } catch (e: Exception) {
+                Log.w(TAG, "re-declaration impossible : ${e.message}")
+            }
+        }
     }
 
     /**

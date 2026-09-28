@@ -391,3 +391,76 @@ test("le stockage survit au redemarrage du serveur", { skip: !opencodeAvailable 
   const { body } = await call("tether", "devices", {})
   assert.ok(body.output.devices.some((d) => d.deviceId === "persistant"), "l'appareil survit au redemarrage")
 })
+
+// L'abonnement de ces tests : un `deviceId` dedie, pour ne pas dependre de
+// l'etat du registre laisse par les tests precedents.
+const ABONNEMENT = { ...SUBSCRIPTION, deviceId: "appareil-a-renouveler" }
+
+// ---------------------------------------------------------------------------
+// Le renouvellement d'endpoint : le distributeur redistribue son point d'acces au
+// redemarrage, et l'app n'a alors **plus de jeton** a fournir.
+//
+// Sans la regle ci-dessous, l'app perd ses notifications au premier renouvellement
+// d'endpoint — l'ancien point d'acces reste enregistre jusqu'a pourrir, et le
+// telephone ne recoit plus rien, sans message d'erreur. C'est le meme defaut que
+// l'ancien relais ntfy en avait, et il est invisible tant qu'on ne l'a pas vu.
+// ---------------------------------------------------------------------------
+
+test("un appareil connu peut re-enregistrer son endpoint SANS jeton", { skip: !opencodeAvailable }, async () => {
+  const lien = await appairer()
+  const premier = await call("tether", "subscribe", { ...ABONNEMENT, pairingToken: jetonDe(lien) })
+  assert.equal(premier.status, 200, `appairage initial refuse : ${JSON.stringify(premier.body)}`)
+
+  // Le distributeur a change de point d'acces. L'app n'a plus le jeton — il est mort.
+  const renouvele = await call("tether", "subscribe", {
+    ...ABONNEMENT,
+    endpoint: "https://push.exemple.net/push/renouvele",
+  })
+  assert.equal(renouvele.status, 200, `renouvellement refuse : ${JSON.stringify(renouvele.body)}`)
+
+  // ⚠️ `total` est un compte **global**, partage avec les autres appareils du registre.
+  // Ce qui doit etre verifie ici n'est donc pas sa valeur, mais le fait que notre
+  // appareil n'ait pas ete duplique — une inscription qui ajouterait au lieu de mettre a
+  // jour laisserait deux points d'acces pour un seul telephone, dont un mort.
+  const { body } = await call("tether", "devices", {})
+  const occurrences = body.output.devices.filter((d) => d.deviceId === ABONNEMENT.deviceId).length
+  assert.equal(occurrences, 1, `l'appareil apparait ${occurrences} fois`)
+})
+
+test("l'endpoint renouvele est bien celui qui remplace l'ancien", { skip: !opencodeAvailable }, async () => {
+  // Sans cette verification, un `upsert` qui ecrase tout sauf l'endpoint laisserait
+  // le serveur pousser vers un point d'acces que personne n'ecoute, en repondant 200.
+  const lien = await appairer()
+  await call("tether", "subscribe", { ...ABONNEMENT, pairingToken: jetonDe(lien) })
+
+  const nouveau = "https://push.exemple.net/push/avec-une-autre-cle"
+  await call("tether", "subscribe", { ...ABONNEMENT, endpoint: nouveau, keys: { ...SUBSCRIPTION.keys, auth: "BWFjb3JhdGVkLWF1dGgvMTIzNDU2Nzg5" } })
+
+  const { body } = await call("tether", "devices", {})
+  // La vue publique ne doit RIEN reveler de l'endpoint ni des cles.
+  const rendu = JSON.stringify(body)
+  assert.ok(!rendu.includes("avec-une-autre-cle"), "la vue publique ne montre pas l'endpoint")
+  assert.ok(!rendu.includes("abcdef"), "la vue publique ne montre pas le secret")
+})
+
+test("un appareil inconnu sans jeton est refuse", { skip: !opencodeAvailable }, async () => {
+  // La tolerance au jeton absent ne doit pas ouvrir l'enregistrement a distance :
+  // un `deviceId` invente ne vaut rien tant qu'aucun QR n'a ete scanne.
+  const { status, body } = await call("tether", "subscribe", {
+    ...ABONNEMENT,
+    deviceId: "appareil-jamais-appaire",
+  })
+  assert.equal(status, 400, `enregistrement sans ceremonie accepte : ${JSON.stringify(body)}`)
+  assert.match(JSON.stringify(body), /jeton/i, "le motif dit qu'il manque le jeton")
+})
+
+test("un jeton fabrique reste refuse meme pour un appareil connu", { skip: !opencodeAvailable }, async () => {
+  // ⚠️ La regle est « un jeton **fourni** est toujours valide ou refuse ». Accepter un
+  // jeton fabrique sous prétexte que l'appareil est deja enregistre rendrait la ceremonie
+  // decorative, et un test plus faible en pretendant qu'elle existe encore.
+  const lien = await appairer()
+  await call("tether", "subscribe", { ...ABONNEMENT, pairingToken: jetonDe(lien) })
+
+  const { status, body } = await call("tether", "subscribe", { ...ABONNEMENT, pairingToken: "a".repeat(22) })
+  assert.equal(status, 400, `jeton invente accepte pour un appareil connu : ${JSON.stringify(body)}`)
+})

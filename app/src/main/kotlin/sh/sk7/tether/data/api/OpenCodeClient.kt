@@ -20,6 +20,13 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
  * Client REST du serveur opencode V2.
@@ -235,6 +242,86 @@ class OpenCodeClient(
     suspend fun deleteSession(sessionID: String) {
         val credentials = credentialsProvider.credentials()
         http.delete("$baseUrl/api/session/$sessionID") { auth(credentials) }
+    }
+
+    // -----------------------------------------------------------------------
+    // Le RPC du plugin Tether
+    //
+    // Ces routes ne sont **pas** dans le schema du serveur : `/api/rpc/{id}/{method}`
+    // est une surface ajoutee par les plugins, pas par opencode. Elles n'apparaissent
+    // donc ni dans `/openapi.json` ni dans un client genere — d'ou l'ecriture a la main,
+    // et d'ou le test d'integration cote plugin (17 tests contre un vrai `opencode serve`)
+    // comme seule preuve que la forme est la bonne.
+    // -----------------------------------------------------------------------
+
+    /**
+     * `POST /api/rpc/{id}/{method}`.
+     *
+     * Le corps est `{ "input": … }`, et la reponse porte soit `output` (succes), soit
+     * `type` / `message` / `data` (erreur declaree). On leve avec le **message** du
+     * serveur, jamais avec un code HTTP : c'est lui qui sait dire « jeton expire »,
+     * et c'est cette distinction que l'utilisateur doit voir.
+     */
+    private suspend fun rpc(id: String, method: String, input: JsonObject, location: String? = null): JsonObject {
+        val credentials = credentialsProvider.credentials()
+        val query = location?.let { "?directory=" + java.net.URLEncoder.encode(it, "UTF-8") }.orEmpty()
+        val response = http.post("$baseUrl/api/rpc/$id/$method$query") {
+            auth(credentials)
+            contentType(ContentType.Application.Json)
+            setBody(RpcRequest(input))
+        }
+        val body = response.body<JsonObject>()
+        if (!response.status.isSuccess()) {
+            throw TetherRpcException(
+                type = body["type"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                message = body["message"]?.jsonPrimitive?.contentOrNull ?: "RPC $method : HTTP ${response.status.value}",
+            )
+        }
+        return body["output"]?.jsonObject ?: JsonObject(emptyMap())
+    }
+
+    /**
+     * Enregistre cet appareil aupres du serveur, en presentant le jeton du QR.
+     *
+     * Le jeton est **consomme** par cet appel : c'est lui qui fait la ceremonie, et il ne
+     * sert qu'une fois. Voir `plugin/tether/index.ts` — le serveur consomme **avant**
+     * d'eregistrer, donc un echec ici oblige a rescanner, ce qui est le bon compromis.
+     */
+    suspend fun registerDevice(
+        deviceId: String,
+        endpoint: String,
+        p256dh: String,
+        authSecret: String,
+        pairingToken: String,
+        label: String?,
+        distributor: String?,
+        location: String? = null,
+    ): Boolean {
+        val input = buildJsonObject {
+            put("deviceId", deviceId)
+            put("endpoint", endpoint)
+            put("keys", buildJsonObject {
+                put("p256dh", p256dh)
+                put("auth", authSecret)
+            })
+            put("pairingToken", pairingToken)
+            label?.let { put("label", it) }
+            distributor?.let { put("distributor", it) }
+        }
+        return rpc("tether", "subscribe", input, location)["ok"]?.jsonPrimitive?.booleanOrNull == true
+    }
+
+    /** La liste des appareils, en vue publique : ni endpoint ni cles. */
+    suspend fun devices(location: String? = null): List<String> {
+        val output = rpc("tether", "devices", buildJsonObject { }, location)
+        val devices = output["devices"]?.jsonArray ?: return emptyList()
+        return devices.mapNotNull { it.jsonObject["deviceId"]?.jsonPrimitive?.contentOrNull }
+    }
+
+    /** Retire un appareil. Definitif : l'app devra rescaner un QR pour revenir. */
+    suspend fun unregisterDevice(deviceId: String, location: String? = null): Boolean {
+        val input = buildJsonObject { put("deviceId", deviceId) }
+        return rpc("tether", "unsubscribe", input, location)["ok"]?.jsonPrimitive?.booleanOrNull == true
     }
 
     /**
