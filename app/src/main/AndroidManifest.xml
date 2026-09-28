@@ -6,7 +6,7 @@
       Android 17 (API 37) : l'acces au reseau local est bloque par defaut pour les apps
       ciblant SDK 37+. Sans cette permission, toute connexion vers une adresse privee
       (10.x, 192.168.x) est abandonnee SANS erreur explicite. Obligatoire pour joindre
-      le serveur opencode de le serveur sur 192.0.2.10.
+      le serveur opencode sur 192.0.2.10.
     -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 

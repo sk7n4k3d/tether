@@ -6,7 +6,7 @@ package sh.sk7.tether.ui.chat
  *
  * ### Pourquoi ce n'est pas un detail d'optimisation
  * **Mesure sur le serveur** (2026-09-25) : sur les 8 sessions les plus lourdes, la moyenne est
- * de **810 messages**, avec un maximum a **2 040** (`Reprise Home Assistant: chambre de enfant`).
+ * de **810 messages**, avec un maximum a **2 040** (une session Domotique).
  * La version precedente les chargeait **tous** a chaque ouverture et a chaque reconnexion :
  * des centaines de requetes paginees, des milliers d'objets en memoire, et un `LazyColumn` de
  * plusieurs milliers d'items. Concretement, ouvrir une grosse session etait lent, et chaque

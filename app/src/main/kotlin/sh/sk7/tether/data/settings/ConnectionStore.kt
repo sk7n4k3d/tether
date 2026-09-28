@@ -15,7 +15,7 @@ import javax.inject.Singleton
 /**
  * Reglages de connexion au serveur opencode.
  *
- * [baseUrl] vise par defaut le serveur LAN de le serveur : le telephone ne peut pas
+ * [baseUrl] vise par defaut le serveur LAN : le telephone ne peut pas
  * joindre `127.0.0.1` (ce serait lui-meme). [directory] est le repertoire *location-scoped*
  * de l'API V2 : sans lui, `/api/agent` renvoie une liste vide sans erreur.
  */
