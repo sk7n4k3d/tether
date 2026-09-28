@@ -97,9 +97,21 @@ echo "   sandbox vierge, config reelle intacte"
 echo
 echo "== 2. Installation =="
 opencode plugin add "$REPO" 2>&1 | sed 's/^/   /'
-sleep 4
-opencode plugin list 2>&1 | grep -i tether | sed 's/^/   /' || true
-grep -qi tether <<<"$(opencode plugin list 2>&1)" || { echo "   ECHEC : tether absent de la liste."; exit 1; }
+
+# ⚠️ `plugin list` a deja omis un plugin fraichement installe : un « tether absent »
+# mesure une fois n'est pas une preuve. On redonne sa chance, et on ne conclut
+# qu'apres plusieurs lectures.
+TROUVE=""
+for _ in 1 2 3 4 5 6; do
+  sleep 2
+  if opencode plugin list 2>&1 | grep -qi tether; then TROUVE=oui; break; fi
+done
+if [ -n "$TROUVE" ]; then
+  opencode plugin list 2>&1 | grep -i tether | sed 's/^/   /'
+else
+  echo "   ECHEC : tether absent de la liste apres 6 lectures."
+  exit 1
+fi
 
 echo
 echo "== 3. Le module TUI se charge-t-il vraiment ? =="
