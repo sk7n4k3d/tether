@@ -37,6 +37,8 @@ import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * Bloc **repliable** — la reponse au « bloc gris geant » qui noyait la conversation.
@@ -68,7 +70,7 @@ fun CollapsibleBlock(
 
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        label = "chevron",
+        label = stringResource(R.string.chevron_fdac45),
     )
 
     Column(modifier = modifier.fillMaxWidth()) {

@@ -31,12 +31,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Undo2
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Confirmer un retour en arrière, en voyant ce qu'il touche.**
@@ -81,7 +83,7 @@ fun RevertDialog(
                 // snapshot prepare puis ignore resterait en place.
                 viewModel.discard(sessionID)
             },
-            title = { Text("Vérification…", color = TetherTextPrimary) },
+            title = { Text(stringResource(R.string.verification_30a679), color = TetherTextPrimary) },
             text = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -90,10 +92,9 @@ fun RevertDialog(
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                     )
-                    Text(
-                        text = "On regarde quels fichiers seraient touchés.",
+                    Text(stringResource(R.string.regarde_quels_fichiers_6bf1df),
                         color = TetherTextSecondary,
                     )
                 }
@@ -124,8 +125,7 @@ fun RevertDialog(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = "Tes messages après ce point seront retirés de la session, " +
+                    Text(stringResource(R.string.tes_messages_apres_cde32f) +
                             "et les fichiers reviendront à leur état d'alors.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextSecondary,
@@ -135,11 +135,10 @@ fun RevertDialog(
                         // ⚠️ Cas reel et important : un revert qui ne touche aucun fichier
                         // n'annule **que** la conversation. Le dire evite de croire qu'on ne fait
                         // rien du tout.
-                        Text(
-                            text = "Aucun fichier n'a été modifié depuis ce point : " +
+                        Text(stringResource(R.string.aucun_fichier_ete_b344b3) +
                                 "seule la conversation sera rembobinée.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TetherAccent,
+                            color = LocalAccent.current,
                         )
                     } else {
                         // ⚠️ La liste des chemins, pas un compte. C'est ce qui permet de decider.
@@ -174,8 +173,7 @@ fun RevertDialog(
             },
             confirmButton = {
                 TextButton(onClick = { viewModel.commit(sessionID, onDone) }) {
-                    Text(
-                        text = "Revenir ici",
+                    Text(stringResource(R.string.revenir_ici_aed777),
                         color = TetherAlert,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -183,7 +181,7 @@ fun RevertDialog(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.discard(sessionID) }) {
-                    Text("Annuler", color = TetherTextSecondary)
+                    Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary)
                 }
             },
             containerColor = TetherSurface,
@@ -191,11 +189,11 @@ fun RevertDialog(
 
         is RevertUiState.Failed -> AlertDialog(
             onDismissRequest = { viewModel.dismiss() },
-            title = { Text("Retour impossible", color = TetherTextPrimary) },
+            title = { Text(stringResource(R.string.retour_impossible_c203fa), color = TetherTextPrimary) },
             text = { Text(current.message, color = TetherTextSecondary) },
             confirmButton = {
                 TextButton(onClick = { viewModel.dismiss() }) {
-                    Text("Fermer", color = TetherAccent)
+                    Text(stringResource(R.string.fermer_5ab4ec), color = LocalAccent.current)
                 }
             },
             containerColor = TetherSurface,

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Les langues que l'app sait parler.
+
+  ⚠️ Ce fichier ne se contente pas de dire « fr, en » : il est ce qui fait apparaitre
+  l'entree « Tether » dans **Reglages > Applications > Langues** a partir d'Android 13.
+  Sans lui, l'utilisateur qui change la langue depuis les reglages systeme voit l'app
+  rester dans la langue precedente, et n'a aucun moyen de la changer autrement.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="fr" />
+</locale-config>

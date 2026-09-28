@@ -6,7 +6,12 @@ val TetherBackground = Color(0xFF0B0E11)
 val TetherSurface = Color(0xFF11151A)
 val TetherTextPrimary = Color(0xFFE6EDF3)
 val TetherTextSecondary = Color(0xFF8B98A5)
-val TetherAccent = Color(0xFF2DD4BF)
+/**
+ * ⚠️ **Supprimee.** La couleur d'accent est venue de `Accent` puis de `LocalAccent`, parce
+ * qu'une constante compilee ne peut pas changer d'une session a l'autre. La garder
+ * aurait laisse deux sources de verite, dont une que personne ne relirait — et le
+ * compilateur ne dit jamais qu'une constante n'est plus utilisee.
+ */
 val TetherAlert = Color(0xFFFFB020)
 
 /**
@@ -84,12 +89,21 @@ val TetherComposerSurface = Color(0xFF1F262E)
  */
 val TetherComposerBorder = Color(0xFF49535F)
 
+/**
+ * ⚠️ **Objet mort, retire de la surface ou l'accent figurait.**
+ *
+ * Il exposait `accent = TetherAccent`, ce qui ne pouvait pas survivre a un choix
+ * d'accent : un `object` est evalue une fois, et une valeur d'accent doit l'etre a chaque
+ * changement. Il n'etait utilise nulle part dans l'app — le code lit les constantes
+ * top-level, comme partout ailleurs.
+ *
+ * Il ne reste que les couleurs **stables**, que rien ne fait varier.
+ */
 object TetherColors {
     val background = TetherBackground
     val surface = TetherSurface
     val textPrimary = TetherTextPrimary
     val textSecondary = TetherTextSecondary
-    val accent = TetherAccent
     val alert = TetherAlert
     val composerSurface = TetherComposerSurface
     val composerBorder = TetherComposerBorder

@@ -29,7 +29,7 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Terminal
 import sh.sk7.tether.data.api.CommandDto
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
@@ -37,6 +37,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **La palette de commandes slash.**
@@ -78,8 +80,7 @@ fun SlashPalette(
             // ⚠️ On dit POURQUOI c'est vide plutot que d'afficher une boite vide. Les commandes
             // viennent du serveur : si la liste est vide, c'est que le serveur n'en a pas annonce
             // ou que le chargement a echoue — dans les deux cas, ce n'est pas la faute de la frappe.
-            Text(
-                text = "Le serveur n'a pas annoncé de commande. " +
+            Text(stringResource(R.string.serveur_annonce_commande_20b332) +
                     "Tu peux écrire ton message normalement.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
@@ -119,7 +120,7 @@ private fun CommandRow(command: CommandDto, onPick: () -> Unit) {
         Icon(
             imageVector = Lucide.Terminal,
             contentDescription = null,
-            tint = TetherAccent,
+            tint = LocalAccent.current,
             modifier = Modifier.size(14.dp),
         )
         Column {
@@ -239,7 +240,7 @@ fun ModelAgentPicker(
         ) {
             if (tab == PickerTab.Models) {
                 PickerSection(
-                    title = "MODÈLE",
+                    title = stringResource(R.string.modele_20bd76),
                     items = models,
                     current = currentModel,
                     icon = Lucide.Blocks,
@@ -248,7 +249,7 @@ fun ModelAgentPicker(
             }
             if (tab == PickerTab.Agents) {
                 PickerSection(
-                    title = "AGENT",
+                    title = stringResource(R.string.agent_635643),
                     items = agents,
                     current = currentAgent,
                     icon = Lucide.Blocks,
@@ -290,8 +291,7 @@ private fun PickerSection(
         if (items.isEmpty()) {
             // ⚠️ Un selecteur vide doit se dire. Sans ce message, l'utilisateur croirait a un
             // defaut d'affichage alors que le serveur n'a simplement rien annonce.
-            Text(
-                text = "Le serveur n'a rien annoncé dans cette catégorie.",
+            Text(stringResource(R.string.serveur_rien_annonce_859273),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
                 modifier = Modifier.padding(horizontal = Spacing.lg),
@@ -315,13 +315,13 @@ private fun PickerSection(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (active) TetherAccent else TetherTextSecondary,
+                        tint = if (active) LocalAccent.current else TetherTextSecondary,
                         modifier = Modifier.size(14.dp),
                     )
                     Text(
                         text = item.label,
                         style = TetherDataStyle,
-                        color = if (active) TetherAccent else TetherTextPrimary,
+                        color = if (active) LocalAccent.current else TetherTextPrimary,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -330,7 +330,7 @@ private fun PickerSection(
                         Text(
                             text = it,
                             style = TetherDataStyle,
-                            color = if (active) TetherAccent else TetherTextMuted,
+                            color = if (active) LocalAccent.current else TetherTextMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )

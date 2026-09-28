@@ -44,7 +44,7 @@ import com.composables.icons.lucide.ShieldAlert
 import sh.sk7.tether.data.api.SavedPermissionDto
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
@@ -52,6 +52,8 @@ import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **L'inventaire du serveur : ce avec quoi l'agent travaille.**
@@ -81,7 +83,7 @@ fun ServerScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when {
             state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -91,7 +93,7 @@ fun ServerScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 item(key = "identity") {
-                    Block(title = "Serveur") {
+                    Block(title = stringResource(R.string.serveur_970701)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -99,7 +101,7 @@ fun ServerScreen(
                             Icon(
                                 imageVector = Lucide.Server,
                                 contentDescription = null,
-                                tint = TetherAccent,
+                                tint = LocalAccent.current,
                                 modifier = Modifier.size(16.dp),
                             )
                             Text(
@@ -157,7 +159,7 @@ fun ServerScreen(
 
                 if (state.providers.isNotEmpty()) {
                     item(key = "providers") {
-                        Block(title = "Fournisseurs") {
+                        Block(title = stringResource(R.string.fournisseurs_06b6d8)) {
                             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 state.providers.forEach { provider ->
                                     StatusLine(
@@ -297,7 +299,7 @@ private fun StatusLine(name: String, status: String?) {
         Text(
             text = status?.let { statusText(it) } ?: "inconnu",
             style = TetherDataStyle,
-            color = if (connected) TetherAccent else TetherTextSecondary,
+            color = if (connected) LocalAccent.current else TetherTextSecondary,
         )
     }
 }
@@ -386,8 +388,7 @@ private fun PermissionLine(permission: SavedPermissionDto, onRevoke: () -> Unit)
                 )
             }
         }
-        Text(
-            text = "Révoquer",
+        Text(stringResource(R.string.revoquer_9c67aa),
             style = TetherDataStyle,
             color = TetherAlert,
             modifier = Modifier
@@ -419,7 +420,7 @@ private fun RevokeDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Révoquer cette autorisation ?", color = TetherTextPrimary) },
+        title = { Text(stringResource(R.string.revoquer_autorisation_7dc1d5), color = TetherTextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(
@@ -434,8 +435,7 @@ private fun RevokeDialog(
                         color = TetherTextSecondary,
                     )
                 }
-                Text(
-                    text = "L'agent devra redemander cette autorisation. " +
+                Text(stringResource(R.string.agent_devra_redemander_a0ffc8) +
                         "Tu ne pourras la ré-accorder que depuis le serveur.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherAlert,
@@ -443,10 +443,10 @@ private fun RevokeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Révoquer", color = TetherAlert) }
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.revoquer_9c67aa), color = TetherAlert) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler", color = TetherTextSecondary) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary) }
         },
         containerColor = TetherSurface,
     )

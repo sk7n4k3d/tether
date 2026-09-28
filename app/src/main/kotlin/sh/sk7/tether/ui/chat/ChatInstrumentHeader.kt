@@ -24,13 +24,15 @@ import sh.sk7.tether.domain.model.SessionUiState
 import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **L'en-tete d'instrument d'une conversation.**
@@ -73,7 +75,7 @@ fun ChatInstrumentHeader(
             Text(
                 text = statusLabel(state.status),
                 style = TetherDataStyle,
-                color = statusColor(state.status),
+                color = statusColor(state.status, LocalAccent.current),
                 fontWeight = FontWeight.SemiBold,
             )
             // Le modele et son provider : deux faits, deux teintes.
@@ -114,7 +116,7 @@ fun ChatInstrumentHeader(
                 Text(
                     text = formatCost(cost),
                     style = TetherDataStyle,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
@@ -139,7 +141,7 @@ fun ChatInstrumentHeader(
 /** Pastille d'etat : pleine et teal si ca tourne, anneau sinon. */
 @Composable
 private fun StatusDot(status: SessionStatus) {
-    val color = statusColor(status)
+    val color = statusColor(status, LocalAccent.current)
     val running = status == SessionStatus.Running
 
     // ⚠️ **Quand ca tourne, la pastille RESPIRE et s'entoure d'un halo** (demande de Bastien :
@@ -155,7 +157,7 @@ private fun StatusDot(status: SessionStatus) {
     // C'est exactement la regle deja appliquee au lisere du Composer, pour que les deux zones
     // disent la meme chose de la meme facon.
     val animationsOn = animationsAllowed()
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "status-dot")
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = stringResource(R.string.status_dot_c723c1))
     val pulse by transition.animateFloat(
         initialValue = 0.14f,
         targetValue = 0.42f,
@@ -163,7 +165,7 @@ private fun StatusDot(status: SessionStatus) {
             animation = androidx.compose.animation.core.tween(1400),
             repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
         ),
-        label = "status-dot-pulse",
+        label = stringResource(R.string.status_dot_pulse_f2ffe5),
     )
     val haloAlpha = if (!running) 0f else if (animationsOn) pulse else 0.28f
 
@@ -195,8 +197,14 @@ private fun statusLabel(status: SessionStatus): String = when (status) {
     SessionStatus.Idle -> "prêt"
 }
 
-private fun statusColor(status: SessionStatus): Color = when (status) {
-    SessionStatus.Running -> TetherAccent
+/**
+ * ⚠️ `accent` est un parametre, et non une lecture du `CompositionLocal` : cette
+ * fonction est **pure**, appelable hors de l'arbre de composition. Lire le local ici
+ * obligerait a la rendre `@Composable`, et donc a l'appeler depuis un `drawBehind` —
+ * ou pire, a capturer une valeur perimee dans un `remember`.
+ */
+private fun statusColor(status: SessionStatus, accent: Color): Color = when (status) {
+    SessionStatus.Running -> accent
     SessionStatus.Succeeded -> TetherTextPrimary
     SessionStatus.Failed, SessionStatus.Interrupted -> TetherAlert
     SessionStatus.Idle -> TetherTextSecondary

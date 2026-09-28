@@ -81,11 +81,13 @@ import com.composables.icons.lucide.WifiOff
 import sh.sk7.tether.data.api.Agent
 import sh.sk7.tether.data.api.Model
 import sh.sk7.tether.data.api.ModelRef
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,14 +148,14 @@ fun SessionListScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Sessions") },
+                title = { Text(stringResource(R.string.sessions_e11e37)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = TetherTextPrimary,
                 ),
                 actions = {
                     IconButton(onClick = onOpenStats) {
-                        Icon(Lucide.Activity, contentDescription = "Statistiques")
+                        Icon(Lucide.Activity, contentDescription = stringResource(R.string.statistiques_fdce30))
                     }
                     // ⚠️ L'acces aux approbations est dans la barre principale, pas enfoui dans
                     // les reglages : c'est **la** raison d'etre d'une app compagne (une session
@@ -180,10 +182,10 @@ fun SessionListScreen(
                     // d'une main, lecteur d'ecran). Le swipe reste la voie rapide ; ce bouton est
                     // la voie accessible — deux contraintes differentes, pas un doublon.
                     IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Lucide.RefreshCw, contentDescription = "Recharger")
+                        Icon(Lucide.RefreshCw, contentDescription = stringResource(R.string.recharger_b10ee5))
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Lucide.Settings, contentDescription = "Réglages")
+                        Icon(Lucide.Settings, contentDescription = stringResource(R.string.reglages_00d632))
                     }
                 },
             )
@@ -193,7 +195,7 @@ fun SessionListScreen(
                 Button(onClick = viewModel::newSession) {
                     Icon(Lucide.Plus, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Session")
+                    Text(stringResource(R.string.session_f7f199))
                 }
             }
         },
@@ -219,12 +221,12 @@ fun SessionListScreen(
         Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 SessionListUiState.Loading -> Centered {
-                    CircularProgressIndicator(color = TetherAccent)
+                    CircularProgressIndicator(color = LocalAccent.current)
                 }
                 SessionListUiState.NeedsSetup -> Centered {
                     InfoBlock(
-                        icon = { Icon(Lucide.Server, contentDescription = null, tint = TetherAccent) },
-                        title = "Aucun serveur configuré",
+                        icon = { Icon(Lucide.Server, contentDescription = null, tint = LocalAccent.current) },
+                        title = stringResource(R.string.aucun_serveur_configure_380be4),
                         body = "Renseigne l'adresse du serveur opencode et le mot de passe.",
                         action = "Ouvrir les réglages",
                         onAction = onOpenSettings,
@@ -233,7 +235,7 @@ fun SessionListScreen(
                 is SessionListUiState.Empty -> Centered {
                     InfoBlock(
                         icon = { Icon(Lucide.Server, contentDescription = null, tint = TetherTextSecondary) },
-                        title = "Aucune session",
+                        title = stringResource(R.string.aucune_session_a9dbd0),
                         body = "Aucune session pour ${current.directory}.",
                     )
                 }
@@ -401,11 +403,11 @@ fun SessionListScreen(
     sessionError?.let { message ->
         AlertDialog(
             onDismissRequest = viewModel::clearSessionError,
-            title = { Text("Action impossible", color = TetherTextPrimary) },
+            title = { Text(stringResource(R.string.action_impossible_f9002b), color = TetherTextPrimary) },
             text = { Text(message, color = TetherTextSecondary) },
             confirmButton = {
                 TextButton(onClick = viewModel::clearSessionError) {
-                    Text("Fermer", color = TetherAccent)
+                    Text(stringResource(R.string.fermer_5ab4ec), color = LocalAccent.current)
                 }
             },
             containerColor = TetherSurface,
@@ -428,13 +430,13 @@ private fun RenameSessionDialog(
     var draft by remember(item.id) { mutableStateOf(item.title) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Renommer la session", color = TetherTextPrimary) },
+        title = { Text(stringResource(R.string.renommer_session_3bb5c3), color = TetherTextPrimary) },
         text = {
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 singleLine = true,
-                label = { Text("Titre") },
+                label = { Text(stringResource(R.string.titre_eb9789)) },
                 modifier = Modifier.fillMaxWidth(),
             )
         },
@@ -443,11 +445,11 @@ private fun RenameSessionDialog(
                 onClick = { onConfirm(draft) },
                 enabled = draft.isNotBlank() && draft.trim() != item.title,
             ) {
-                Text("Renommer", color = TetherAccent)
+                Text(stringResource(R.string.renommer_8e8a86), color = LocalAccent.current)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler", color = TetherTextSecondary) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary) }
         },
         containerColor = TetherSurface,
     )
@@ -468,12 +470,11 @@ private fun DeleteSessionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Supprimer cette session ?", color = TetherTextPrimary) },
+        title = { Text(stringResource(R.string.supprimer_session_40a83f), color = TetherTextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(item.title, color = TetherTextPrimary)
-                Text(
-                    text = "Cette action est définitive. La conversation et son historique " +
+                Text(stringResource(R.string.action_definitive_conversation_46b6c5) +
                         "seront perdus.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherAlert,
@@ -481,10 +482,10 @@ private fun DeleteSessionDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Supprimer", color = TetherAlert) }
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.supprimer_1acfc1), color = TetherAlert) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annuler", color = TetherTextSecondary) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary) }
         },
         containerColor = TetherSurface,
     )
@@ -525,7 +526,7 @@ private fun SessionCard(item: SessionItem, onClick: () -> Unit) {
         ) {
             MetaChip(text = RelativeTime.format(System.currentTimeMillis(), item.timestamp))
             item.agent?.let { MetaChip(text = it) }
-            item.costLabel?.let { MetaChip(text = it, color = TetherAccent) }
+            item.costLabel?.let { MetaChip(text = it, color = LocalAccent.current) }
         }
         item.modelLabel?.let {
             Text(
@@ -618,8 +619,7 @@ private fun SearchField(
             contentAlignment = Alignment.Center,
         ) {
             if (value.isEmpty()) {
-                Text(
-                    text = "Rechercher une session",
+                Text(stringResource(R.string.rechercher_session_3b4d42),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TetherTextSecondary,
                 )
@@ -629,7 +629,7 @@ private fun SearchField(
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = TetherTextPrimary),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(TetherAccent),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccent.current),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     // ⚠️ `Search` affiche la touche « rechercher » au lieu d'« entrer » : la
                     // recherche est locale et instantanee, il n'y a rien a valider.
@@ -654,6 +654,8 @@ private fun SearchField(
         if (value.isNotEmpty()) {
             // ⚠️ Boîte de 48 dp explicite : dans `padding().size(15).clickable`, le `clickable`
             // est le plus interne et ne couvre que l'icône. Ici la zone sensible est la boîte.
+                // La description est lue ici : `semantics` s'execute hors composition.
+                val descEffacer_recherche = stringResource(R.string.effacer_recherche_189351)
             Box(
                 modifier = Modifier
                     .size(TetherDimensions.touchTarget)
@@ -661,7 +663,7 @@ private fun SearchField(
                     .clickable { onValueChange("") }
                     .semantics {
                         role = Role.Button
-                        contentDescription = "Effacer la recherche"
+                        contentDescription = descEffacer_recherche
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -701,22 +703,19 @@ private fun NoSearchResult(query: String, onClear: () -> Unit) {
             tint = TetherTextSecondary,
             modifier = Modifier.size(28.dp),
         )
-        Text(
-            text = "Aucune session pour « $query »",
+        Text(stringResource(R.string.aucune_session_query_a34620),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
         )
-        Text(
-            text = "La recherche porte sur le titre, le modèle et l'agent.",
+        Text(stringResource(R.string.recherche_porte_titre_5d8a13),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
-        Text(
-            text = "Effacer la recherche",
+        Text(stringResource(R.string.effacer_recherche_189351),
             style = TetherDataStyle,
-            color = TetherAccent,
+            color = LocalAccent.current,
             modifier = Modifier
                 .padding(top = Spacing.md)
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
@@ -765,7 +764,7 @@ private fun FleetHeader(fleet: FleetState) {
     val (label, tint) = when (fleet.summarySince(openedAt)) {
         Activity.Waiting -> "Des décisions t'attendent" to TetherAlert
         Activity.Unseen -> "Du travail vient de se terminer" to TetherTextPrimary
-        Activity.Running -> "En cours d'exécution" to TetherAccent
+        Activity.Running -> "En cours d'exécution" to LocalAccent.current
         Activity.Queued -> "Messages en file" to TetherTextSecondary
         Activity.Failed -> "Des tours ont échoué" to TetherAlert
         Activity.Idle -> "Calme" to TetherTextSecondary
@@ -796,7 +795,7 @@ private fun FleetHeader(fleet: FleetState) {
             // serait exact et inutilisable. Et on dit le mot « terminé », pas « pas vu » — ce
             // qu'on annonce est un evenement, pas un manquement.
             if (since.isNotEmpty()) Counter("${since.size} terminé" + if (since.size > 1) "s" else "", TetherTextPrimary)
-            if (fleet.running.isNotEmpty()) Counter("${fleet.running.size} en cours", TetherAccent)
+            if (fleet.running.isNotEmpty()) Counter("${fleet.running.size} en cours", LocalAccent.current)
             if (fleet.queued.isNotEmpty()) Counter("${fleet.queued.size} en file", TetherTextSecondary)
             if (fleet.liveShells.isNotEmpty()) Counter("${fleet.liveShells.size} shell", TetherTextSecondary)
             // ⚠️ **La limite est dite, pas cachée.** `/api/session/active` est globale (aucun
@@ -808,7 +807,7 @@ private fun FleetHeader(fleet: FleetState) {
                 Counter(
                     "${fleet.activeSubagents.size} sous-agent" +
                         if (fleet.activeSubagents.size > 1) "s actifs ici" else " actif ici",
-                    TetherAccent,
+                    LocalAccent.current,
                 )
             } else if (fleet.running.isNotEmpty()) {
                 // ⚠️ Formulation **exacte** : elle porte sur ce qu'on sait, pas sur le serveur
@@ -821,8 +820,7 @@ private fun FleetHeader(fleet: FleetState) {
         // ⚠️ On dit l'erreur d'interrogation au lieu de la taire : un état figé qui a l'air à jour
         // est pire qu'un état qu'on sait périmé.
         fleet.error?.let { message ->
-            Text(
-                text = "État non rafraîchi : $message",
+            Text(stringResource(R.string.etat_non_rafraichi_a51fa8),
                 style = sh.sk7.tether.ui.theme.TetherDataStyle,
                 color = TetherAlert.copy(alpha = 0.85f),
                 maxLines = 1,

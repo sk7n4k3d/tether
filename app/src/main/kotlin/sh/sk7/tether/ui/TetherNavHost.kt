@@ -49,6 +49,8 @@ import sh.sk7.tether.ui.diff.DiffScreen
 import sh.sk7.tether.ui.context.SessionContextScreen
 import sh.sk7.tether.ui.stats.StatsScreen
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 object Routes {
     const val SESSIONS = "sessions"
@@ -261,12 +263,12 @@ fun TetherNavHost(
                 },
             ),
         ) {
-            ScreenScaffold(title = "Modifications", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.modifications_405f45), onBack = { navController.popBackStack() }) {
                 DiffScreen()
             }
         }
         composable(Routes.DIFF_NO_SESSION) {
-            ScreenScaffold(title = "Modifications", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.modifications_405f45), onBack = { navController.popBackStack() }) {
                 DiffScreen()
             }
         }
@@ -274,22 +276,22 @@ fun TetherNavHost(
             route = Routes.CONTEXT,
             arguments = listOf(navArgument(Routes.ARG_SESSION_ID) { type = NavType.StringType }),
         ) {
-            ScreenScaffold(title = "Contexte", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.contexte_8112e9), onBack = { navController.popBackStack() }) {
                 SessionContextScreen()
             }
         }
         composable(Routes.STATS) {
-            ScreenScaffold(title = "Statistiques", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.statistiques_fdce30), onBack = { navController.popBackStack() }) {
                 StatsScreen()
             }
         }
         composable(Routes.SERVER) {
-            ScreenScaffold(title = "Serveur", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.serveur_970701), onBack = { navController.popBackStack() }) {
                 ServerScreen()
             }
         }
         composable(Routes.PERMISSIONS) {
-            ScreenScaffold(title = "Approbations", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.approbations_77db64), onBack = { navController.popBackStack() }) {
                 PermissionsScreen()
             }
         }
@@ -309,7 +311,7 @@ fun TetherNavHost(
             )
         }
         composable(Routes.ABOUT) {
-            ScreenScaffold(title = "À propos", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.propos_5345ad), onBack = { navController.popBackStack() }) {
                 AboutScreen()
             }
         }
@@ -331,12 +333,12 @@ fun TetherNavHost(
             )
         }
         composable(Routes.WORKTREES) {
-            ScreenScaffold(title = "Arbres de travail", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.arbres_travail_e006dc), onBack = { navController.popBackStack() }) {
                 WorktreeScreen()
             }
         }
         composable(Routes.FILES) {
-            ScreenScaffold(title = "Fichiers", onBack = { navController.popBackStack() }) {
+            ScreenScaffold(title = stringResource(R.string.fichiers_23a9d9), onBack = { navController.popBackStack() }) {
                 sh.sk7.tether.ui.files.FilesScreen()
             }
         }
@@ -390,7 +392,7 @@ private fun ScreenScaffold(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Lucide.ArrowLeft,
-                            contentDescription = "Retour",
+                            contentDescription = stringResource(R.string.retour_e5befb),
                         )
                     }
                 },

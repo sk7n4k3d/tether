@@ -14,6 +14,11 @@ android {
         applicationId = "sh.sk7.tether"
         minSdk = 26
         targetSdk = 37
+        // L'instrumentation est ce qui prouve l'ecran : le contraste d'un accent et la
+        // langue appliquee ne se verifient pas dans un test JVM, qui n'a ni densite de
+        // pixel ni contexte. Elle tourne sur l'appareil, en arriere-plan, sans que
+        // l'ecran soit deverrouille.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -30,6 +35,11 @@ kotlin {
 }
 
 dependencies {
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.junit)
+
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)

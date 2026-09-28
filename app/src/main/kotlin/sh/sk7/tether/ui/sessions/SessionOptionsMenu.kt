@@ -28,6 +28,8 @@ import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import sh.sk7.tether.ui.theme.TetherTypography
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Les options d'une session**, derriere un seul point de menu.
@@ -88,7 +90,7 @@ fun SessionOptionsMenu(
         ) {
             Icon(
                 imageVector = Lucide.EllipsisVertical,
-                contentDescription = "Options de la session",
+                contentDescription = stringResource(R.string.options_session_52b4f6),
                 tint = TetherTextSecondary,
                 modifier = Modifier.size(16.dp),
             )

@@ -43,7 +43,7 @@ import com.composables.icons.lucide.Settings
 import com.composables.icons.lucide.WifiOff
 import sh.sk7.tether.data.settings.ConnectionStatus
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -52,6 +52,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Le serveur ne repond pas — voici pourquoi, et quoi faire.**
@@ -105,7 +107,7 @@ fun OfflineScreen(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (state.status == ConnectionStatus.Unauthorized) TetherAlert else TetherAccent,
+            tint = if (state.status == ConnectionStatus.Unauthorized) TetherAlert else LocalAccent.current,
             modifier = Modifier.size(36.dp),
         )
 
@@ -152,7 +154,7 @@ fun OfflineScreen(
         )
 
         Action(
-            label = "Réglages",
+            label = stringResource(R.string.reglages_00d632),
             icon = Lucide.Settings,
             primary = false,
             enabled = true,
@@ -206,8 +208,7 @@ private fun AddressCard(host: String, status: ConnectionStatus) {
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        Text(
-            text = "ADRESSE",
+        Text(stringResource(R.string.adresse_ab87f8),
             style = TetherDataStyle,
             color = TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
@@ -219,8 +220,7 @@ private fun AddressCard(host: String, status: ConnectionStatus) {
         )
         if (looksLocal && status != ConnectionStatus.Online) {
             // ⚠️ Le cas qui merite d'etre dit : sur un telephone, `127.0.0.1` est le telephone.
-            Text(
-                text = "Sur un téléphone, 127.0.0.1 désigne le téléphone lui-même. " +
+            Text(stringResource(R.string.telephone_127_designe_d8d31a) +
                     "Utilise l'IP de la machine qui fait tourner opencode.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherAlert,
@@ -243,7 +243,7 @@ private fun Action(
         modifier = modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerMd))
             .background(
-                if (primary) TetherAccent.copy(alpha = 0.16f) else TetherComposerSurface,
+                if (primary) LocalAccent.current.copy(alpha = 0.16f) else TetherComposerSurface,
             )
             // ⚠️ 48 dp : les actions de cet écran sont les seules issues apres un echec de
             // connexion. Une cible facile a rater ici n'a pas de rattrapage.
@@ -258,20 +258,20 @@ private fun Action(
             CircularProgressIndicator(
                 modifier = Modifier.size(15.dp),
                 strokeWidth = 2.dp,
-                color = TetherAccent,
+                color = LocalAccent.current,
             )
         } else {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (primary) TetherAccent else TetherTextSecondary,
+                tint = if (primary) LocalAccent.current else TetherTextSecondary,
                 modifier = Modifier.size(15.dp),
             )
         }
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (primary) TetherAccent else TetherTextPrimary,
+            color = if (primary) LocalAccent.current else TetherTextPrimary,
             fontWeight = FontWeight.Medium,
         )
     }

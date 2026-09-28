@@ -43,7 +43,7 @@ import com.composables.icons.lucide.Trash2
 import sh.sk7.tether.data.api.WorktreeDirDto
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -52,6 +52,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Les arbres de travail isolés.**
@@ -80,7 +82,7 @@ fun WorktreeScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when {
             state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
 
             else -> LazyColumn(
@@ -91,9 +93,8 @@ fun WorktreeScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 item(key = "explain") {
-                    Block(title = "À quoi ça sert") {
-                        Text(
-                            text = "Un arbre de travail est une copie du dépôt où l'agent peut " +
+                    Block(title = stringResource(R.string.quoi_sert_d7aac6)) {
+                        Text(stringResource(R.string.arbre_travail_copie_65c59a) +
                                 "travailler sans toucher à l'arbre principal. Tu essaies une " +
                                 "approche risquée, et ton dépôt reste intact.",
                             style = MaterialTheme.typography.bodySmall,
@@ -119,7 +120,7 @@ fun WorktreeScreen(
 
                 if (state.versioned) {
                     item(key = "create") {
-                        Block(title = "Nouvel arbre") {
+                        Block(title = stringResource(R.string.nouvel_arbre_01ef8f)) {
                             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 Row(
                                     modifier = Modifier
@@ -136,8 +137,7 @@ fun WorktreeScreen(
                                 ) {
                                     Box(modifier = Modifier.weight(1f)) {
                                         if (state.draftName.isEmpty()) {
-                                            Text(
-                                                text = "Nom de l'arbre",
+                                            Text(stringResource(R.string.nom_arbre_5ff8cf),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = TetherTextSecondary,
                                             )
@@ -150,7 +150,7 @@ fun WorktreeScreen(
                                                 color = TetherTextPrimary,
                                             ),
                                             cursorBrush = androidx.compose.ui.graphics.SolidColor(
-                                                TetherAccent,
+                                                LocalAccent.current,
                                             ),
                                             // ⚠️ `fillMaxWidth` obligatoire, comme les deux autres
                                             // champs de l'app : sans lui, le tap tombe sur le
@@ -162,7 +162,7 @@ fun WorktreeScreen(
                                 Row(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                                        .background(TetherAccent.copy(alpha = 0.14f))
+                                        .background(LocalAccent.current.copy(alpha = 0.14f))
                                         // ⚠️ 48 dp : c'est le bouton qui crée l'arbre. Sa
                                         // hauteur naturelle est d'environ 36 dp (icône + padding),
                                         // sous le seuil.
@@ -180,20 +180,20 @@ fun WorktreeScreen(
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(14.dp),
                                             strokeWidth = 2.dp,
-                                            color = TetherAccent,
+                                            color = LocalAccent.current,
                                         )
                                     } else {
                                         Icon(
                                             imageVector = Lucide.Plus,
                                             contentDescription = null,
-                                            tint = TetherAccent,
+                                            tint = LocalAccent.current,
                                             modifier = Modifier.size(14.dp),
                                         )
                                     }
                                     Text(
                                         text = if (state.creating) "Création…" else "Créer",
                                         style = TetherDataStyle,
-                                        color = TetherAccent,
+                                        color = LocalAccent.current,
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                 }
@@ -224,7 +224,7 @@ fun WorktreeScreen(
         AlertDialog(
             onDismissRequest = viewModel::cancelRemove,
             icon = { Icon(Lucide.Trash2, contentDescription = null, tint = TetherAlert) },
-            title = { Text("Retirer cet arbre ?", color = TetherTextPrimary) },
+            title = { Text(stringResource(R.string.retirer_cet_arbre_3f60d5), color = TetherTextPrimary) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(item.directory, style = TetherDataStyle, color = TetherTextSecondary)
@@ -243,12 +243,12 @@ fun WorktreeScreen(
                 TextButton(onClick = { viewModel.remove(force = true) }) {
                     // ⚠️ Le libellé nomme ce qu'on fait : forcer. Un simple « Supprimer » cacherait
                     // que l'opération passe outre une protection du serveur.
-                    Text("Retirer de force", color = TetherAlert, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.retirer_force_0f1681), color = TetherAlert, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = viewModel::cancelRemove) {
-                    Text("Annuler", color = TetherTextSecondary)
+                    Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary)
                 }
             },
             containerColor = TetherSurface,
@@ -271,7 +271,7 @@ private fun WorktreeRow(item: WorktreeDirDto, onRemove: () -> Unit) {
             Icon(
                 imageVector = Lucide.GitBranch,
                 contentDescription = null,
-                tint = TetherAccent,
+                tint = LocalAccent.current,
                 modifier = Modifier.size(14.dp),
             )
             Text(
@@ -286,6 +286,8 @@ private fun WorktreeRow(item: WorktreeDirDto, onRemove: () -> Unit) {
         // sensible sur l'icône seule, pas sur le padding. Sur une action **destructive**, cette
         // erreur est doublement grave : on rate le bouton, et le voisin devient cliquable par
         // débordement supposé.
+            // La description est lue ici : `semantics` s'execute hors composition.
+            val descRetirer_cet_arbre = stringResource(R.string.retirer_cet_arbre_d42936)
         Box(
             modifier = Modifier
                 .size(TetherDimensions.touchTarget)
@@ -293,7 +295,7 @@ private fun WorktreeRow(item: WorktreeDirDto, onRemove: () -> Unit) {
                 .clickable(onClick = onRemove)
                 .semantics {
                     role = Role.Button
-                    contentDescription = "Retirer cet arbre"
+                    contentDescription = descRetirer_cet_arbre
                 },
             contentAlignment = Alignment.Center,
         ) {

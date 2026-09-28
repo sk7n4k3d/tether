@@ -31,7 +31,7 @@ import com.composables.icons.lucide.Terminal
 import sh.sk7.tether.domain.model.ToolCall
 import sh.sk7.tether.domain.model.ToolStatus
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherCodeStyle
 import sh.sk7.tether.ui.theme.TetherDataStyle
@@ -40,6 +40,8 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Le raisonnement du modele, REPLIE par defaut.**
@@ -70,7 +72,7 @@ fun ReasoningBlock(
     var expanded by remember { mutableStateOf(false) }
     val rotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        label = "reasoning-chevron",
+        label = stringResource(R.string.reasoning_chevron_cac707),
     )
 
     Column(
@@ -148,10 +150,10 @@ fun ToolCard(call: ToolCall, durationLabel: String? = null, modifier: Modifier =
     var expanded by remember { mutableStateOf(false) }
     val rotation by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        label = "tool-chevron",
+        label = stringResource(R.string.tool_chevron_4d78ad),
     )
     val statusColor = when (call.status) {
-        ToolStatus.Running -> TetherAccent
+        ToolStatus.Running -> LocalAccent.current
         ToolStatus.Succeeded -> TetherTextSecondary
         ToolStatus.Failed -> TetherAlert
     }

@@ -35,7 +35,7 @@ import sh.sk7.tether.domain.model.ModelUsage
 import sh.sk7.tether.domain.model.UsageStats
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
@@ -43,6 +43,8 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **La page Statistiques — ce que l'instrument a reellement fait.**
@@ -80,7 +82,7 @@ fun StatsScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when (val current = state) {
             StatsUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
             is StatsUiState.Error -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(
@@ -116,34 +118,34 @@ private fun StatsContent(
         }
 
         item(key = "cost") {
-            Block(title = "Consommation") {
+            Block(title = stringResource(R.string.consommation_fa3cc9)) {
                 CostRow(stats)
             }
         }
 
         item(key = "scale") {
-            Block(title = "Volume") {
+            Block(title = stringResource(R.string.volume_3b18e8)) {
                 ScaleRow(stats)
             }
         }
 
         if (stats.activity.isNotEmpty()) {
             item(key = "activity") {
-                Block(title = "Activité par jour") {
+                Block(title = stringResource(R.string.activite_jour_3326a3)) {
                     ActivityChart(stats.activity)
                 }
             }
         }
 
         item(key = "reliability") {
-            Block(title = "Fiabilité") {
+            Block(title = stringResource(R.string.fiabilite_90c116)) {
                 ReliabilityRow(stats)
             }
         }
 
         if (stats.models.isNotEmpty()) {
             item(key = "models") {
-                Block(title = "Par modèle") {
+                Block(title = stringResource(R.string.modele_ad61be)) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         stats.models.forEach { ModelLine(it, stats.cost) }
                     }
@@ -177,7 +179,7 @@ private fun RangeSelector(selected: StatsRange, onSelect: (StatsRange) -> Unit) 
                 modifier = Modifier
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))
                     .background(
-                        if (active) TetherAccent.copy(alpha = 0.18f) else Color.Transparent,
+                        if (active) LocalAccent.current.copy(alpha = 0.18f) else Color.Transparent,
                     )
                     // ⚠️ 48 dp : une puce de filtre est une cible fréquente et sa hauteur visuelle
                     // est d'environ 24 dp. `heightIn` avant `clickable` porte la zone sensible à
@@ -190,7 +192,7 @@ private fun RangeSelector(selected: StatsRange, onSelect: (StatsRange) -> Unit) 
                 Text(
                     text = range.label,
                     style = TetherDataStyle,
-                    color = if (active) TetherAccent else TetherTextSecondary,
+                    color = if (active) LocalAccent.current else TetherTextSecondary,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
@@ -203,7 +205,7 @@ private fun CostRow(stats: UsageStats) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         BigFigure(
             value = money(stats.cost),
-            label = "Coût sur la période",
+            label = stringResource(R.string.cout_periode_5a68a4),
             accent = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
@@ -232,14 +234,14 @@ private fun ReliabilityRow(stats: UsageStats) {
         Figure(stats.toolCalls.toString(), "appels d'outil")
         Figure(
             value = percent(stats.toolFailureRate),
-            label = "taux d'échec",
+            label = stringResource(R.string.taux_echec_6c8876),
             // ⚠️ Seuils explicites : au-dela de 5 % d'echecs, l'agent a un vrai probleme et le
             // chiffre doit se voir. Un taux neutre ne declencherait aucune reaction.
             alert = (stats.toolFailureRate ?: 0.0) > 5.0,
         )
         Figure(
             value = stats.activeDays.toString(),
-            label = "jours actifs",
+            label = stringResource(R.string.jours_actifs_1ccefa),
         )
         if (stats.streak > 1) {
             Figure("${stats.streak} j", "d'affilée")
@@ -260,6 +262,8 @@ private fun ReliabilityRow(stats: UsageStats) {
  */
 @Composable
 private fun ActivityChart(activity: List<DailyActivity>) {
+    // Meme raison que dans `TetherMark` : le dessin s'execute hors de la composition.
+    val accent = LocalAccent.current
     val max = activity.maxOfOrNull { it.steps }?.coerceAtLeast(1) ?: 1
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Box(
@@ -282,7 +286,7 @@ private fun ActivityChart(activity: List<DailyActivity>) {
                             color = if (day.steps == 0) {
                                 TetherTextSecondary.copy(alpha = 0.18f)
                             } else {
-                                TetherAccent.copy(alpha = 0.30f + 0.70f * ratio)
+                                accent.copy(alpha = 0.30f + 0.70f * ratio)
                             },
                             topLeft = Offset(left, size.height - h),
                             size = Size(barWidth, h),
@@ -336,7 +340,7 @@ private fun ModelLine(usage: ModelUsage, totalCost: Double) {
             Text(
                 text = money(usage.cost),
                 style = TetherDataStyle,
-                color = TetherAccent,
+                color = LocalAccent.current,
                 fontWeight = FontWeight.SemiBold,
             )
         }
@@ -366,7 +370,7 @@ private fun ModelLine(usage: ModelUsage, totalCost: Double) {
                 modifier = Modifier
                     .fillMaxWidth(share.toFloat().coerceIn(0f, 1f))
                     .height(3.dp)
-                    .background(TetherAccent, RoundedCornerShape(2.dp)),
+                    .background(LocalAccent.current, RoundedCornerShape(2.dp)),
             )
         }
     }
@@ -380,7 +384,7 @@ private fun BigFigure(value: String, label: String, accent: Boolean = false) {
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
-            color = if (accent) TetherAccent else TetherTextPrimary,
+            color = if (accent) LocalAccent.current else TetherTextPrimary,
             fontWeight = FontWeight.SemiBold,
         )
         Text(

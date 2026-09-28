@@ -31,13 +31,15 @@ import com.composables.icons.lucide.Layers
 import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Ce qui occupe la fenetre de contexte, et ce que ca coute.**
@@ -66,18 +68,18 @@ fun SessionContextScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when (val current = state) {
             ContextUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
 
             ContextUiState.Empty -> Centered(
-                title = "Rien dans la fenêtre",
+                title = stringResource(R.string.rien_fenetre_344f52),
                 body = "Cette session n'a encore rien envoyé à l'agent. " +
                     "La fenêtre se remplira au premier message.",
                 alert = false,
             )
 
             is ContextUiState.Error -> Centered(
-                title = "Contexte indisponible",
+                title = stringResource(R.string.contexte_indisponible_58230a),
                 body = current.message,
                 alert = true,
             )
@@ -90,7 +92,7 @@ fun SessionContextScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 item(key = "totals") {
-                    Block(title = "Fenêtre") {
+                    Block(title = stringResource(R.string.fenetre_3d6916)) {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             Text(
                                 text = "${current.entryCount} message" +
@@ -114,7 +116,7 @@ fun SessionContextScreen(
                 // additionner 96 lignes pour le voir.
                 current.heaviest?.let { heavy ->
                     item(key = "heaviest") {
-                        Block(title = "Le plus lourd") {
+                        Block(title = stringResource(R.string.lourd_dc257e)) {
                             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -150,8 +152,7 @@ fun SessionContextScreen(
                 }
 
                 item(key = "by-type-title") {
-                    Text(
-                        text = "Où part le coût",
+                    Text(stringResource(R.string.part_cout_728b35),
                         style = MaterialTheme.typography.titleSmall,
                         color = TetherTextPrimary,
                         fontWeight = FontWeight.SemiBold,
@@ -226,7 +227,7 @@ private fun GroupRow(group: ContextGroup) {
                 modifier = Modifier
                     .fillMaxWidth(group.costShare.coerceIn(0f, 1f))
                     .height(3.dp)
-                    .background(TetherAccent, RoundedCornerShape(2.dp)),
+                    .background(LocalAccent.current, RoundedCornerShape(2.dp)),
             )
         }
     }

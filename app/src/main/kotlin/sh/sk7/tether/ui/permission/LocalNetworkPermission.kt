@@ -28,10 +28,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * Permission d'acces au reseau local (Android 16+ runtime, **obligatoire** pour les apps
@@ -113,13 +115,11 @@ private fun PermissionRefused(onRetry: () -> Unit, onOpenSettings: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = "Accès au réseau local requis",
+        Text(stringResource(R.string.acces_reseau_local_73c212),
             style = MaterialTheme.typography.titleMedium,
             color = TetherTextPrimary,
         )
-        Text(
-            text = "Android 17 bloque par défaut les connexions vers le réseau local. " +
+        Text(stringResource(R.string.android_bloque_defaut_1992b8) +
                 "Sans cette autorisation, Tether ne peut pas joindre le serveur opencode " +
                 "sur 192.0.2.10.",
             style = MaterialTheme.typography.bodyMedium,
@@ -127,11 +127,10 @@ private fun PermissionRefused(onRetry: () -> Unit, onOpenSettings: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Button(onClick = onRetry) {
-            Text("Autoriser", color = TetherAccent)
+            Text(stringResource(R.string.autoriser_ff8398), color = LocalAccent.current)
         }
-        TextButton(onClick = onOpenSettings) { Text("Ouvrir les réglages système") }
-        Text(
-            text = "Si le système ne propose plus la demande, autorise « Appareils à proximité " +
+        TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.ouvrir_reglages_systeme_dc1d26)) }
+        Text(stringResource(R.string.systeme_propose_demande_3449aa) +
                 "» dans les permissions de l'application.",
             style = MaterialTheme.typography.bodySmall,
             color = TetherAlert,

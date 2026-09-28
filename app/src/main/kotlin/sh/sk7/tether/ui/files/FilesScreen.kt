@@ -52,7 +52,7 @@ import com.composables.icons.lucide.X
 import sh.sk7.tether.data.api.FsEntryDto
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -60,6 +60,8 @@ import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **L'explorateur de fichiers du serveur, consultable depuis le telephone.**
@@ -170,12 +172,12 @@ private fun BrowseSection(
 ) {
     when {
         state.loadingFile -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-            CircularProgressIndicator(color = TetherAccent)
+            CircularProgressIndicator(color = LocalAccent.current)
         }
         state.fileTooBig != null -> TooBigNotice(state.fileTooBig, onClose = viewModel::closeFile)
         state.openFile != null -> FileViewer(state.openFile, onClose = viewModel::closeFile)
         state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-            CircularProgressIndicator(color = TetherAccent)
+            CircularProgressIndicator(color = LocalAccent.current)
         }
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -227,7 +229,7 @@ private fun EntryRow(entry: FsEntryDto, onClick: () -> Unit) {
         Icon(
             imageVector = entryIcon(entry),
             contentDescription = null,
-            tint = if (entry.isDirectory) TetherAccent else TetherTextSecondary,
+            tint = if (entry.isDirectory) LocalAccent.current else TetherTextSecondary,
             modifier = Modifier.size(16.dp),
         )
         Text(
@@ -291,6 +293,8 @@ private fun FileViewer(file: OpenFile, onClose: () -> Unit) {
             )
             // ⚠️ Cible tactile : `minimumInteractiveComponentSize` etendu par le `padding` ; on
             // vise une croix au doigt, donc on ne compte pas sur la taille de l'icone.
+                // La description est lue ici : `semantics` s'execute hors composition.
+                val descFermer_fichier = stringResource(R.string.fermer_fichier_b5b3f1)
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -298,7 +302,7 @@ private fun FileViewer(file: OpenFile, onClose: () -> Unit) {
                     .clickable(onClick = onClose)
                     .semantics {
                         role = Role.Button
-                        contentDescription = "Fermer le fichier"
+                        contentDescription = descFermer_fichier
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -311,8 +315,7 @@ private fun FileViewer(file: OpenFile, onClose: () -> Unit) {
             }
         }
         if (file.binary) {
-            Text(
-                text = "Ce fichier n'est pas du texte (binaire ou encodage non UTF-8). " +
+            Text(stringResource(R.string.fichier_texte_binaire_bfe3a1) +
                     "Son contenu ne peut pas être affiché ici.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherAlert,
@@ -320,8 +323,7 @@ private fun FileViewer(file: OpenFile, onClose: () -> Unit) {
             )
         } else {
             if (file.truncated) {
-                Text(
-                    text = "Affichage tronqué (fichier volumineux).",
+                Text(stringResource(R.string.affichage_tronque_fichier_f285f2),
                     style = TetherDataStyle,
                     color = TetherAlert,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xs),
@@ -348,8 +350,7 @@ private fun TooBigNotice(tooBig: FileTooBig, onClose: () -> Unit) {
             .padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        Text(
-            text = "Fichier trop volumineux pour l'affichage",
+        Text(stringResource(R.string.fichier_trop_volumineux_074a36),
             style = MaterialTheme.typography.titleSmall,
             color = TetherAlert,
         )
@@ -359,10 +360,9 @@ private fun TooBigNotice(tooBig: FileTooBig, onClose: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
         )
-        Text(
-            text = "Fermer",
+        Text(stringResource(R.string.fermer_5ab4ec),
             style = TetherDataStyle,
-            color = TetherAccent,
+            color = LocalAccent.current,
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
                 // ⚠️ 48 dp : seul point de sortie de cet état.
@@ -414,7 +414,7 @@ private fun RecursiveSearchSection(
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                .background(TetherAccent.copy(alpha = 0.16f))
+                .background(LocalAccent.current.copy(alpha = 0.16f))
                 .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(enabled = !searching) {
                     searching = true
@@ -438,7 +438,7 @@ private fun RecursiveSearchSection(
         ) {
             if (searching) {
                 CircularProgressIndicator(
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(14.dp),
                 )
@@ -446,14 +446,13 @@ private fun RecursiveSearchSection(
                 Icon(
                     Lucide.Search,
                     contentDescription = null,
-                    tint = TetherAccent,
+                    tint = LocalAccent.current,
                     modifier = Modifier.size(14.dp),
                 )
             }
-            Text(
-                text = "Chercher « $query » partout ($localCount ici)",
+            Text(stringResource(R.string.chercher_query_partout_4f86fb),
                 style = TetherDataStyle,
-                color = TetherAccent,
+                color = LocalAccent.current,
             )
         }
 
@@ -461,8 +460,7 @@ private fun RecursiveSearchSection(
 
         results?.let { found ->
             if (found.isEmpty()) {
-                Text(
-                    text = "Aucun fichier pour « $query » dans tout le répertoire.",
+                Text(stringResource(R.string.aucun_fichier_query_7c2d9d),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
                 )
@@ -481,7 +479,7 @@ private fun RecursiveSearchSection(
                                 Icon(
                                     entryIcon(entry),
                                     contentDescription = null,
-                                    tint = if (entry.isDirectory) TetherAccent else TetherTextSecondary,
+                                    tint = if (entry.isDirectory) LocalAccent.current else TetherTextSecondary,
                                     modifier = Modifier.size(14.dp),
                                 )
                                 Text(
@@ -528,8 +526,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
         )
         Box(modifier = Modifier.weight(1f)) {
             if (value.isEmpty()) {
-                Text(
-                    text = "Filtrer ce dossier, ou chercher partout",
+                Text(stringResource(R.string.filtrer_dossier_chercher_fbe81b),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TetherTextSecondary,
                 )
@@ -539,7 +536,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = TetherTextPrimary),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(TetherAccent),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccent.current),
                 // ⚠️ `fillMaxWidth` obligatoire : sans lui, le champ vide n'occupe que la largeur
                 // de son texte et le tap tombe sur le placeholder non cliquable. Bug deja
                 // rencontre sur la recherche de sessions et de conversation.
@@ -547,6 +544,8 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
             )
         }
         if (value.isNotEmpty()) {
+                // La description est lue ici : `semantics` s'execute hors composition.
+                val descEffacer_recherche = stringResource(R.string.effacer_recherche_189351)
             Box(
                 modifier = Modifier
                     .size(TetherDimensions.touchTarget)
@@ -554,7 +553,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
                     .clickable { onValueChange("") }
                     .semantics {
                         role = Role.Button
-                        contentDescription = "Effacer la recherche"
+                        contentDescription = descEffacer_recherche
                     },
                 contentAlignment = Alignment.Center,
             ) {

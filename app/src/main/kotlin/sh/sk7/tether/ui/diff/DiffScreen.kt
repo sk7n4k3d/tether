@@ -42,7 +42,7 @@ import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.FileDiff as FileDiffIcon
 import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherBackground
 import sh.sk7.tether.ui.theme.TetherComposerBorder
@@ -52,6 +52,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Les diffs : ce que l'agent a reellement change dans les fichiers.**
@@ -97,7 +99,7 @@ fun DiffScreen(
         Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 DiffUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator(color = TetherAccent)
+                    CircularProgressIndicator(color = LocalAccent.current)
                 }
 
                 is DiffUiState.Error -> Centered(current.message, TetherAlert)
@@ -158,7 +160,7 @@ private fun ScopeSelector(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                    .background(if (active) TetherAccent.copy(alpha = 0.18f) else TetherComposerSurface)
+                    .background(if (active) LocalAccent.current.copy(alpha = 0.18f) else TetherComposerSurface)
                     // ⚠️ 48 dp : meme regle que le selecteur de plage des statistiques.
                     .heightIn(min = TetherDimensions.touchTarget)
                     .clickable { onSelect(scope) }
@@ -168,7 +170,7 @@ private fun ScopeSelector(
                 Text(
                     text = scope.label,
                     style = TetherDataStyle,
-                    color = if (active) TetherAccent else TetherTextSecondary,
+                    color = if (active) LocalAccent.current else TetherTextSecondary,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
@@ -201,8 +203,7 @@ private fun FileCard(file: UnifiedDiff.FileDiff) {
             } else {
                 // ⚠️ Un fichier sans patch (binaire, ou tronque par le serveur) doit le DIRE. Un
                 // corps vide laisserait croire a un fichier sans changement.
-                Text(
-                    text = "Le serveur n'a pas fourni de contenu pour ce fichier " +
+                Text(stringResource(R.string.serveur_fourni_contenu_ddcc5f) +
                         "(binaire, ou diff trop volumineux).",
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextMuted,
@@ -250,7 +251,7 @@ private fun FileHeader(file: UnifiedDiff.FileDiff, expanded: Boolean, onToggle: 
         }
         // ⚠️ Les compteurs sont sur la ligne, toujours visibles meme replie : c'est ce qui permet
         // de choisir QUEL fichier ouvrir sans les ouvrir tous.
-        Text(text = "+${file.additions}", style = TetherDataStyle, color = TetherAccent)
+        Text(text = "+${file.additions}", style = TetherDataStyle, color = LocalAccent.current)
         Text(text = "−${file.deletions}", style = TetherDataStyle, color = TetherAlert)
     }
 }
@@ -284,13 +285,13 @@ private fun DiffBody(file: UnifiedDiff.FileDiff) {
 private fun DiffLine(line: UnifiedDiff.Line) {
     val (marker, color, background) = when (line.kind) {
         UnifiedDiff.Kind.Addition ->
-            Triple("+", TetherAccent, TetherAccent.copy(alpha = 0.10f))
+            Triple("+", LocalAccent.current, LocalAccent.current.copy(alpha = 0.10f))
         UnifiedDiff.Kind.Deletion ->
             Triple("−", TetherAlert, TetherAlert.copy(alpha = 0.10f))
         UnifiedDiff.Kind.Context ->
             Triple(" ", TetherTextPrimary, TetherBackground.copy(alpha = 0.35f))
         UnifiedDiff.Kind.HunkHeader ->
-            Triple("", TetherTextSecondary, TetherAccent.copy(alpha = 0.06f))
+            Triple("", TetherTextSecondary, LocalAccent.current.copy(alpha = 0.06f))
         UnifiedDiff.Kind.FileHeader ->
             Triple("", TetherTextSecondary.copy(alpha = 0.7f), TetherBackground.copy(alpha = 0.5f))
         UnifiedDiff.Kind.Meta ->

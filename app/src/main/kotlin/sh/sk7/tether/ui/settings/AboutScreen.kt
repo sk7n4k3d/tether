@@ -23,12 +23,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **A propos : ce qu'est cette app, et ou trouver quoi.**
@@ -62,11 +64,11 @@ fun AboutScreen(
         item(key = "mark") { TetherMark() }
 
         item(key = "versions") {
-            Block(title = "Versions") {
+            Block(title = stringResource(R.string.versions_a23910)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     VersionLine("Tether", APP_VERSION)
                     VersionLine(
-                        label = "opencode",
+                        label = stringResource(R.string.opencode_4b5a52),
                         value = state.version ?: "injoignable",
                         ok = state.version != null,
                     )
@@ -75,17 +77,15 @@ fun AboutScreen(
         }
 
         item(key = "principe") {
-            Block(title = "Principe") {
+            Block(title = stringResource(R.string.principe_a947e2)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = "Tether pilote ton serveur opencode depuis ce téléphone. " +
+                    Text(stringResource(R.string.tether_pilote_ton_1209c6) +
                             "Tout reste chez toi : l'app ne parle qu'à ton serveur, et tes " +
                             "conversations ne quittent pas ta machine.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TetherTextSecondary,
                     )
-                    Text(
-                        text = "Licence MIT — logiciel libre, sans dépendance aux services " +
+                    Text(stringResource(R.string.licence_mit_logiciel_a1a1c7) +
                             "Google. Conçu pour fonctionner sans Play Services.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextMuted,
@@ -104,6 +104,11 @@ fun AboutScreen(
  */
 @Composable
 private fun TetherMark() {
+    // ⚠️ Lue **avant** le `drawBehind`. Le lambda de `drawBehind` est execute au
+    // moment du dessin, hors de l'arbre de composition : y lire un `CompositionLocal`
+    // est une erreur de compilation, et non un.detail d'execution. La couleur est donc
+    // capturee ici, et le dessin utilise cette capture.
+    val accent = LocalAccent.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -120,28 +125,26 @@ private fun TetherMark() {
                     val span = size.width * 0.28f
                     // Le fil : un trait continu.
                     drawLine(
-                        color = TetherAccent.copy(alpha = 0.55f),
+                        color = accent.copy(alpha = 0.55f),
                         start = Offset(cx - span, cy),
                         end = Offset(cx + span, cy),
                         strokeWidth = TetherDimensions.threadWidth.toPx(),
                     )
                     // Le nœud : plein, sur le fil.
                     drawCircle(
-                        color = TetherAccent,
+                        color = accent,
                         radius = 5.dp.toPx(),
                         center = Offset(cx, cy),
                     )
                 },
         ) {}
 
-        Text(
-            text = "Tether",
+        Text(stringResource(R.string.tether_f80307),
             style = MaterialTheme.typography.titleMedium,
             color = TetherTextPrimary,
             fontWeight = FontWeight.SemiBold,
         )
-        Text(
-            text = "le fil qui relie ton agent",
+        Text(stringResource(R.string.fil_relie_ton_43e9b7),
             style = TetherDataStyle,
             color = TetherTextSecondary,
         )
@@ -158,7 +161,7 @@ private fun VersionLine(label: String, value: String, ok: Boolean = true) {
         Text(
             text = value,
             style = TetherDataStyle,
-            color = if (ok) TetherAccent else TetherTextSecondary,
+            color = if (ok) LocalAccent.current else TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
         )
     }

@@ -65,7 +65,7 @@ import com.composables.icons.lucide.Paperclip
 import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.X
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.animationsAllowed
@@ -76,6 +76,8 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **La barre de saisie — une piece d'instrument, pas un formulaire.**
@@ -174,13 +176,13 @@ fun Composer(
     val buttonColor by animateColorAsState(
         targetValue = when {
             showStop -> TetherAlert
-            hasContent -> TetherAccent
+            hasContent -> LocalAccent.current
             // ⚠️ 0.55 et non 0.25 : a 0.25 la fleche disparait et l'app perd son
             // point d'entree principal. Lumo la garde visible et ternit — c'est un controle
             // visiblement inactif, pas un controle absent.
             else -> TetherTextSecondary.copy(alpha = 0.55f)
         },
-        label = "composer-button-color",
+        label = stringResource(R.string.composer_button_color_c4b0b5),
     )
     val buttonSize by animateDpAsState(
         // Il grandit quand il devient actif : l'etat se lit a la silhouette, pas seulement
@@ -192,22 +194,26 @@ fun Composer(
         // les 48 dp Material, mais c'est un choix de densite **conscient**, compense par
         // `minimumInteractiveComponentSize()` qui etend la zone sensible a 48 dp.
         targetValue = if (showStop || hasContent) 40.dp else 36.dp,
-        label = "composer-button-size",
+        label = stringResource(R.string.composer_button_size_5674e1),
     )
     // Icone : rotation douce entre la fleche et le carre (morph visuel).
     val arrowAlpha by animateFloatAsState(
         targetValue = if (showStop) 0f else 1f,
-        label = "composer-arrow",
+        label = stringResource(R.string.composer_arrow_e319e7),
     )
     val stopAlpha by animateFloatAsState(
         targetValue = if (showStop) 1f else 0f,
-        label = "composer-stop",
+        label = stringResource(R.string.composer_stop_f8a665),
     )
 
-    val selectionColors = remember {
+    // ⚠️ La couleur se lit **avant** le `remember` : dans un `remember { }` sans cle,
+    // le bloc n'est evalue qu'une fois, et un changement d'accent ne serait jamais
+    // repris. En la passant par cle, le `remember` se recalcule au changement.
+    val accent = LocalAccent.current
+    val selectionColors = remember(accent) {
         TextSelectionColors(
-            handleColor = TetherAccent,
-            backgroundColor = TetherAccent.copy(alpha = 0.30f),
+            handleColor = accent,
+            backgroundColor = accent.copy(alpha = 0.30f),
         )
     }
 
@@ -222,7 +228,7 @@ fun Composer(
     // Sans animation, le lisere reste **teal plein** : l'information « ca tourne » est toujours
     // la, elle ne clignote simplement plus.
     val pulseEnabled = animationsAllowed()
-    val pulseTransition = rememberInfiniteTransition(label = "composer")
+    val pulseTransition = rememberInfiniteTransition(label = stringResource(R.string.composer_874ad8))
     val pulse by pulseTransition.animateFloat(
         initialValue = 0.15f,
         targetValue = 0.55f,
@@ -230,11 +236,11 @@ fun Composer(
             animation = tween(1400),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "composer-pulse",
+        label = stringResource(R.string.composer_pulse_6bf03d),
     )
     val pulseAlpha = if (pulseEnabled) pulse else 0.40f
     // Lisere teal sous la barre : la version du fil qui passe par la zone de saisie.
-    val edgeColor = if (busy) TetherAccent.copy(alpha = pulseAlpha) else Color.Transparent
+    val edgeColor = if (busy) LocalAccent.current.copy(alpha = pulseAlpha) else Color.Transparent
 
     Column(modifier = modifier.fillMaxWidth()) {
         // ------------------------------------------------ LES PIECES JOINTES EN ATTENTE
@@ -303,8 +309,7 @@ fun Composer(
                         // Mesure : mon ancien placeholder a 60 % d'opacite donnait **2.96** de
                         // contraste, sous le seuil de 4.5 — illisible. Mon `#8B98A5` plein
                         // donne **5.19** : au-dessus de Claude, sobre.
-                        Text(
-                            text = "Écrire à l'agent…",
+                        Text(stringResource(R.string.ecrire_agent_146209),
                             style = MaterialTheme.typography.bodyLarge,
                             color = TetherTextSecondary,
                         )
@@ -331,7 +336,7 @@ fun Composer(
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = TetherTextPrimary,
                             ),
-                            cursorBrush = SolidColor(TetherAccent),
+                            cursorBrush = SolidColor(LocalAccent.current),
                             // ⚠️ `Default` et NON `Send` : sur un clavier mobile, `ImeAction.Send`
                             // remplace le retour a la ligne par une touche d'envoi. Dans un
                             // cockpit, ecrire un prompt multi-lignes est le cas NORMAL.
@@ -358,7 +363,7 @@ fun Composer(
                     if (onAttach != null) {
                         ComposerIcon(
                             icon = Lucide.Paperclip,
-                            label = "Joindre un fichier",
+                            label = stringResource(R.string.joindre_fichier_d0f75a),
                             onClick = onAttach,
                         )
                     }
@@ -368,7 +373,7 @@ fun Composer(
                     if (onOpenAgents != null) {
                         ComposerLabelIcon(
                             icon = Lucide.Bot,
-                            label = "Agents",
+                            label = stringResource(R.string.agents_64acf7),
                             onClick = onOpenAgents,
                             emphasised = false,
                         )
@@ -385,7 +390,7 @@ fun Composer(
                             icon = Lucide.Blocks,
                             label = currentModelLabel ?: "—",
                             onClick = onPickModelAgent,
-                            contentDescription = "Modele courant, changer",
+                            contentDescription = stringResource(R.string.modele_courant_changer_b2b5db),
                             // ⚠️ **Emphase** : le modele est un **etat**, l'agent une
                             // action. Le design-soul (§4) demande une hierarchie par
                             // *quatre* moyens — taille, poids, **couleur**, position — et
@@ -402,7 +407,7 @@ fun Composer(
                             label = if (listening) "Dictee en cours" else "Dicter le message",
                             onClick = onVoice,
                             enabled = !listening,
-                            tint = if (listening) TetherAccent else TetherTextSecondary,
+                            tint = if (listening) LocalAccent.current else TetherTextSecondary,
                         )
                     }
                     // L'envoi. Deux seuls etats utiles : fleche (envoyer) et carre d'arret.
@@ -564,7 +569,7 @@ private fun AttachmentChip(attachment: PendingAttachment, onRemove: () -> Unit) 
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-            .background(TetherAccent.copy(alpha = 0.14f))
+            .background(LocalAccent.current.copy(alpha = 0.14f))
             .padding(start = Spacing.sm, end = Spacing.xs, top = Spacing.xs, bottom = Spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
@@ -572,7 +577,7 @@ private fun AttachmentChip(attachment: PendingAttachment, onRemove: () -> Unit) 
         Icon(
             imageVector = Lucide.Paperclip,
             contentDescription = null,
-            tint = TetherAccent,
+            tint = LocalAccent.current,
             modifier = Modifier.size(12.dp),
         )
         Text(

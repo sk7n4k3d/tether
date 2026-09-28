@@ -23,7 +23,7 @@ import com.composables.icons.lucide.Terminal
 import sh.sk7.tether.domain.model.Activity
 import sh.sk7.tether.domain.model.FleetState
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherDataStyle
@@ -31,6 +31,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Le travail de fond : ce qui tourne sans qu'une session ne l'attende.**
@@ -78,8 +80,7 @@ fun BackgroundSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Text(
-                text = "TRAVAIL DE FOND",
+            Text(stringResource(R.string.travail_fond_e44975),
                 style = TetherDataStyle,
                 color = TetherTextSecondary,
                 fontWeight = FontWeight.SemiBold,
@@ -87,7 +88,7 @@ fun BackgroundSection(
             Text(
                 text = "· ${liveShells.size + liveTerminals.size}",
                 style = TetherDataStyle,
-                color = TetherAccent,
+                color = LocalAccent.current,
             )
         }
 
@@ -150,7 +151,7 @@ private fun BackgroundRow(
     // ⚠️ La formulation dit la SOURCE du jugement : « la session tourne encore » est un fait,
     // « en arrière-plan » est notre deduction. Sur une ligne courte, on nomme le fait.
     val (stateLabel, stateTint) = when (foreground) {
-        true -> "sa session tourne" to TetherAccent
+        true -> "sa session tourne" to LocalAccent.current
         false -> "sa session est finie" to TetherAlert
         null -> "aucune session" to TetherTextSecondary
     }
@@ -191,8 +192,7 @@ private fun BackgroundRow(
             startedAt?.let { start ->
                 val minutes = (now - start) / 60_000
                 if (minutes > 0) {
-                    Text(
-                        text = "depuis $minutes min",
+                    Text(stringResource(R.string.depuis_minutes_min_1b885f),
                         style = TetherDataStyle,
                         color = TetherTextMuted,
                     )

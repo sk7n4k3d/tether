@@ -51,7 +51,7 @@ import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.ui.forms.FormsScreen
 import sh.sk7.tether.ui.forms.FormsViewModel
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -60,6 +60,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Les deux files d'attente qui bloquent un agent.**
@@ -268,8 +270,7 @@ private fun FormBackBar(onBack: () -> Unit) {
             tint = TetherTextSecondary,
             modifier = Modifier.size(16.dp),
         )
-        Text(
-            text = "Retour aux formulaires",
+        Text(stringResource(R.string.retour_formulaires_4ef29b),
             style = MaterialTheme.typography.bodyMedium,
             color = TetherTextSecondary,
         )
@@ -301,14 +302,14 @@ private fun ApprovalTabs(
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         TabChip(
-            label = "Autorisations",
+            label = stringResource(R.string.autorisations_ae3a20),
             count = permissions,
             active = selected == ApprovalTab.Permissions,
             onClick = { onSelect(ApprovalTab.Permissions) },
             modifier = Modifier.weight(1f),
         )
         TabChip(
-            label = "Formulaires",
+            label = stringResource(R.string.formulaires_edb363),
             count = forms,
             active = selected == ApprovalTab.Forms,
             onClick = { onSelect(ApprovalTab.Forms) },
@@ -332,7 +333,7 @@ private fun TabChip(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-            .background(if (active) TetherAccent.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
+            .background(if (active) LocalAccent.current.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
             .heightIn(min = TetherDimensions.touchTarget)
             // ⚠️ `selectable` (et pas `clickable`) : TalkBack doit annoncer un **onglet**, avec son
             // etat selectionne. Sur une file d'attente, savoir ou l'on se trouve compte autant que
@@ -369,7 +370,7 @@ private fun PermissionQueue(
     Box(Modifier.fillMaxSize()) {
         when {
             state.loading && !state.hasAny -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
             !state.hasAny -> EmptyApprovals(formsWaiting = formsWaiting)
             else -> LazyColumn(
@@ -432,8 +433,7 @@ private fun EmptyApprovals(formsWaiting: Int) {
             tint = TetherTextSecondary,
             modifier = Modifier.size(32.dp),
         )
-        Text(
-            text = "Rien à approuver",
+        Text(stringResource(R.string.rien_approuver_17e7f7),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
@@ -534,29 +534,29 @@ private fun PermissionCard(
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
                     strokeWidth = 2.dp,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                 )
-                Text("Envoi de la réponse…", style = TetherDataStyle, color = TetherTextSecondary)
+                Text(stringResource(R.string.envoi_reponse_ee6e99), style = TetherDataStyle, color = TetherTextSecondary)
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 DecisionButton(
-                    label = "Refuser",
+                    label = stringResource(R.string.refuser_628971),
                     icon = Lucide.X,
                     tint = TetherAlert,
                     onClick = { onDecide(PermissionDecision.Reject) },
                 )
                 DecisionButton(
-                    label = "Une fois",
+                    label = stringResource(R.string.fois_55ef18),
                     icon = Lucide.Check,
-                    tint = TetherAccent,
+                    tint = LocalAccent.current,
                     // ⚠️ « Une fois » est propose en PREMIER dans la lecture (apres Refuser, qui
                     // doit rester accessible sans chercher) : c'est le choix qui n'engage rien,
                     // et c'est celui qu'on veut rendre le plus facile.
                     onClick = { onDecide(PermissionDecision.Once) },
                 )
                 DecisionButton(
-                    label = "Toujours",
+                    label = stringResource(R.string.toujours_ec25a7),
                     icon = Lucide.ShieldCheck,
                     tint = TetherTextSecondary,
                     // Visuellement plus discret : c'est le seul choix qui survit a la session.

@@ -12,10 +12,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **En-tete de consommation** — toujours visible en haut de la liste, jamais demande.
@@ -43,15 +45,14 @@ fun UsageHeader(usage: UsageInfo, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.Bottom,
         ) {
             Column {
-                Text(
-                    text = "Consommation",
+                Text(stringResource(R.string.consommation_fa3cc9),
                     style = MaterialTheme.typography.labelSmall,
                     color = TetherTextSecondary,
                 )
                 Text(
                     text = formatTotal(usage.costTotal),
                     style = MaterialTheme.typography.titleMedium,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                 )
             }
             Text(
@@ -65,9 +66,9 @@ fun UsageHeader(usage: UsageInfo, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
-            DataPoint(label = "in", value = formatCount(usage.tokensIn))
-            DataPoint(label = "out", value = formatCount(usage.tokensOut))
-            DataPoint(label = "cache", value = formatCount(usage.cacheRead), accent = true)
+            DataPoint(label = stringResource(R.string.in_af10ef), value = formatCount(usage.tokensIn))
+            DataPoint(label = stringResource(R.string.out_f4800d), value = formatCount(usage.tokensOut))
+            DataPoint(label = stringResource(R.string.cache_b03592), value = formatCount(usage.cacheRead), accent = true)
         }
     }
 }
@@ -82,7 +83,7 @@ private fun DataPoint(label: String, value: String, accent: Boolean = false) {
         Text(
             text = value,
             style = TetherDataStyle,
-            color = if (accent) TetherAccent else TetherTextPrimary,
+            color = if (accent) LocalAccent.current else TetherTextPrimary,
             fontWeight = FontWeight.SemiBold,
         )
     }

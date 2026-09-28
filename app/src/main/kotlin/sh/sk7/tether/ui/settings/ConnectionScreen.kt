@@ -57,7 +57,7 @@ import com.composables.icons.lucide.Server
 import com.composables.icons.lucide.ShieldCheck
 import com.composables.icons.lucide.WifiOff
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -66,6 +66,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Connexion au serveur — la porte d'entree, pas un formulaire de reglages.**
@@ -127,7 +129,7 @@ fun ConnectionScreen(
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!firstRun) {
                 IconButton(onClick = onBack) {
-                    Icon(Lucide.ArrowLeft, contentDescription = "Retour")
+                    Icon(Lucide.ArrowLeft, contentDescription = stringResource(R.string.retour_e5befb))
                 }
             }
             Text(
@@ -140,13 +142,11 @@ fun ConnectionScreen(
 
         if (firstRun) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(
-                    text = "Relier ton serveur opencode",
+                Text(stringResource(R.string.relier_ton_serveur_3a5992),
                     style = MaterialTheme.typography.titleMedium,
                     color = TetherTextPrimary,
                 )
-                Text(
-                    text = "Tether pilote le serveur opencode qui tourne sur ta machine. " +
+                Text(stringResource(R.string.tether_pilote_serveur_331338) +
                         "Renseigne son adresse et son mot de passe : ils restent sur ce " +
                         "telephone.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -157,8 +157,8 @@ fun ConnectionScreen(
 
         // ------------------------------------------------------------ LES CHAMPS
         Field(
-            label = "Adresse du serveur",
-            hint = "http://192.0.2.10:4096",
+            label = stringResource(R.string.adresse_serveur_de7906),
+            hint = stringResource(R.string.http_192_4096_69ae0e),
             value = state.baseUrl,
             onValueChange = viewModel::onBaseUrlChange,
             keyboardType = KeyboardType.Uri,
@@ -166,8 +166,8 @@ fun ConnectionScreen(
         )
 
         Field(
-            label = "Mot de passe",
-            hint = "celui du serveur opencode",
+            label = stringResource(R.string.mot_passe_94e2f3),
+            hint = stringResource(R.string.celui_serveur_opencode_7dba72),
             value = state.password,
             onValueChange = viewModel::onPasswordChange,
             keyboardType = KeyboardType.Password,
@@ -189,8 +189,8 @@ fun ConnectionScreen(
         )
 
         Field(
-            label = "Repertoire de travail",
-            hint = "/chemin/vers/le/depot",
+            label = stringResource(R.string.repertoire_travail_5843d7),
+            hint = stringResource(R.string.chemin_vers_depot_398f4e),
             value = state.directory,
             onValueChange = viewModel::onDirectoryChange,
             keyboardType = KeyboardType.Uri,
@@ -227,11 +227,10 @@ fun ConnectionScreen(
                 Icon(
                     imageVector = Lucide.ShieldCheck,
                     contentDescription = null,
-                    tint = TetherAccent,
+                    tint = LocalAccent.current,
                     modifier = Modifier.size(16.dp),
                 )
-                Text(
-                    text = "Le mot de passe est conserve dans l'espace prive de l'application. " +
+                Text(stringResource(R.string.mot_passe_conserve_c8008d) +
                         "Aucun envoi vers un tiers : Tether ne parle qu'a ton serveur.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
@@ -327,14 +326,16 @@ private fun ConnectButton(result: ConnectionTestResult, onClick: () -> Unit) {
             .heightIn(min = 52.dp),
     ) {
         if (testing) {
+                // La description est lue ici : `semantics` s'execute hors composition.
+                val descConnexion_cours = stringResource(R.string.connexion_cours_b21b2f)
             CircularProgressIndicator(
                 modifier = Modifier
                     .size(18.dp)
-                    .semantics { contentDescription = "Connexion en cours" },
+                    .semantics { contentDescription = descConnexion_cours },
                 strokeWidth = 2.dp,
             )
             Spacer(Modifier.width(Spacing.sm))
-            Text("Connexion…")
+            Text(stringResource(R.string.connexion_807c20))
         } else {
             Icon(Lucide.Server, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(Spacing.sm))
@@ -366,13 +367,13 @@ private fun TestOutcome(result: ConnectionTestResult, firstRun: Boolean) {
                 Icon(
                     imageVector = Lucide.Check,
                     contentDescription = null,
-                    tint = TetherAccent,
+                    tint = LocalAccent.current,
                     modifier = Modifier.size(16.dp),
                 )
                 Text(
                     text = "Connecté — opencode ${result.version}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                 )
             }
             is ConnectionTestResult.Failure -> Column(

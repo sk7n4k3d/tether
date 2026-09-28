@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
+import sh.sk7.tether.ui.theme.LocalAccent
 
 /**
  * **LE FIL** — composant signature de Tether.
@@ -42,7 +43,7 @@ fun TetherRail(
     nodes: List<Float>,
     states: List<NodeState>,
     modifier: Modifier = Modifier,
-    accent: Color = TetherAccent,
+    accent: Color = LocalAccent.current,
     idle: Color = TetherTextSecondary,
     alert: Color = TetherAlert,
     isSub: Boolean = false,

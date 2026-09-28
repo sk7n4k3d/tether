@@ -1,6 +1,8 @@
 package sh.sk7.tether.ui.chat
 
 import sh.sk7.tether.domain.model.ChatMessage
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **La recherche dans une conversation ouverte.**
@@ -31,6 +33,9 @@ object ChatSearch {
         /** Ou la correspondance se trouve — pour dire ce qu'on a trouve, pas seulement combien. */
         val field: Field,
     ) {
+        // ⚠️ `label` reste en dur : un `enum` ne peut pas appeler `stringResource`,
+        // qui n'existe que dans un contexte de composition. C'est le seul endroit ou
+        // une chaine d'interface reste hors resource, et il est d'une ligne.
         enum class Field(val label: String) {
             Text("message"),
             Reasoning("raisonnement"),

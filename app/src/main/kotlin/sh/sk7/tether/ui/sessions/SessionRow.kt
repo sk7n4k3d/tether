@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import sh.sk7.tether.ui.theme.NodeState
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherDimensions
@@ -52,6 +52,8 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import sh.sk7.tether.ui.theme.animationsAllowed
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Une session, posee sur le fil** — la signature visuelle de Tether.
@@ -135,7 +137,7 @@ fun SessionRow(
     val nodeX: Dp = if (isSub) railX + TetherDimensions.indent else railX
     val nodeY: Dp = Spacing.md + 10.dp
 
-    val accent = TetherAccent
+    val accent = LocalAccent.current
     val idle = TetherTextSecondary
     val alert = TetherAlert
 
@@ -178,14 +180,14 @@ fun SessionRow(
     val pulseAlpha: Float
     val pulseRadius: Float
     if (pulseOn && branchActive) {
-        val pulse by rememberInfiniteTransition(label = "node-pulse").animateFloat(
+        val pulse by rememberInfiniteTransition(label = stringResource(R.string.node_pulse_d6c71b)).animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 1600),
                 repeatMode = RepeatMode.Reverse,
             ),
-            label = "node-pulse-value",
+            label = stringResource(R.string.node_pulse_value_d0e022),
         )
         pulseAlpha = 0.30f * pulse
         pulseRadius = 2.2f + pulse * 0.8f
@@ -335,7 +337,7 @@ fun SessionRow(
                 if (pinned) {
                     Icon(
                         imageVector = Lucide.Pin,
-                        contentDescription = "Épinglée",
+                        contentDescription = stringResource(R.string.epinglee_a19363),
                         tint = TetherTextSecondary,
                         modifier = Modifier.size(11.dp),
                     )
@@ -360,13 +362,12 @@ fun SessionRow(
                 // parent : un sous-agent n'a pas de sous-agents. Le libellé dit « actifs », pas
                 // « enfants » — le total connu est déjà porté par le chevron.
                 if (!isSub && activeSubs > 0) {
-                    Text(
-                        text = "$activeSubs actif" + if (activeSubs > 1) "s" else "",
+                    Text(stringResource(R.string.activesubs_actif_d7a451) + if (activeSubs > 1) "s" else "",
                         style = TetherDataStyle,
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                         modifier = Modifier
                             .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                            .background(TetherAccent.copy(alpha = 0.12f))
+                            .background(LocalAccent.current.copy(alpha = 0.12f))
                             .padding(horizontal = Spacing.xs, vertical = 1.dp),
                     )
                 }
@@ -401,7 +402,7 @@ fun SessionRow(
                     Text(
                         text = it,
                         style = TetherDataStyle,
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -461,7 +462,7 @@ private fun ActivityBadge(activity: Activity) {
     // deja porte par sa propre information (« termine »). Tout afficher rendrait le tout illisible.
     val (label, tint) = when (activity) {
         Activity.Waiting -> "t'attend" to TetherAlert
-        Activity.Running -> "en cours" to TetherAccent
+        Activity.Running -> "en cours" to LocalAccent.current
         Activity.Unseen -> "terminé" to TetherTextPrimary
         Activity.Queued -> "en file" to TetherTextSecondary
         Activity.Failed -> "échec" to TetherAlert

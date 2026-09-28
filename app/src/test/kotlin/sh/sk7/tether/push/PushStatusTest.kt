@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -16,6 +17,17 @@ import kotlin.test.assertTrue
  * la permission systeme, ou l'endpoint n'est jamais arrive. Ces trois faits se testent ici, sans
  * Android, exactement comme `decideNotification` dans [PushPolicyTest].
  */
+/**
+ * [describePushStatus] avec un resolveur qui renvoie l'identifiant brut.
+ *
+ * Les tests comparent la **cle de resource**, pas le texte : un test qui comparerait
+ * du francais casserait a la premiere reecriture, et un test qui materialiserait la
+ * traduction exigerait un contexte Android. La cle est ce qui compte — elle dit quel
+ * message est choisi, et c'est la decision que la fonction arbitre.
+ */
+private fun describePushStatusIsole(status: PushStatus): PushVerdict =
+    describePushStatus(status) { id -> "res:$id" }
+
 class PushStatusTest {
 
     // ------------------------------------------------------------------
@@ -27,7 +39,7 @@ class PushStatusTest {
         // ⚠️ Scenario reel : l'app a ete reinstallee apres avoir publie un endpoint (le
         // `SharedPreferences` survit), mais ntfy a ete desinstalle. Sans l'ordre des cas, on
         // annoncerait « connecté » sur un telephone qui ne recevra **jamais** rien.
-        val verdict = describePushStatus(
+        val verdict = describePushStatusIsole(
             PushStatus(distributor = null, notificationsAllowed = true, endpoint = "https://ntfy/x"),
         )
         assertEquals(PushStateKind.NoDistributor, verdict.kind)
@@ -41,7 +53,7 @@ class PushStatusTest {
         // ⚠️ LE piege que cette section existe pour fermer : tout est « en place » sauf la
         // permission, et Android ne dit **rien** — `notify()` ne leve pas, rien ne s'affiche.
         // Un test qui passerait par l'etat « connecté » ici validerait precisement le mensonge.
-        val verdict = describePushStatus(
+        val verdict = describePushStatusIsole(
             PushStatus(
                 distributor = "io.heckel.ntfy",
                 notificationsAllowed = false,
@@ -56,7 +68,7 @@ class PushStatusTest {
     fun `distributeur et permission sans endpoint restent en attente`() {
         // ⚠️ Un distributeur retenu n'est qu'une **capacite** : sans endpoint, le serveur opencode
         // n'a rien a publier. On ne dit pas « connecté », et on propose de reconnecter.
-        val verdict = describePushStatus(
+        val verdict = describePushStatusIsole(
             PushStatus(
                 distributor = "io.heckel.ntfy",
                 notificationsAllowed = true,
@@ -75,7 +87,7 @@ class PushStatusTest {
             notificationsAllowed = true,
             endpoint = "https://ntfy.sh/upAbCdEf",
         )
-        val verdict = describePushStatus(status)
+        val verdict = describePushStatusIsole(status)
         assertEquals(PushStateKind.Ready, verdict.kind)
         assertEquals(PushTone.Ready, verdict.tone)
         assertTrue(status.isReady)
@@ -86,16 +98,19 @@ class PushStatusTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `le cas sans distributeur nomme l application a installer`() {
-        // ⚠️ « aucun distributeur UnifiedPush » seul laisse l'utilisateur sans piste. Le detail
-        // doit nommer l'application attendue (ntfy) : c'est la question reelle devant cet etat.
-        val verdict = describePushStatus(
-            PushStatus(distributor = null, notificationsAllowed = true, endpoint = null),
-        )
-        assertTrue(
-            verdict.detail.contains("ntfy"),
-            "le detail doit nommer l'application distributrice : ${verdict.detail}",
-        )
+    fun `le cas sans distributeur et le cas pret n ont pas le meme detail`() {
+        // ⚠️ « aucun distributeur UnifiedPush » seul laisse l'utilisateur sans piste. La
+        // garantie utile ici est que l'etat « rien a installer » ne dit pas la meme chose que
+        // l'etat « pret » : un detail partage entre les deux ferait croire que tout va bien.
+        //
+        // On ne compare pas le **texte** : a l'execution Android il n'existe que traduit, et un
+        // test qui exigerait du francais casserait a la premiere traduction. Ce qu'on garantit
+        // ici, c'est la **separation** des messages. Le contenu des chaines, y compris « le
+        // detail nomme ntfy », est verifie par `RessourceTest`, sur le fichier lui-meme.
+        val sans = describePushStatusIsole(PushStatus(null, true, null))
+        val pret = describePushStatusIsole(PushStatus("io.heckel.ntfy", true, "https://ntfy/x"))
+        assertNotEquals(sans.detail, pret.detail, "les deux etats doivent avoir des details distincts")
+        assertNotEquals(sans.label, pret.label, "les deux etats doivent avoir des libelles distincts")
     }
 
     @Test
@@ -110,7 +125,7 @@ class PushStatusTest {
             PushStatus("io.heckel.ntfy", true, "https://ntfy/x"),
         )
         statuses.forEach { status ->
-            val verdict = describePushStatus(status)
+            val verdict = describePushStatusIsole(status)
             assertTrue(verdict.label.isNotBlank(), "libelle vide pour $status")
             assertTrue(verdict.detail.isNotBlank(), "detail vide pour $status")
         }
@@ -125,7 +140,7 @@ class PushStatusTest {
             PushStatus("io.heckel.ntfy", false, "https://ntfy/x"),
             PushStatus("io.heckel.ntfy", true, null),
             PushStatus("io.heckel.ntfy", true, "https://ntfy/x"),
-        ).map { describePushStatus(it).kind }.toSet()
+        ).map { describePushStatusIsole(it).kind }.toSet()
         assertEquals(
             setOf(
                 PushStateKind.NoDistributor,

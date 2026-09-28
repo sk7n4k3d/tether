@@ -95,7 +95,7 @@ import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import com.composables.icons.lucide.X
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherBackground
@@ -105,6 +105,9 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherIconMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * Ecran de conversation d'une session opencode, avec streaming.
@@ -326,12 +329,12 @@ fun ChatScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Lucide.ArrowLeft, contentDescription = "Retour")
+                            Icon(Lucide.ArrowLeft, contentDescription = stringResource(R.string.retour_e5befb))
                         }
                     },
                     actions = {
                         IconButton(onClick = { searchOpen = !searchOpen }) {
-                            Icon(Lucide.Search, contentDescription = "Rechercher dans la conversation")
+                            Icon(Lucide.Search, contentDescription = stringResource(R.string.rechercher_conversation_045f86))
                         }
                         // ⚠️ « Passer en arrière-plan » n'apparaît QUE quand quelque chose tourne.
                         // La route est un no-op quand rien ne bloque (doc serveur) : l'afficher au
@@ -342,7 +345,7 @@ fun ChatScreen(
                             IconButton(onClick = viewModel::backgroundTools) {
                                 Icon(
                                     Lucide.PanelBottomOpen,
-                                    contentDescription = "Déplacer les outils en arrière-plan",
+                                    contentDescription = stringResource(R.string.deplacer_outils_arriere_3bd804),
                                 )
                             }
                         }
@@ -351,16 +354,16 @@ fun ChatScreen(
                         // et qu'un client de chat n'a pas. Les enfouir reviendrait a les rendre
                         // invisibles — or c'est precisement ce qu'on vient chercher.
                         IconButton(onClick = onOpenDiff) {
-                            Icon(Lucide.GitCompare, contentDescription = "Fichiers modifiés")
+                            Icon(Lucide.GitCompare, contentDescription = stringResource(R.string.fichiers_modifies_75be38))
                         }
                         IconButton(onClick = onOpenContext) {
-                            Icon(Lucide.Layers, contentDescription = "Fenêtre de contexte")
+                            Icon(Lucide.Layers, contentDescription = stringResource(R.string.fenetre_contexte_e0de8f))
                         }
                         // ⚠️ L'export est une action d'ECRAN, pas de message : on exporte la
                         // conversation entiere. Le mettre dans le menu d'un message laisserait
                         // croire qu'on n'exporte que lui.
                         IconButton(onClick = { exporting = true }) {
-                            Icon(Lucide.Download, contentDescription = "Exporter la conversation")
+                            Icon(Lucide.Download, contentDescription = stringResource(R.string.exporter_conversation_a7bf5e))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -756,7 +759,7 @@ private fun QueuedRow(
     onToggleMode: (String) -> Unit,
 ) {
     val modeLabel = if (message.isSteering) "corrige le tour en cours" else "attend son tour"
-    val tint = if (message.isSteering) TetherAccent else TetherTextSecondary
+    val tint = if (message.isSteering) LocalAccent.current else TetherTextSecondary
 
     Row(
         modifier = Modifier
@@ -813,7 +816,7 @@ private fun QueuedRow(
             CircularProgressIndicator(
                 modifier = Modifier.size(14.dp),
                 strokeWidth = 2.dp,
-                color = TetherAccent,
+                color = LocalAccent.current,
             )
         } else {
             // ⚠️ `X` est une icône **universelle** d'annulation, mais sa description dit l'objet
@@ -822,7 +825,7 @@ private fun QueuedRow(
             IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
                 Icon(
                     imageVector = Lucide.X,
-                    contentDescription = "Annuler ce message en attente",
+                    contentDescription = stringResource(R.string.annuler_message_attente_812a6f),
                     tint = TetherTextSecondary,
                     modifier = Modifier.size(14.dp),
                 )
@@ -865,7 +868,7 @@ private fun MessageBlock(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .thread(isUser),
+            .thread(isUser, LocalAccent.current),
         verticalAlignment = Alignment.Top,
     ) {
         // Reserve la largeur du rail : le contenu commence apres le fil, jamais dessous.
@@ -892,7 +895,7 @@ private fun MessageBlock(
                         // proche du fil est plus ferme. C'est ce qui rattache la bulle au fil
                         // plutot que de la laisser flotter.
                         .background(
-                            TetherAccent.copy(alpha = 0.14f),
+                            LocalAccent.current.copy(alpha = 0.14f),
                             RoundedCornerShape(
                                 topStart = TetherDimensions.cornerMd,
                                 topEnd = TetherDimensions.cornerMd,
@@ -1063,12 +1066,12 @@ private object ChatRail {
  * ne se resout pas implicitement chez ses voisins, il faudrait un `with(ChatRail) { … }` a
  * chaque appel — trois sites a se rappeler, donc trois occasions d'en oublier un.
  */
-private fun Modifier.thread(isUser: Boolean): Modifier = drawBehind {
+private fun Modifier.thread(isUser: Boolean, accent: Color): Modifier = drawBehind {
     val railX = ChatRail.width.toPx() / 2f
     val color = if (isUser) {
         TetherTextSecondary.copy(alpha = 0.18f)
     } else {
-        TetherAccent.copy(alpha = 0.22f)
+        accent.copy(alpha = 0.22f)
     }
     // Le fil : toujours, sur toute la hauteur, quel que soit l'acteur.
     drawLine(
@@ -1079,7 +1082,7 @@ private fun Modifier.thread(isUser: Boolean): Modifier = drawBehind {
     )
     // Le nœud : teal si c'est l'agent (ce qui pense), gris si c'est toi.
     drawCircle(
-        color = if (isUser) TetherTextSecondary.copy(alpha = 0.5f) else TetherAccent,
+        color = if (isUser) TetherTextSecondary.copy(alpha = 0.5f) else accent,
         radius = (if (isUser) 4.dp else 5.dp).toPx(),
         center = Offset(railX, ChatRail.nodeY.toPx()),
     )
@@ -1129,7 +1132,7 @@ private fun HistoryTopRow(
             ) {
                 if (loading) {
                     CircularProgressIndicator(
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(12.dp),
                     )
@@ -1148,8 +1151,7 @@ private fun HistoryTopRow(
                 )
             }
         } else {
-            Text(
-                text = "DÉBUT DE LA CONVERSATION",
+            Text(stringResource(R.string.debut_conversation_953d3d),
                 style = TetherDataStyle,
                 color = TetherTextMuted,
             )
@@ -1228,7 +1230,7 @@ private fun StreamingBlock(chat: sh.sk7.tether.domain.model.SessionUiState) {
         modifier = Modifier
             .fillMaxWidth()
             // ⚠️ Meme fil que les messages : sans lui, la ligne se couperait pendant le tour.
-            .thread(isUser = false),
+            .thread(isUser = false, LocalAccent.current),
         verticalAlignment = Alignment.Top,
     ) {
         // Reserve la largeur du rail : le contenu commence apres le fil, jamais dessous.
@@ -1266,8 +1268,8 @@ private fun MarkdownBody(text: String) {
         colors = markdownColor(
             text = TetherTextPrimary,
             codeText = TetherTextPrimary,
-            inlineCodeText = TetherAccent,
-            linkText = TetherAccent,
+            inlineCodeText = LocalAccent.current,
+            linkText = LocalAccent.current,
             codeBackground = TetherSurface,
             inlineCodeBackground = TetherBackground,
             dividerColor = TetherTextSecondary,
@@ -1516,8 +1518,7 @@ private fun ChatSearchBar(
             )
             Box(modifier = Modifier.weight(1f)) {
                 if (query.isEmpty()) {
-                    Text(
-                        text = "Rechercher dans la conversation",
+                    Text(stringResource(R.string.rechercher_conversation_045f86),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TetherTextSecondary,
                     )
@@ -1527,7 +1528,7 @@ private fun ChatSearchBar(
                     onValueChange = onQueryChange,
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TetherTextPrimary),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(TetherAccent),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccent.current),
                     // ⚠️ `fillMaxWidth` obligatoire : sans lui, le champ n'occupe que la largeur de
                     // son texte — vide au depart — et le tap tombe sur le placeholder. C'est le
                     // bug deja rencontre sur la recherche de sessions.
@@ -1539,6 +1540,9 @@ private fun ChatSearchBar(
             // ne couvre que les 15 dp de l'icône — le padding est *hors* de la zone sensible. Une
             // `Box` de 48 dp avec l'icône centrée ne laisse aucune ambiguïté, et l'ordre des
             // modificateurs ne peut plus l'inverser.
+            // ⚠️ Lue **avant** le `Modifier` : le lambda de `semantics` s'execute au
+            // moment de la pose du modificateur, hors de l'arbre de composition.
+            val descFermerRecherche = stringResource(R.string.fermer_recherche_af7116)
             Box(
                 modifier = Modifier
                     .size(TetherDimensions.touchTarget)
@@ -1546,7 +1550,7 @@ private fun ChatSearchBar(
                     .clickable(onClick = onClose)
                     .semantics {
                         role = androidx.compose.ui.semantics.Role.Button
-                        contentDescription = "Fermer la recherche"
+                        contentDescription = descFermerRecherche
                     },
                 contentAlignment = Alignment.Center,
             ) {

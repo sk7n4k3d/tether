@@ -65,7 +65,7 @@ import sh.sk7.tether.push.registrationMessage
 import sh.sk7.tether.push.requestPushRegistration
 import sh.sk7.tether.ui.components.Block
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -75,6 +75,15 @@ import sh.sk7.tether.ui.theme.TetherSurface
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import sh.sk7.tether.ui.theme.Accent
+import sh.sk7.tether.ui.findActivity
+import sh.sk7.tether.ui.i18n.Langues
+import sh.sk7.tether.ui.theme.AppearanceViewModel
+import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Les reglages : l'etat de l'app d'abord, les actions ensuite.**
@@ -125,10 +134,10 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             androidx.compose.material3.TopAppBar(
-                title = { Text("Réglages") },
+                title = { Text(stringResource(R.string.reglages_00d632)) },
                 navigationIcon = {
                     androidx.compose.material3.IconButton(onClick = onBack) {
-                        Icon(Lucide.Server, contentDescription = "Retour")
+                        Icon(Lucide.Server, contentDescription = stringResource(R.string.retour_e5befb))
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
@@ -148,7 +157,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             item(key = "connexion") {
-                Block(title = "Connexion") {
+                Block(title = stringResource(R.string.connexion_a33c58)) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         InfoLine("Adresse", state.host.ifBlank { "non renseignée" })
                         InfoLine("Répertoire", state.directory.ifBlank { "non renseigné" })
@@ -190,35 +199,35 @@ fun SettingsScreen(
             }
 
             item(key = "explorer") {
-                Block(title = "Explorer") {
+                Block(title = stringResource(R.string.explorer_8b3ee4)) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         ActionRow(
-                            label = "Inventaire du serveur",
-                            detail = "MCP, skills, commandes, plugins",
+                            label = stringResource(R.string.inventaire_serveur_76b197),
+                            detail = stringResource(R.string.mcp_skills_commandes_2129b1),
                             icon = Lucide.Server,
                             onClick = onOpenServer,
                         )
                         ActionRow(
-                            label = "Statistiques",
-                            detail = "Coût, tokens, activité, modèles",
+                            label = stringResource(R.string.statistiques_fdce30),
+                            detail = stringResource(R.string.cout_tokens_activite_6640f0),
                             icon = Lucide.Activity,
                             onClick = onOpenStats,
                         )
                         ActionRow(
-                            label = "Arbres de travail",
-                            detail = "Essayer sans risquer ton dépôt",
+                            label = stringResource(R.string.arbres_travail_e006dc),
+                            detail = stringResource(R.string.essayer_sans_risquer_4515c3),
                             icon = Lucide.GitBranch,
                             onClick = onOpenWorktrees,
                         )
                         ActionRow(
-                            label = "Fichiers",
-                            detail = "Vérifier un chemin, lire un fichier",
+                            label = stringResource(R.string.fichiers_23a9d9),
+                            detail = stringResource(R.string.verifier_chemin_lire_e96d96),
                             icon = Lucide.FolderOpen,
                             onClick = onOpenFiles,
                         )
                         ActionRow(
-                            label = "À propos",
-                            detail = "Version, licence, diagnostics",
+                            label = stringResource(R.string.propos_5345ad),
+                            detail = stringResource(R.string.version_licence_diagnostics_c0d170),
                             icon = Lucide.Info,
                             onClick = onOpenAbout,
                         )
@@ -230,11 +239,38 @@ fun SettingsScreen(
                 NotificationsSection()
             }
 
+            item(key = "apparence") {
+                val appearance = hiltViewModel<AppearanceViewModel>()
+                val accent by appearance.store.accent.collectAsState(initial = Accent.parDefaut)
+                val langue by appearance.store.langue.collectAsState(initial = null)
+                val scope = rememberCoroutineScope()
+                val contexte = LocalContext.current
+                val activite = contexte.findActivity()
+                AppearanceSection(
+                    accent = accent,
+                    langue = langue,
+                    onAccent = { scope.launch { appearance.store.choisirAccent(it) } },
+                    onLangue = { code ->
+                        scope.launch {
+                            appearance.store.choisirLangue(contexte, code)
+                            // ⚠️ On dit aussi au systeme, pour qu'il sache : sans cela
+                            // l'app n'apparait pas dans Reglages > Applications > Langues,
+                            // et un changement fait depuis les reglages d'Android ne
+                            // recharge rien.
+                            Langues.declarerAuSysteme(contexte, code)
+                            // La langue ne se remplace pas dans l'arbre : elle s'applique
+                            // a la creation du contexte, donc il faut recreer l'activite.
+                            activite?.recreate()
+                        }
+                    },
+                )
+            }
+
             item(key = "account") {
-                Block(title = "Compte") {
+                Block(title = stringResource(R.string.compte_c45740)) {
                     ActionRow(
-                        label = "Se déconnecter",
-                        detail = "Efface l'adresse et le mot de passe de ce téléphone",
+                        label = stringResource(R.string.deconnecter_ea36fa),
+                        detail = stringResource(R.string.efface_adresse_mot_e2a9e9),
                         icon = Lucide.LogOut,
                         tint = TetherAlert,
                         onClick = { confirmDisconnect = true },
@@ -247,11 +283,10 @@ fun SettingsScreen(
     if (confirmDisconnect) {
         AlertDialog(
             onDismissRequest = { confirmDisconnect = false },
-            title = { Text("Se déconnecter ?", color = TetherTextPrimary) },
+            title = { Text(stringResource(R.string.deconnecter_4ecfd5), color = TetherTextPrimary) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = "L'adresse et le mot de passe seront effacés de ce téléphone.",
+                    Text(stringResource(R.string.adresse_mot_passe_1240c0),
                         color = TetherTextSecondary,
                     )
                     Text(
@@ -268,11 +303,11 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     confirmDisconnect = false
                     viewModel.disconnect()
-                }) { Text("Se déconnecter", color = TetherAlert) }
+                }) { Text(stringResource(R.string.deconnecter_ea36fa), color = TetherAlert) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDisconnect = false }) {
-                    Text("Annuler", color = TetherTextSecondary)
+                    Text(stringResource(R.string.annuler_49ba32), color = TetherTextSecondary)
                 }
             },
             containerColor = TetherSurface,
@@ -315,27 +350,26 @@ private fun StatusRow(checking: Boolean, reachable: Boolean?, version: String?) 
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
                     strokeWidth = 2.dp,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                 )
-                Text("Vérification…", style = TetherDataStyle, color = TetherTextSecondary)
+                Text(stringResource(R.string.verification_30a679), style = TetherDataStyle, color = TetherTextSecondary)
             }
             reachable == true -> {
                 Text(
                     text = version?.let { "connecté · opencode $it" } ?: "connecté",
                     style = TetherDataStyle,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             reachable == false -> {
-                Text(
-                    text = "injoignable",
+                Text(stringResource(R.string.injoignable_3ec16a),
                     style = TetherDataStyle,
                     color = TetherAlert,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            else -> Text("non vérifié", style = TetherDataStyle, color = TetherTextSecondary)
+            else -> Text(stringResource(R.string.non_verifie_22b05b), style = TetherDataStyle, color = TetherTextSecondary)
         }
     }
 }
@@ -442,9 +476,14 @@ private fun NotificationsSection() {
         }
     }
 
-    val verdict = describePushStatus(status)
+    // ⚠️ `getString` et non `stringResource` : le résolveur de `describePushStatus` est
+    // un `(Int) -> String` **ordinaire**, volontairement, pour que la fonction reste
+    // pure et appelable depuis un `Service` ou un test. Un lambda `@Composable` n'y
+    // entrerait pas — et leVersions `stringResource` disponible ici donnerait un
+    // résolveur non composable, ce qui ne compile pas.
+    val verdict = describePushStatus(status) { id -> context.getString(id) }
 
-    Block(title = "Notifications") {
+    Block(title = stringResource(R.string.notifications_753a22)) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             PushStateRow(
                 tone = verdict.tone,
@@ -463,8 +502,8 @@ private fun NotificationsSection() {
             // proposerait une action sans effet sur un telephone ou elle est deja accordee.
             if (!status.notificationsAllowed) {
                 ActionRow(
-                    label = "Autoriser les notifications",
-                    detail = "Android les bloque : sans ça, rien ne s'affiche",
+                    label = stringResource(R.string.autoriser_notifications_e58324),
+                    detail = stringResource(R.string.android_bloque_sans_4caf47),
                     icon = Lucide.Bell,
                     tint = TetherAlert,
                     enabled = true,
@@ -483,14 +522,14 @@ private fun NotificationsSection() {
                     CircularProgressIndicator(
                         modifier = Modifier.size(14.dp),
                         strokeWidth = 2.dp,
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                     )
-                    Text("Enregistrement…", style = TetherDataStyle, color = TetherTextSecondary)
+                    Text(stringResource(R.string.enregistrement_e7d5f2), style = TetherDataStyle, color = TetherTextSecondary)
                 }
             } else if (verdict.retryable) {
                 ActionRow(
                     label = if (verdict.kind == PushStateKind.Ready) "Reconnecter" else "Se connecter",
-                    detail = "Enregistre l'app auprès du distributeur",
+                    detail = stringResource(R.string.enregistre_app_aupres_b199ca),
                     icon = Lucide.RefreshCw,
                     onClick = {
                         registering = true
@@ -517,7 +556,7 @@ private fun NotificationsSection() {
             // connait les distributeurs installes, et les-router soi-meme obligerait a
             // redescouvrir le systeme d'intents a chaque changement de version.
             ActionRow(
-                label = "Changer de distributeur",
+                label = stringResource(R.string.changer_distributeur_7f68b4),
                 detail = status.distributor?.let { "Actuel : $it" }
                     ?: "Aucun — choisissez qui reçoit vos notifications",
                 icon = Lucide.Shuffle,
@@ -550,15 +589,15 @@ private fun NotificationsSection() {
                     CircularProgressIndicator(
                         modifier = Modifier.size(14.dp),
                         strokeWidth = 2.dp,
-                        color = TetherAccent,
+                        color = LocalAccent.current,
                     )
-                    Text("Sélection…", style = TetherDataStyle, color = TetherTextSecondary)
+                    Text(stringResource(R.string.selection_d7eeed), style = TetherDataStyle, color = TetherTextSecondary)
                 }
             }
 
             ActionRow(
-                label = "Tester la notification",
-                detail = "Vérifie l'affichage sans attendre un événement",
+                label = stringResource(R.string.tester_notification_952557),
+                detail = stringResource(R.string.verifie_affichage_sans_cf880a),
                 icon = Lucide.Send,
                 onClick = {
                     // ⚠️ On affiche meme si l'app est au premier plan (c'est un test demande).
@@ -603,8 +642,7 @@ private fun NotificationsSection() {
                         tint = TetherAlert,
                         modifier = Modifier.size(16.dp),
                     )
-                    Text(
-                        text = "Aucune application distributrice (ntfy) n'est installée : " +
+                    Text(stringResource(R.string.aucune_application_distributrice_b51fea) +
                             "les notifications ne peuvent pas arriver.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherAlert,
@@ -625,7 +663,7 @@ private fun NotificationsSection() {
 @Composable
 private fun PushStateRow(tone: PushTone, label: String, detail: String) {
     val tint = when (tone) {
-        PushTone.Ready -> TetherAccent
+        PushTone.Ready -> LocalAccent.current
         PushTone.Blocked -> TetherAlert
         PushTone.Pending -> TetherTextSecondary
     }

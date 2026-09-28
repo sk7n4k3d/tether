@@ -33,6 +33,8 @@ import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerSurface
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * L'ecran de confirmation d'appairage.
@@ -93,13 +95,11 @@ fun PairingScreen(
                 .padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Text(
-                text = "Aucun appairage en attente",
+            Text(stringResource(R.string.aucun_appairage_attente_0262ef),
                 style = MaterialTheme.typography.headlineSmall,
                 color = TetherTextPrimary,
             )
-            Text(
-                text = "Lancez /tether sur votre serveur, puis scannez le QR qu'il affiche.",
+            Text(stringResource(R.string.lancez_tether_serveur_205305),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TetherTextMuted,
             )
@@ -119,22 +119,19 @@ fun PairingScreen(
         // de consentement a vide — un « Autoriser » sans demande derriere, c'est un bouton
         // qui ne doit pas exister.
         if (demande == null) {
-            Text(
-                text = "Aucun lien d'appairage à confirmer.",
+            Text(stringResource(R.string.aucun_lien_appairage_e16e7f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TetherTextMuted,
             )
             return@Column
         }
 
-        Text(
-            text = "Appairer cet appareil",
+        Text(stringResource(R.string.appairer_cet_appareil_be875b),
             style = MaterialTheme.typography.headlineSmall,
             color = TetherTextPrimary,
         )
 
-        Text(
-            text = "Un serveur demande à autoriser cet appareil à recevoir ses notifications.",
+        Text(stringResource(R.string.serveur_demande_autoriser_46685a),
             style = MaterialTheme.typography.bodyMedium,
             color = TetherTextMuted,
         )
@@ -148,8 +145,7 @@ fun PairingScreen(
                 .padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "Serveur",
+            Text(stringResource(R.string.serveur_970701),
                 style = MaterialTheme.typography.labelMedium,
                 color = TetherTextMuted,
             )
@@ -168,8 +164,7 @@ fun PairingScreen(
                     color = TetherTextPrimary,
                 )
             }
-            Text(
-                text = "Cette adresse doit être exactement celle que vous attendez. " +
+            Text(stringResource(R.string.adresse_doit_etre_e10114) +
                     "Un QR qui en affiche une autre ne vient pas de votre serveur.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
@@ -185,20 +180,17 @@ fun PairingScreen(
                 .padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "En autorisant, vous transmettez à ce serveur",
+            Text(stringResource(R.string.autorisant_transmettez_serveur_b5daee),
                 style = MaterialTheme.typography.labelMedium,
                 color = TetherTextMuted,
             )
-            Text(
-                text = "• l'adresse de votre point d'accès push, et sa clé de chiffrement.\n" +
+            Text(stringResource(R.string.adresse_point_acces_6af7b3) +
                     "• C'est une capacité d'écriture : ce serveur pourra vous envoyer une " +
                     "notification à tout moment.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextPrimary,
             )
-            Text(
-                text = "Il ne reçoit rien d'autre de l'application, et ne reçoit jamais " +
+            Text(stringResource(R.string.recoit_rien_autre_53be98) +
                     "le mot de passe opencode.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
@@ -207,8 +199,7 @@ fun PairingScreen(
 
         // ---- L'etat de l'abonnement : sans distributeur, rien a autoriser. ----
         if (abonnement == null) {
-            Text(
-                text = "Aucun distributeur push n'a encore fourni de point d'accès. " +
+            Text(stringResource(R.string.aucun_distributeur_push_e7d8a7) +
                     "Installez-en un (ntfy, UnifiedPush, Sunup…), puis revenez ici.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TetherAlert,
@@ -216,8 +207,7 @@ fun PairingScreen(
         } else if (state.enCours) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text(
-                    text = "  Enregistrement…",
+                Text(stringResource(R.string.enregistrement_aed5ed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TetherTextMuted,
                 )
@@ -239,14 +229,14 @@ fun PairingScreen(
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TetherTextPrimary),
             ) {
-                Text("Refuser")
+                Text(stringResource(R.string.refuser_628971))
             }
             Button(
                 onClick = onAuthorize,
                 enabled = state.peutAutoriser,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Autoriser")
+                Text(stringResource(R.string.autoriser_ff8398))
             }
         }
     }

@@ -48,7 +48,7 @@ import sh.sk7.tether.data.api.FormFieldDto
 import sh.sk7.tether.data.api.FormInfoDto
 import sh.sk7.tether.data.api.FormOptionDto
 import sh.sk7.tether.ui.theme.Spacing
-import sh.sk7.tether.ui.theme.TetherAccent
+import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
 import sh.sk7.tether.ui.theme.TetherComposerBorder
 import sh.sk7.tether.ui.theme.TetherComposerSurface
@@ -57,6 +57,8 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Repondre a un formulaire qui bloque l'agent.**
@@ -90,7 +92,7 @@ fun FormsScreen(
     Box(modifier = modifier.fillMaxSize()) {
         when {
             state.loading && state.isEmpty -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                CircularProgressIndicator(color = TetherAccent)
+                CircularProgressIndicator(color = LocalAccent.current)
             }
             state.openForm != null -> FormDetail(
                 form = state.openForm!!,
@@ -186,8 +188,7 @@ private fun FormCard(form: FormInfoDto, onClick: () -> Unit) {
         // ⚠️ Une elicitation MCP (`sessionID:"global"`) ne vient d'aucune session : le dire evite
         // de croire qu'une conversation est bloquee alors que la question est globale.
         if (form.isGlobal) {
-            Text(
-                text = "Question globale (hors session)",
+            Text(stringResource(R.string.question_globale_hors_46c623),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
             )
@@ -221,8 +222,7 @@ private fun FormDetail(
                     color = TetherTextPrimary,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    text = "Cochez « Reçu » sur les ressources externes : sans cela, l'agent refuse " +
+                Text(stringResource(R.string.cochez_recu_ressources_b72d25) +
                         "la réponse (le serveur exige un acquittement explicite).",
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
@@ -397,12 +397,12 @@ private fun OptionRow(
             modifier = Modifier
                 .size(20.dp)
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                .background(if (checked) TetherAccent.copy(alpha = 0.16f) else TetherComposerSurface)
-                .border(1.dp, if (checked) TetherAccent else TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerSm)),
+                .background(if (checked) LocalAccent.current.copy(alpha = 0.16f) else TetherComposerSurface)
+                .border(1.dp, if (checked) LocalAccent.current else TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerSm)),
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {
-                Icon(Lucide.Check, contentDescription = null, tint = TetherAccent, modifier = Modifier.size(12.dp))
+                Icon(Lucide.Check, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(12.dp))
             }
         }
         Column {
@@ -438,10 +438,9 @@ private fun ExternalField(field: FormFieldDto) {
             Text(it, style = MaterialTheme.typography.bodySmall, color = TetherTextSecondary)
         }
         field.url?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = TetherDataStyle, color = TetherAccent)
+            Text(it, style = TetherDataStyle, color = LocalAccent.current)
         }
-        Text(
-            text = "Sera confirmé comme reçu avec la réponse.",
+        Text(stringResource(R.string.sera_confirme_comme_27018c),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextMuted,
         )
@@ -457,14 +456,16 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
                 "Envoi bloqué : " + state.fieldErrors.joinToString(", ") { it.message },
             )
         }
+            // La description est lue ici : `semantics` s'execute hors composition.
+            val descEnvoyer_reponse = stringResource(R.string.envoyer_reponse_5783f5)
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
-                .background(TetherAccent.copy(alpha = 0.12f))
+                .background(LocalAccent.current.copy(alpha = 0.12f))
                 .heightIn(min = TetherDimensions.touchTarget)
                 .clickable(enabled = !state.sending, onClick = onSubmit)
                 .padding(horizontal = Spacing.lg)
-                .semantics { role = Role.Button; contentDescription = "Envoyer la réponse" },
+                .semantics { role = Role.Button; contentDescription = descEnvoyer_reponse },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
@@ -472,12 +473,12 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
                     strokeWidth = 2.dp,
-                    color = TetherAccent,
+                    color = LocalAccent.current,
                 )
-                Text("Envoi…", style = TetherDataStyle, color = TetherTextSecondary)
+                Text(stringResource(R.string.envoi_a62561), style = TetherDataStyle, color = TetherTextSecondary)
             } else {
-                Icon(Lucide.Send, contentDescription = null, tint = TetherAccent, modifier = Modifier.size(14.dp))
-                Text("Envoyer", style = TetherDataStyle, color = TetherAccent, fontWeight = FontWeight.SemiBold)
+                Icon(Lucide.Send, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(14.dp))
+                Text(stringResource(R.string.envoyer_e9ce24), style = TetherDataStyle, color = LocalAccent.current, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -545,10 +546,9 @@ private fun EmptyForms(error: String?, onRetry: () -> Unit) {
             modifier = Modifier.padding(top = Spacing.sm),
         )
         if (error != null) {
-            Text(
-                text = "Réessayer",
+            Text(stringResource(R.string.reessayer_895d41),
                 style = TetherDataStyle,
-                color = TetherAccent,
+                color = LocalAccent.current,
                 modifier = Modifier
                     .padding(top = Spacing.md)
                     .clip(RoundedCornerShape(TetherDimensions.cornerSm))

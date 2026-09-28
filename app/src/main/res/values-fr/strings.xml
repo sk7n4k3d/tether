@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERE PAR OUTIL DEPUIS LE CODE : ne pas editer a la main sans
+  mettre a jour l'outil, sinon les deux divergent silencieusement.
+  La base est l'anglais ; le francais vit dans values-fr/.
+-->
+<resources>
+    <string name="acces_reseau_local_73c212">Accès au réseau local requis</string>
+    <string name="action_definitive_conversation_46b6c5">Cette action est définitive. La conversation et son historique </string>
+    <string name="action_impossible_f9002b">Action impossible</string>
+    <string name="activesubs_actif_d7a451">$activeSubs actif</string>
+    <string name="activite_jour_3326a3">Activité par jour</string>
+    <string name="adresse_ab87f8">ADRESSE</string>
+    <string name="adresse_doit_etre_e10114">Cette adresse doit être exactement celle que vous attendez. </string>
+    <string name="adresse_mot_passe_1240c0">L\'adresse et le mot de passe seront effacés de ce téléphone.</string>
+    <string name="adresse_point_acces_6af7b3">• l\'adresse de votre point d\'accès push, et sa clé de chiffrement.\\n</string>
+    <string name="adresse_serveur_de7906">Adresse du serveur</string>
+    <string name="affichage_tronque_fichier_f285f2">Affichage tronqué (fichier volumineux).</string>
+    <string name="agent_635643">AGENT</string>
+    <string name="agent_devra_redemander_a0ffc8">L\'agent devra redemander cette autorisation. </string>
+    <string name="agents_64acf7">Agents</string>
+    <string name="android_bloque_defaut_1992b8">Android 17 bloque par défaut les connexions vers le réseau local. </string>
+    <string name="android_bloque_notifications_e1b39d">Android bloque les notifications : autorise-les pour que l\'alerte s\'affiche.</string>
+    <string name="android_bloque_sans_4caf47">Android les bloque : sans ça, rien ne s\'affiche</string>
+    <string name="annuler_49ba32">Annuler</string>
+    <string name="annuler_message_attente_812a6f">Annuler ce message en attente</string>
+    <string name="appairer_cet_appareil_be875b">Appairer cet appareil</string>
+    <string name="apparence_80b37d">Apparence</string>
+    <string name="approbations_77db64">Approbations</string>
+    <string name="arbre_travail_copie_65c59a">Un arbre de travail est une copie du dépôt où l\'agent peut </string>
+    <string name="arbres_travail_e006dc">Arbres de travail</string>
+    <string name="attente_endpoint_18be57">en attente d\'endpoint</string>
+    <string name="aucun_appairage_attente_0262ef">Aucun appairage en attente</string>
+    <string name="aucun_distributeur_477e05">aucun distributeur</string>
+    <string name="aucun_distributeur_push_e7d8a7">Aucun distributeur push n\'a encore fourni de point d\'accès. </string>
+    <string name="aucun_fichier_ete_b344b3">Aucun fichier n\'a été modifié depuis ce point : </string>
+    <string name="aucun_fichier_query_7c2d9d">Aucun fichier pour « $query » dans tout le répertoire.</string>
+    <string name="aucun_lien_appairage_e16e7f">Aucun lien d\'appairage à confirmer.</string>
+    <string name="aucun_serveur_configure_380be4">Aucun serveur configuré</string>
+    <string name="aucune_application_distributrice_b51fea">Aucune application distributrice (ntfy) n\'est installée : </string>
+    <string name="aucune_session_a9dbd0">Aucune session</string>
+    <string name="aucune_session_query_a34620">Aucune session pour « $query »</string>
+    <string name="autorisant_transmettez_serveur_b5daee">En autorisant, vous transmettez à ce serveur</string>
+    <string name="autorisations_ae3a20">Autorisations</string>
+    <string name="autoriser_ff8398">Autoriser</string>
+    <string name="autoriser_notifications_e58324">Autoriser les notifications</string>
+    <string name="cache_b03592" translatable="false">cache</string>
+    <string name="celui_serveur_opencode_7dba72">celui du serveur opencode</string>
+    <string name="changer_distributeur_7f68b4">Changer de distributeur</string>
+    <string name="chemin_vers_depot_398f4e" translatable="false">/chemin/vers/le/depot</string>
+    <string name="chercher_query_partout_4f86fb">Chercher « $query » partout ($localCount ici)</string>
+    <string name="chevron_fdac45" translatable="false">chevron</string>
+    <string name="cochez_recu_ressources_b72d25">Cochez « Reçu » sur les ressources externes : sans cela, l\'agent refuse </string>
+    <string name="composer_874ad8" translatable="false">composer</string>
+    <string name="composer_arrow_e319e7" translatable="false">composer-arrow</string>
+    <string name="composer_button_color_c4b0b5" translatable="false">composer-button-color</string>
+    <string name="composer_button_size_5674e1" translatable="false">composer-button-size</string>
+    <string name="composer_pulse_6bf03d" translatable="false">composer-pulse</string>
+    <string name="composer_stop_f8a665" translatable="false">composer-stop</string>
+    <string name="compte_c45740">Compte</string>
+    <string name="connecte_75c661">connecté</string>
+    <string name="connexion_807c20">Connexion…</string>
+    <string name="connexion_a33c58">Connexion</string>
+    <string name="connexion_cours_b21b2f">Connexion en cours</string>
+    <string name="consommation_fa3cc9">Consommation</string>
+    <string name="contexte_8112e9">Contexte</string>
+    <string name="contexte_indisponible_58230a">Contexte indisponible</string>
+    <string name="couleur_accent_67bc96">Couleur d\'accent</string>
+    <string name="cout_periode_5a68a4">Coût sur la période</string>
+    <string name="cout_tokens_activite_6640f0">Coût, tokens, activité, modèles</string>
+    <string name="debut_conversation_953d3d">DÉBUT DE LA CONVERSATION</string>
+    <string name="deconnecter_4ecfd5">Se déconnecter ?</string>
+    <string name="deconnecter_ea36fa">Se déconnecter</string>
+    <string name="deplacer_outils_arriere_3bd804">Déplacer les outils en arrière-plan</string>
+    <string name="depuis_minutes_min_1b885f">depuis $minutes min</string>
+    <string name="distributeur_encore_annonce_1d33a3">Le distributeur n\'a pas encore annoncé d\'endpoint : reconnecte, puis réessaie.</string>
+    <string name="ecrire_agent_146209">Écrire à l\'agent…</string>
+    <string name="efface_adresse_mot_e2a9e9">Efface l\'adresse et le mot de passe de ce téléphone</string>
+    <string name="effacer_recherche_189351">Effacer la recherche</string>
+    <string name="endpoint_enregistre_alertes_834e66">Endpoint enregistré : les alertes opencode peuvent arriver.</string>
+    <string name="enregistre_app_aupres_b199ca">Enregistre l\'app auprès du distributeur</string>
+    <string name="enregistrement_aed5ed">  Enregistrement…</string>
+    <string name="enregistrement_e7d5f2">Enregistrement…</string>
+    <string name="envoi_a62561">Envoi…</string>
+    <string name="envoi_reponse_ee6e99">Envoi de la réponse…</string>
+    <string name="envoyer_e9ce24">Envoyer</string>
+    <string name="envoyer_reponse_5783f5">Envoyer la réponse</string>
+    <string name="epinglee_a19363">Épinglée</string>
+    <string name="essayer_sans_risquer_4515c3">Essayer sans risquer ton dépôt</string>
+    <string name="etat_non_rafraichi_a51fa8">État non rafraîchi : $message</string>
+    <string name="explorer_8b3ee4">Explorer</string>
+    <string name="exporter_conversation_a7bf5e">Exporter la conversation</string>
+    <string name="fenetre_3d6916">Fenêtre</string>
+    <string name="fenetre_contexte_e0de8f">Fenêtre de contexte</string>
+    <string name="fermer_5ab4ec">Fermer</string>
+    <string name="fermer_fichier_b5b3f1">Fermer le fichier</string>
+    <string name="fermer_recherche_af7116">Fermer la recherche</string>
+    <string name="fiabilite_90c116">Fiabilité</string>
+    <string name="fichier_texte_binaire_bfe3a1">Ce fichier n\'est pas du texte (binaire ou encodage non UTF-8). </string>
+    <string name="fichier_trop_volumineux_074a36">Fichier trop volumineux pour l\'affichage</string>
+    <string name="fichiers_23a9d9">Fichiers</string>
+    <string name="fichiers_modifies_75be38">Fichiers modifiés</string>
+    <string name="fil_relie_ton_43e9b7">le fil qui relie ton agent</string>
+    <string name="filtrer_dossier_chercher_fbe81b">Filtrer ce dossier, ou chercher partout</string>
+    <string name="fois_55ef18">Une fois</string>
+    <string name="formulaires_edb363">Formulaires</string>
+    <string name="fournisseurs_06b6d8">Fournisseurs</string>
+    <string name="http_192_4096_69ae0e" translatable="false">http://192.0.2.10:4096</string>
+    <string name="in_af10ef" translatable="false">in</string>
+    <string name="injoignable_3ec16a">injoignable</string>
+    <string name="installe_application_distributrice_109ab1">Installe une application distributrice (ntfy) pour recevoir des notifications.</string>
+    <string name="inventaire_serveur_76b197">Inventaire du serveur</string>
+    <string name="joindre_fichier_d0f75a">Joindre un fichier</string>
+    <string name="jours_actifs_1ccefa">jours actifs</string>
+    <string name="lancez_tether_serveur_205305">Lancez /tether sur votre serveur, puis scannez le QR qu\'il affiche.</string>
+    <string name="langue_661926">Langue</string>
+    <string name="langue_suit_systeme_db8273">Par defaut, l\'app suit la langue du telephone. Android 13 et plus elit aussi dans Reglages &gt; Applications &gt; Langues.</string>
+    <string name="licence_mit_logiciel_a1a1c7">Licence MIT — logiciel libre, sans dépendance aux services </string>
+    <string name="lourd_dc257e">Le plus lourd</string>
+    <string name="luminosite_ajustee_a11cb4">La luminosité est ajustée pour rester lisible sur fond sombre, quelle que soit la teinte.</string>
+    <string name="mcp_skills_commandes_2129b1">MCP, skills, commandes, plugins</string>
+    <string name="message_6f9b9a" translatable="false">message</string>
+    <string name="modele_20bd76">MODÈLE</string>
+    <string name="modele_ad61be">Par modèle</string>
+    <string name="modele_courant_changer_b2b5db">Modele courant, changer</string>
+    <string name="modifications_405f45">Modifications</string>
+    <string name="mot_passe_94e2f3">Mot de passe</string>
+    <string name="mot_passe_conserve_c8008d">Le mot de passe est conserve dans l\'espace prive de l\'application. </string>
+    <string name="node_pulse_d6c71b" translatable="false">node-pulse</string>
+    <string name="node_pulse_value_d0e022" translatable="false">node-pulse-value</string>
+    <string name="nom_arbre_5ff8cf">Nom de l\'arbre</string>
+    <string name="non_verifie_22b05b">non vérifié</string>
+    <string name="notifications_753a22">Notifications</string>
+    <string name="notifications_bloquees_740af1">notifications bloquées</string>
+    <string name="nouvel_arbre_01ef8f">Nouvel arbre</string>
+    <string name="opencode_4b5a52" translatable="false">opencode</string>
+    <string name="options_session_52b4f6">Options de la session</string>
+    <string name="out_f4800d" translatable="false">out</string>
+    <string name="ouvrir_reglages_systeme_dc1d26">Ouvrir les réglages système</string>
+    <string name="part_cout_728b35">Où part le coût</string>
+    <string name="principe_a947e2">Principe</string>
+    <string name="propos_5345ad">À propos</string>
+    <string name="question_globale_hors_46c623">Question globale (hors session)</string>
+    <string name="quoi_sert_d7aac6">À quoi ça sert</string>
+    <string name="reasoning_chevron_cac707" translatable="false">reasoning-chevron</string>
+    <string name="recharger_b10ee5">Recharger</string>
+    <string name="recherche_porte_titre_5d8a13">La recherche porte sur le titre, le modèle et l\'agent.</string>
+    <string name="rechercher_conversation_045f86">Rechercher dans la conversation</string>
+    <string name="rechercher_session_3b4d42">Rechercher une session</string>
+    <string name="recoit_rien_autre_53be98">Il ne reçoit rien d\'autre de l\'application, et ne reçoit jamais </string>
+    <string name="reessayer_895d41">Réessayer</string>
+    <string name="refuser_628971">Refuser</string>
+    <string name="regarde_quels_fichiers_6bf1df">On regarde quels fichiers seraient touchés.</string>
+    <string name="reglages_00d632">Réglages</string>
+    <string name="relier_ton_serveur_3a5992">Relier ton serveur opencode</string>
+    <string name="renommer_8e8a86">Renommer</string>
+    <string name="renommer_session_3bb5c3">Renommer la session</string>
+    <string name="repertoire_travail_5843d7">Repertoire de travail</string>
+    <string name="retirer_cet_arbre_3f60d5">Retirer cet arbre ?</string>
+    <string name="retirer_cet_arbre_d42936">Retirer cet arbre</string>
+    <string name="retirer_force_0f1681">Retirer de force</string>
+    <string name="retour_e5befb">Retour</string>
+    <string name="retour_formulaires_4ef29b">Retour aux formulaires</string>
+    <string name="retour_impossible_c203fa">Retour impossible</string>
+    <string name="revenir_ici_aed777">Revenir ici</string>
+    <string name="revoquer_9c67aa">Révoquer</string>
+    <string name="revoquer_autorisation_7dc1d5">Révoquer cette autorisation ?</string>
+    <string name="rien_approuver_17e7f7">Rien à approuver</string>
+    <string name="rien_fenetre_344f52">Rien dans la fenêtre</string>
+    <string name="selection_d7eeed">Sélection…</string>
+    <string name="sera_confirme_comme_27018c">Sera confirmé comme reçu avec la réponse.</string>
+    <string name="serveur_970701">Serveur</string>
+    <string name="serveur_annonce_commande_20b332">Le serveur n\'a pas annoncé de commande. </string>
+    <string name="serveur_demande_autoriser_46685a">Un serveur demande à autoriser cet appareil à recevoir ses notifications.</string>
+    <string name="serveur_fourni_contenu_ddcc5f">Le serveur n\'a pas fourni de contenu pour ce fichier </string>
+    <string name="serveur_rien_annonce_859273">Le serveur n\'a rien annoncé dans cette catégorie.</string>
+    <string name="session_f7f199">Session</string>
+    <string name="sessions_e11e37">Sessions</string>
+    <string name="statistiques_fdce30">Statistiques</string>
+    <string name="status_dot_c723c1" translatable="false">status-dot</string>
+    <string name="status_dot_pulse_f2ffe5" translatable="false">status-dot-pulse</string>
+    <string name="suivre_systeme_2fc03a">Suivre le systeme</string>
+    <string name="supprimer_1acfc1">Supprimer</string>
+    <string name="supprimer_session_40a83f">Supprimer cette session ?</string>
+    <string name="systeme_propose_demande_3449aa">Si le système ne propose plus la demande, autorise « Appareils à proximité </string>
+    <string name="taux_echec_6c8876">taux d\'échec</string>
+    <string name="telephone_127_designe_d8d31a">Sur un téléphone, 127.0.0.1 désigne le téléphone lui-même. </string>
+    <string name="tes_messages_apres_cde32f">Tes messages après ce point seront retirés de la session, </string>
+    <string name="tester_notification_952557">Tester la notification</string>
+    <string name="tether_f80307" translatable="false">Tether</string>
+    <string name="tether_pilote_serveur_331338">Tether pilote le serveur opencode qui tourne sur ta machine. </string>
+    <string name="tether_pilote_ton_1209c6">Tether pilote ton serveur opencode depuis ce téléphone. </string>
+    <string name="titre_eb9789">Titre</string>
+    <string name="tool_chevron_4d78ad" translatable="false">tool-chevron</string>
+    <string name="toujours_ec25a7">Toujours</string>
+    <string name="travail_fond_e44975">TRAVAIL DE FOND</string>
+    <string name="verification_30a679">Vérification…</string>
+    <string name="verifie_affichage_sans_cf880a">Vérifie l\'affichage sans attendre un événement</string>
+    <string name="verifier_chemin_lire_e96d96">Vérifier un chemin, lire un fichier</string>
+    <string name="version_licence_diagnostics_c0d170">Version, licence, diagnostics</string>
+    <string name="versions_a23910">Versions</string>
+    <string name="volume_3b18e8">Volume</string>
+</resources>

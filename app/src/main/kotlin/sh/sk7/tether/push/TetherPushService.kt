@@ -16,6 +16,8 @@ import org.unifiedpush.android.connector.data.PushEndpoint
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.launch
 import org.unifiedpush.android.connector.data.PushMessage
+import androidx.compose.ui.res.stringResource
+import sh.sk7.tether.R
 
 /**
  * **Reception des notifications UnifiedPush** — le seul chemin possible ici.
@@ -537,13 +539,13 @@ data class PushVerdict(
  * rend pas l'app « prete » si les notifications systeme sont coupees — c'est le piege que cette
  * fonction existe pour fermer.
  */
-fun describePushStatus(status: PushStatus): PushVerdict = when {
+fun describePushStatus(status: PushStatus, chaine: (Int) -> String): PushVerdict = when {
     !status.hasDistributor -> PushVerdict(
         kind = PushStateKind.NoDistributor,
-        label = "aucun distributeur",
+        label = chaine(R.string.aucun_distributeur_477e05),
         // ⚠️ On nomme l'application attendue : « aucun distributeur UnifiedPush » seul ne dit pas
         // quoi installer, et c'est **la** question que se pose l'utilisateur devant cet etat.
-        detail = "Installe une application distributrice (ntfy) pour recevoir des notifications.",
+        detail = chaine(R.string.installe_application_distributrice_109ab1),
         tone = PushTone.Blocked,
         // Rien a reessayer tant qu'aucune application distributrice n'est installee.
         retryable = false,
@@ -551,26 +553,26 @@ fun describePushStatus(status: PushStatus): PushVerdict = when {
 
     !status.notificationsAllowed -> PushVerdict(
         kind = PushStateKind.PermissionDenied,
-        label = "notifications bloquées",
-        detail = "Android bloque les notifications : autorise-les pour que l'alerte s'affiche.",
+        label = chaine(R.string.notifications_bloquees_740af1),
+        detail = chaine(R.string.android_bloque_notifications_e1b39d),
         tone = PushTone.Blocked,
         retryable = false,
     )
 
     status.endpoint == null -> PushVerdict(
         kind = PushStateKind.AwaitingEndpoint,
-        label = "en attente d'endpoint",
+        label = chaine(R.string.attente_endpoint_18be57),
         // ⚠️ Un distributeur retenu et la permission accordee ne suffisent pas : sans endpoint,
         // le serveur opencode n'a rien a publier. On le dit, plutot que d'afficher « connecté ».
-        detail = "Le distributeur n'a pas encore annoncé d'endpoint : reconnecte, puis réessaie.",
+        detail = chaine(R.string.distributeur_encore_annonce_1d33a3),
         tone = PushTone.Pending,
         retryable = true,
     )
 
     else -> PushVerdict(
         kind = PushStateKind.Ready,
-        label = "connecté",
-        detail = "Endpoint enregistré : les alertes opencode peuvent arriver.",
+        label = chaine(R.string.connecte_75c661),
+        detail = chaine(R.string.endpoint_enregistre_alertes_834e66),
         tone = PushTone.Ready,
         retryable = true,
     )
