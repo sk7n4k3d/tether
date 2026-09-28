@@ -55,20 +55,50 @@ const str = (raw: string | undefined): string | null => {
 /**
  * Resout la configuration. **Pure** : ni `fs`, ni `fetch`, ni log.
  *
- * Les deux parametres ont une valeur par defaut pour que la fonction soit
+ * Les trois parametres ont une valeur par defaut pour que la fonction soit
  * appelable sans argument dans un test — et pour qu'un test puisse passer un
  * `env` factice, ce qui est le seul moyen de prouver qu'une variable est lue.
+ *
+ * ## Trois couches, dans cet ordre
+ *
+ * 1. **`stores`** — ce que l'utilisateur a regle depuis `/tether config`. C'est la couche
+ *    haute : c'est un geste explicite, fait dans l'interface, et il doit gagner.
+ * 2. **`options`** — la config opencode, pour qui declare le plugin en forme objet.
+ * 3. **`env`** — pour un service, ou un shell.
+ *
+ * ⚠️ Une option **vide** dans `stores` ne doit pas ecraser une couche basse. Le TUI retire
+ * une option de `stores` quand on la remet a son defaut, donc une chaine vide signifie
+ * « niee » — pas « vide ». Sans cette distinction, un reset effacerait une variable
+ * d'environnement au lieu de la rendre au defaut, et le comportement serait inexplicable.
  */
-export function resolveConfig(options: any = {}, env: NodeJS.ProcessEnv = process.env): TetherConfig {
+export function resolveConfig(
+  options: any = {},
+  env: NodeJS.ProcessEnv = process.env,
+  stores: Record<string, string | undefined> = {},
+): TetherConfig {
+  // La couche haute gagne, mais **seulement** si elle dit quelque chose.
+  const couche = (cle: string, ...suivants: (string | undefined)[]): string | undefined => {
+    const depuisStore = str(stores[cle])
+    if (depuisStore !== null) return depuisStore
+    for (const suivant of suivants) {
+      const v = str(suivant)
+      if (v !== null) return v
+    }
+    return null
+  }
+
+  const debugStore = stores.debug
+  const debug = debugStore === "1" || (debugStore === undefined && (options.debug === true || env.TETHER_DEBUG === "1"))
+
   return {
-    fallbackTopicUrl: str(options.fallbackTopicUrl ?? env.TETHER_FALLBACK_TOPIC_URL),
-    minSeconds: num(options.minSeconds ?? env.TETHER_MIN_SECONDS, 0),
-    maxBytes: num(options.maxBytes ?? env.TETHER_MAX_BYTES, 3800),
-    debug: (options.debug ?? env.TETHER_DEBUG) === true || env.TETHER_DEBUG === "1",
-    debugLogFile: str(options.debugLogFile ?? env.TETHER_DEBUG_LOG_FILE),
-    summaryUrl: str(options.summaryUrl ?? env.TETHER_SUMMARY_URL),
-    summaryKeyFile: str(options.summaryKeyFile ?? env.TETHER_SUMMARY_KEY_FILE),
-    vapidPrivateKeyFile: str(options.vapidPrivateKeyFile ?? env.TETHER_VAPID_KEY_FILE),
+    fallbackTopicUrl: couche("fallbackTopicUrl", options.fallbackTopicUrl, env.TETHER_FALLBACK_TOPIC_URL),
+    minSeconds: num(couche("minSeconds", options.minSeconds, env.TETHER_MIN_SECONDS), 0),
+    maxBytes: num(couche("maxBytes", options.maxBytes, env.TETHER_MAX_BYTES), 3800),
+    debug,
+    debugLogFile: couche("debugLogFile", options.debugLogFile, env.TETHER_DEBUG_LOG_FILE),
+    summaryUrl: couche("summaryUrl", options.summaryUrl, env.TETHER_SUMMARY_URL),
+    summaryKeyFile: couche("summaryKeyFile", options.summaryKeyFile, env.TETHER_SUMMARY_KEY_FILE),
+    vapidPrivateKeyFile: couche("vapidPrivateKeyFile", options.vapidPrivateKeyFile, env.TETHER_VAPID_KEY_FILE),
   }
 }
 

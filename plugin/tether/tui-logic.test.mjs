@@ -120,9 +120,9 @@ test("adresseServeur : l'environnement complete, quand le plugin est depose tel 
   )
 })
 
-test("les deux commandes sont declarees, et visibles la ou il faut", () => {
+test("les trois commandes sont declarees, et visibles la ou il faut", () => {
   const commandes = declarationsCommandes()
-  assert.deepEqual(commandes.map((c) => c.id), ["tether.pair", "tether.devices"])
+  assert.deepEqual(commandes.map((c) => c.id), ["tether.pair", "tether.config", "tether.devices"])
   for (const commande of commandes) {
     assert.ok(commande.title.length > 0, `${commande.id} : un titre`)
     assert.ok(commande.description.length > 0, `${commande.id} : une description`)
@@ -132,6 +132,28 @@ test("les deux commandes sont declarees, et visibles la ou il faut", () => {
     // declaration sans implementation donnerait au TUI une commande qui ne fait rien.
     assert.equal("run" in commande, false, `${commande.id} : le run est branche dans tui.tsx`)
   }
-  assert.deepEqual(commandes[0].slash, { name: "tether" }, "/tether est le point d'entree")
-  assert.equal("slash" in commandes[1], false, "la liste d'appareils reste en palette")
+  // Les index sont fragiles : ajouter une commande les decale tous. On cherche par id.
+  const par = (id) => commandes.find((c) => c.id === id)
+  assert.deepEqual(par("tether.pair").slash, { name: "tether" }, "/tether est le point d'entree")
+  assert.deepEqual(par("tether.config").slash, { name: "tether-config" }, "la config a son propre slash")
+  // La liste d'appareils reste en palette seulement : c'est une action de nettoyage, pas
+  // une action qu'on lance par megarde en tapant /tether-appareils.
+  assert.equal("slash" in par("tether.devices"), false, "la liste d'appareils reste en palette")
+})
+
+test("adresseServeur : le reglage du TUI gagne sur la config et l'environnement", () => {
+  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
+  // Le geste recent, explicite, doit gagner.
+  assert.equal(
+    adresseServeur(ctx, { serverUrl: "https://config.fr" }, { TETHER_SERVER_URL: "https://env.fr" }, { serverUrl: "https://tui.fr/" }),
+    "https://tui.fr",
+  )
+})
+
+test("adresseServeur : une valeur vide dans le magasin est une negation, pas une valeur", () => {
+  // Le TUI retire une option quand on la remet a son defaut ; une chaine vide doit
+  // laisser la config parler, pas ecraser la detection par une adresse inexistante.
+  const ctx = ctxDe({ baseUrl: "http://127.0.0.1:4096" })
+  assert.equal(adresseServeur(ctx, { serverUrl: "https://config.fr" }, {}, { serverUrl: "" }), "https://config.fr")
+  assert.equal(adresseServeur(ctx, {}, {}, { serverUrl: "   " }), "http://127.0.0.1:4096")
 })

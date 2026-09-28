@@ -72,8 +72,19 @@ export function adresseServeur(
   ctx: RpcContext,
   options?: Record<string, any> | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  stores: Record<string, string | undefined> = {},
 ): string {
-  const configure = options?.serverUrl ?? options?.tether?.serverUrl ?? env.TETHER_SERVER_URL
+  // Quatre couches : ce que l'utilisateur a regle dans le TUI, la config opencode
+  // (forme plate ou objet), puis l'environnement, puis la detection du TUI.
+  //
+  // ⚠️ Le magasin passe **avant** la config : un reglage fait dans l'interface est un
+  // geste explicite et recent, il doit gagner sur un fichier ecrit il y a six mois. Mais
+  // une chaine **vide** est une negation (« j'ai remis au defaut »), pas une valeur : elle
+  // doit sauter et laisser la couche suivante parler.
+  const depuisStore = typeof stores.serverUrl === "string" ? stores.serverUrl.trim() : ""
+  const configure = depuisStore
+    ? depuisStore
+    : options?.serverUrl ?? options?.tether?.serverUrl ?? env.TETHER_SERVER_URL
   if (typeof configure === "string" && configure.length > 0) return configure.replace(/\/+$/, "")
   return String(ctx.client?.getConfig?.()?.baseUrl ?? "http://127.0.0.1:4096").replace(/\/+$/, "")
 }
@@ -95,6 +106,14 @@ export function declarationsCommandes() {
       group: "Tether",
       palette: true,
       slash: { name: "tether" },
+    },
+    {
+      id: "tether.config",
+      title: "Tether : configuration",
+      description: "Règle l'adresse du serveur, le seuil de notification, la troncature et la clé VAPID",
+      group: "Tether",
+      palette: true,
+      slash: { name: "tether-config" },
     },
     {
       id: "tether.devices",

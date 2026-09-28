@@ -36,6 +36,8 @@ import { createSignal, onCleanup } from "solid-js"
 
 import { qrText } from "./qr.js"
 import { rpc, adresseServeur, declarationsCommandes } from "./tui-logic.js"
+import { OPTIONS, valider, afficher, appliquer, configInitiale } from "./tui-config.js"
+import type { ConfigStockee } from "./tui-config.js"
 import {
   nomAppareil,
   optionsAppareils,
@@ -99,6 +101,65 @@ export default {
       ctx.ui.dialog.set({ size: "large", centered: true })
     }
 
+    /**
+     * La configuration, editable depuis le TUI.
+     *
+     * ## Ce que le TUI ecrit, et pourquoi pas dans `opencode.jsonc`
+     *
+     * `ctx.storage.store("config")` — un etat JSON durable, partage entre instances de TUI
+     * ouvertes. Ecrire la config de l'utilisateur serait une faute de principe : un plugin qui
+     * modifie le fichier de configuration de celui qui l'a installe n'est plus un plugin,
+     * c'est une edition a distance. La resolution lit cette couche **en premier**, devant la
+     * config et l'environnement, parce qu'un geste fait dans l'interface est intentionnel
+     * et recent.
+     *
+     * ## Ce que le TUI ne fait pas
+     *
+     * Il ne valide pas : [valider] est teste, et l'appeler ici serait dupliquer une regle.
+     * Il ne rend pas non plus la forme — `tui-config.ts` en porte la description.
+     */
+    const config = async () => {
+      const [store, setStore] = ctx.storage.store<ConfigStockee>("config", { initial: configInitiale() })
+
+      for (const option of OPTIONS) {
+        const courante = afficher(store[option.cle])
+        // ⚠️ On **ne** demande pas le bon d'etre ou la valeur courante dans le message :
+        // `prompt` a un `placeholder` et une `value`, et y mettre la valeur courante
+        // transforme un champ de saisie en document — l'utilisateur voit son reglage et
+        // doit decider s'il le remplace ou l'annule.
+        const saisie = await ctx.ui.dialog.prompt({
+          title: `${option.titre} — ${courante}`,
+          description: option.description,
+          placeholder: option.defaut ?? "(non définie)",
+        })
+        // `undefined` = fermee sans valider. On ne touche a rien : c'est le comportement
+        // par defaut d'une annulation, et l'ecrire rendrait « annuler » different de
+        // « ne rien changer », qui est deja la meme chose ici.
+        if (saisie === undefined) continue
+
+        const r = valider(option, saisie)
+        if (!r.ok) {
+          // On refuse en **redemandant**, pas en fenetre d'erreur : l'utilisateur a
+          // tape une valeur, la dismisser lui ferait perdre ce qu'il venait d'ecrire.
+          await ctx.ui.dialog.alert({
+            title: option.titre,
+            message: `${r.refus.raison}\n\nReprise, sans changement.`,
+          })
+          continue
+        }
+        await setStore((brouillon) => appliquer(brouillon, option, r.valeur))
+      }
+
+      // Un resume, parce que « j'ai regle six choses » ne laisse aucun souvenir, et la
+      // question suivante sera toujours « et ca a marche ? ». On dit ce qui reste actif
+      // et ce qui manque, sinon l'utilisateur ne peut pas juger.
+      const resume = OPTIONS.map((o) => `${o.titre} : ${afficher(store[o.cle])}`).join("\n")
+      await ctx.ui.dialog.alert({
+        title: "Configuration Tether",
+        message: `${resume}\n\nCes reglages priment sur la config opencode et sur les variables d'environnement.`,
+      })
+    }
+
     /** La liste des appareils, et le retrait de l'un d'eux. */
     const appareils = async () => {
       let liste: { devices: any[] }
@@ -145,6 +206,7 @@ export default {
     // TUI une commande visible dans la palette qui ne fait strictement rien.
     const executions: Record<string, () => void> = {
       "tether.pair": () => void appairer(),
+      "tether.config": () => void config(),
       "tether.devices": () => void appareils(),
     }
 
