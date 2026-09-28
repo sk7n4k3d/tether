@@ -33,6 +33,13 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!--
+      Pour le retour d'un scan : une vibration courte dit qu'un QR a ete lu, alors que
+      l'utilisateur regarde l'ecran qu'il filme et pas le telephone. Une permission
+      normale, accordee a l'installation, sans invite.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
 
     <application
         android:name=".TetherApp"

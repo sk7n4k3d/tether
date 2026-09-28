@@ -5,8 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 import sh.sk7.tether.data.settings.AppearanceStore
 
 /**
@@ -60,4 +62,19 @@ fun TetherThemed(
 @HiltViewModel
 class AppearanceViewModel @Inject constructor(
     val store: AppearanceStore,
-) : androidx.lifecycle.ViewModel()
+) : androidx.lifecycle.ViewModel() {
+
+    /**
+     * Marque l'accueil comme vu, **une fois pour toutes**.
+     *
+     * ⚠️ Le drapeau est ecrit meme si l'ecriture echoue, parce qu'on ne peut rien y faire
+     * et que bloquer la navigation pour un booleen serait pire : l'utilisateur resterait
+     * sur le carrousel qu'il vient de quitter. Le pire cas est de revoir l'accueil une
+     * fois de trop.
+     */
+    fun marquerAccueilVu() {
+        viewModelScope.launch {
+            store.marquerAccueilVu()
+        }
+    }
+}

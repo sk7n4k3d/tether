@@ -35,6 +35,9 @@ fun TetherRoot() {
         // Lecture en cours : fond de l'app, rien de plus.
         null -> Box(Modifier.fillMaxSize())
 
+        StartDestination.Welcome ->
+            TetherNavHost(startDestination = Routes.WELCOME, router = router)
+
         StartDestination.Onboarding ->
             TetherNavHost(startDestination = Routes.ONBOARDING, router = router)
 

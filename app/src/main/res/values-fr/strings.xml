@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  GENERE PAR OUTIL DEPUIS LE CODE : ne pas editer a la main sans
-  mettre a jour l'outil, sinon les deux divergent silencieusement.
   La base est l'anglais ; le francais vit dans values-fr/.
+  Les deux fichiers portent les **memes cles** : une cle presente dans une seule
+  langue n'est pas « non traduite », elle s'affiche dans l'autre — c'est ce que
+  verifie `RessourceTest`.
+  ⚠️ Ne pas regenerer ces fichiers avec l'outil de migration : il derive tout d'une
+  table figee, et les chaines ajoutees depuis n'y sont pas.
 -->
 <resources>
     <string name="acces_reseau_local_73c212">Accès au réseau local requis</string>
@@ -18,6 +21,7 @@
     <string name="adresse_ab87f8">ADRESSE</string>
     <string name="adresse_doit_etre_e10114">Cette adresse doit être exactement celle que vous attendez.</string>
     <string name="adresse_mot_passe_1240c0">L\'adresse et le mot de passe seront effacés de ce téléphone.</string>
+    <string name="adresse_mot_passe_qr_145129">L\'adresse et le mot de passe, ou le QR que /tether affiche</string>
     <string name="adresse_point_acces_6af7b3">• l\'adresse de votre point d\'accès push, et sa clé de chiffrement.\\\\n</string>
     <string name="adresse_serveur_de7906">Adresse du serveur</string>
     <string name="affichage_tronque_fichier_f285f2">Affichage tronqué (fichier volumineux).</string>
@@ -95,6 +99,7 @@
     <string name="capacite_ecriture_serveur_915a9f">• C\'est une capacité d\'écriture : ce serveur pourra vous envoyer une</string>
     <string name="caracteres_maximum_5d98f2">%1$s caractères maximum</string>
     <string name="caracteres_minimum_3ae93a">%1$s caractères minimum</string>
+    <string name="ce_qu_il_te_faut_008c8f">Ce qu\'il te faut</string>
     <string name="celui_serveur_opencode_7dba72">celui du serveur opencode</string>
     <string name="champ_6c6a0f">1 champ</string>
     <string name="champ_requis_c895d4">Champ requis.</string>
@@ -120,6 +125,7 @@
     <string name="composer_pulse_6bf03d">composer-pulse</string>
     <string name="composer_stop_f8a665">composer-stop</string>
     <string name="compte_c45740">Compte</string>
+    <string name="configurer_main_f6bbdd">Configurer à la main</string>
     <string name="connecte_opencode_04883d">connecté · opencode %1$s</string>
     <string name="connecter_fedf24">Se connecter</string>
     <string name="connexion_807c20">Connexion…</string>
@@ -243,6 +249,7 @@
     <string name="lecture_impossible_f1df6b">Lecture impossible</string>
     <string name="licence_mit_logiciel_a1a1c7">Licence MIT — logiciel libre, sans dépendance aux services</string>
     <string name="limite_affichage_filesviewmodel_b4fb78">La limite d\'affichage est de %1$s Ko.</string>
+    <string name="lis_session_reponds_question_cf78cb">Lis une session, réponds à une question bloquée, approuve un outil : tout ce qui attend une décision sur ton bureau arrive ici.</string>
     <string name="lourd_dc257e">Le plus lourd</string>
     <string name="luminosite_ajustee_a11cb4">La luminosité est ajustée pour rester lisible sur fond sombre, quelle que soit la teinte.</string>
     <string name="marqueurs_fin_tour_f41af7">Marqueurs de fin de tour</string>
@@ -299,6 +306,7 @@
     <string name="opencode_4b5a52">opencode</string>
     <string name="opencode_avancement_f123d4">opencode — avancement</string>
     <string name="opencode_cours_387ac2">opencode — en cours</string>
+    <string name="opencode_demande_permission_896635">Quand opencode demande une permission et que personne n\'est devant l\'écran, la session reste bloquée. Tether prévient et te laisse trancher depuis le téléphone.</string>
     <string name="opencode_f119e9">opencode %1$s</string>
     <string name="opencode_server_password_b2a5ab">OPENCODE_SERVER_PASSWORD sur la machine.</string>
     <string name="options_session_52b4f6">Options de la session</string>
@@ -307,12 +315,15 @@
     <string name="ouvrir_ecran_hors_08d976">Ouvrir l\'écran hors connexion</string>
     <string name="ouvrir_reglages_ca731a">Ouvrir les réglages</string>
     <string name="ouvrir_reglages_systeme_dc1d26">Ouvrir les réglages système</string>
+    <string name="page_sur_83099c">Page %1$s sur %2$s</string>
     <string name="part_cout_728b35">Où part le coût</string>
     <string name="partager_conversation_350142">Partager la conversation</string>
+    <string name="passer_5dc188">Passer</string>
     <string name="permission_refusee_alertes_527909">Permission refusée : les alertes ne s\'afficheront pas.</string>
     <string name="permissions_application_be85c6">» dans les permissions de l\'application.</string>
     <string name="peuvent_etre_suivies_c116db">peuvent pas être suivies ni annulées.</string>
     <string name="peux_ecrire_ton_e4b2ed">Tu peux écrire ton message normalement.</string>
+    <string name="plugin_tether_installe_88354f">Le plugin /tether installé sur ce serveur</string>
     <string name="point_256_non_ad8426">point P-256 non compresse attendu (65 octets, prefixe 0x04)</string>
     <string name="point_non_compresse_3ee4c7">point non compresse attendu (prefixe 0x04)</string>
     <string name="pourras_accorder_depuis_fac7df">Tu ne pourras la ré-accorder que depuis le serveur.</string>
@@ -369,6 +380,7 @@
     <string name="scanner_consigne_7c21a8">Visez le QR que /tether affiche dans le terminal</string>
     <string name="scanner_pas_appairage_2b9c54">Ce QR n\'est pas un code d\'appairage Tether</string>
     <string name="scanner_qr_1f4e1d">Scanner le QR</string>
+    <string name="scanner_reconnu_5c1a2e">QR reconnu — vérifie l\'adresse du serveur</string>
     <string name="secret_authentification_authsecret_f109cb">secret d\'authentification : %1$s octets, 16 attendu</string>
     <string name="sections_indisponibles_abb861">Sections indisponibles :</string>
     <string name="selection_d7eeed">Sélection…</string>
@@ -382,6 +394,7 @@
     <string name="serveur_injoignable_a136dc">Serveur injoignable</string>
     <string name="serveur_joignable_9759d5">Serveur joignable</string>
     <string name="serveur_non_configure_022fcf">Serveur non configuré.</string>
+    <string name="serveur_opencode_joignable_60677a">Un serveur opencode joignable depuis ton téléphone</string>
     <string name="serveur_refuse_activer_67e27c">Le serveur a refusé d\'activer « %1$s ».</string>
     <string name="serveur_refuse_agent_2c75af">Le serveur a refusé. L\'agent attend toujours.</string>
     <string name="serveur_refuse_appliquer_b0c92c">Le serveur a refusé d\'appliquer le retour.</string>
@@ -393,6 +406,7 @@
     <string name="serveur_repond_nouveau_923f04">Le serveur répond de nouveau.</string>
     <string name="serveur_repondu_error_146bc6">Le serveur a répondu %1$s.</string>
     <string name="serveur_rien_annonce_859273">Le serveur n\'a rien annoncé dans cette catégorie.</string>
+    <string name="session_attendre_heures_c4ad39">Une session peut attendre des heures</string>
     <string name="session_f7f199">Session</string>
     <string name="session_finie_6cb0e6">sa session est finie</string>
     <string name="session_modifie_aucun_5075a0">Cette session n\'a modifié aucun fichier.</string>
@@ -403,6 +417,7 @@
     <string name="statistiques_fdce30">Statistiques</string>
     <string name="status_dot_c723c1">status-dot</string>
     <string name="status_dot_pulse_f2ffe5">status-dot-pulse</string>
+    <string name="suivant_596d29">Suivant</string>
     <string name="suivre_systeme_2fc03a">Suivre le systeme</string>
     <string name="supprimer_1acfc1">Supprimer</string>
     <string name="supprimer_session_40a83f">Supprimer cette session ?</string>
@@ -424,6 +439,7 @@
     <string name="tokens_f0ab08">tokens in</string>
     <string name="tokens_out_332354">tokens out</string>
     <string name="ton_message_1677cf">Ton message</string>
+    <string name="ton_serveur_opencode_poche_e3024a">Ton serveur opencode, dans ta poche</string>
     <string name="toobig_path_fait_7149b1">%1$s fait %2$s Ko.</string>
     <string name="tool_chevron_4d78ad">tool-chevron</string>
     <string name="total_occurrence_total_fdd500">%1$s occurrences</string>

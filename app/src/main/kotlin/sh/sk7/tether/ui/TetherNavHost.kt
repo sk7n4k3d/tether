@@ -43,6 +43,7 @@ import sh.sk7.tether.ui.server.ServerScreen
 import sh.sk7.tether.ui.sessions.SessionListScreen
 import sh.sk7.tether.ui.settings.AboutScreen
 import sh.sk7.tether.ui.settings.ConnectionScreen
+import sh.sk7.tether.ui.settings.ConnectionViewModel
 import sh.sk7.tether.ui.settings.SettingsScreen
 import sh.sk7.tether.ui.connection.OfflineScreen
 import sh.sk7.tether.ui.worktree.WorktreeScreen
@@ -50,7 +51,9 @@ import sh.sk7.tether.ui.connection.StartRouterViewModel
 import sh.sk7.tether.ui.diff.DiffScreen
 import sh.sk7.tether.ui.context.SessionContextScreen
 import sh.sk7.tether.ui.stats.StatsScreen
+import sh.sk7.tether.ui.theme.AppearanceViewModel
 import sh.sk7.tether.ui.theme.TetherTextPrimary
+import sh.sk7.tether.ui.welcome.WelcomeScreen
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
 
@@ -74,6 +77,16 @@ object Routes {
 
     /** Connexion, en mode premiere ouverture (sans retour, avec guidage). */
     const val ONBOARDING = "onboarding"
+
+    /**
+     * Le carrousel d'accueil — **avant** [ONBOARDING], et une seule fois.
+     *
+     * ⚠️ Une route a part, et pas un etat de [ONBOARDING] : le carrousel se termine en
+     * allant sur la connexion **ou** sur le scanner, et les deux sorties doivent laisser
+     * le carrousel hors de la pile. Un etat interne l'aurait laisse derriere, et le
+     * bouton retour y aurait ramene.
+     */
+    const val WELCOME = "welcome"
 
     /** Arbres de travail isoles : essayer sans risquer le depot. */
     const val WORKTREES = "worktrees"
@@ -216,6 +229,11 @@ fun TetherNavHost(
     val context = LocalContext.current
     val activity = remember(context) { context as? androidx.activity.ComponentActivity }
     val pairingViewModel: PairingViewModel = hiltViewModel()
+    // Porte le drapeau « accueil vu ». Le carrousel le pose en partant, quelle que soit
+    // la sortie choisie.
+    val apparence: AppearanceViewModel = hiltViewModel()
+    // Sert a adopter l'adresse lue dans un QR avant que l'ecran de connexion n'existe.
+    val connexion: ConnectionViewModel = hiltViewModel()
 
     // Un lien d'appairage prime sur tout le reste : il porte une demande de consentement
     // posee par un tiers, et elle expire. Si on la laissait perdre derriere un route
@@ -358,8 +376,30 @@ fun TetherNavHost(
             // affiche l'adresse du serveur avant tout envoi.
             QrScannerScreen(
                 onLien = { demande ->
-                    pairingViewModel.ouvrir(demande)
-                    navController.popBackStack()
+                    // ⚠️ La decision se prend sur **l'etat**, pas sur la provenance.
+                    // Decider « d'ou vient l'utilisateur » marchait tant que le carrousel
+                    // menait forcement au formulaire ; des qu'on peut arriver au scanner
+                    // depuis un ecran de connexion **deja rempli**, ca l'envoyait
+                    // ressaisir des identifiants qu'il avait deja.
+                    if (connexion.configured.value) {
+                        // L'app sait se connecter : le QR sert a appairer cet appareil.
+                        pairingViewModel.ouvrir(demande)
+                        // Depuis les reglages, la confirmation est deja sous le scanner :
+                        // on depile plutot que d'en empiler une seconde.
+                        if (navController.previousBackStackEntry?.destination?.route == Routes.PAIRING) {
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate(Routes.PAIRING) { launchSingleTop = true }
+                        }
+                    } else {
+                        // Rien pour se connecter : le QR porte l'adresse, et **pas** le
+                        // mot de passe — c'est tout son interet. On garde l'adresse et on
+                        // renvoie au formulaire, ou il ne reste plus qu'a le saisir.
+                        connexion.adopterAdresse(demande.server)
+                        navController.navigate(Routes.ONBOARDING) {
+                            popUpTo(Routes.SCAN) { inclusive = true }
+                        }
+                    }
                 },
                 onBack = { navController.popBackStack() },
             )
@@ -408,10 +448,45 @@ fun TetherNavHost(
                 },
             )
         }
+        composable(Routes.WELCOME) {
+            // Les deux sorties « sans scan » mènent au même endroit : le formulaire de
+            // connexion. On les écrit séparément parce qu'elles ne veulent pas dire la
+            // même chose — « Passer » est un refus, « Configurer à la main » est un choix.
+            WelcomeScreen(
+                onTerminer = {
+                    apparence.marquerAccueilVu()
+                    navController.navigate(Routes.ONBOARDING) {
+                        // ⚠️ Le carrousel sort de la pile : la connexion de premier
+                        // lancement n'a pas de flèche retour, et revenir sur une
+                        // presentation qu'on vient d'écarter serait une boucle.
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+                onManuel = {
+                    apparence.marquerAccueilVu()
+                    navController.navigate(Routes.ONBOARDING) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+                onScanner = {
+                    apparence.marquerAccueilVu()
+                    // Le carrousel devient le scanner — et le scanner devient la racine.
+                    // Apres un scan, la confirmation s'empile dessus ; un retour depuis
+                    // elle ramene au scanner, ce qui est le geste attendu quand le
+                    // premier QR etait passe trop vite.
+                    navController.navigate(Routes.SCAN) {
+                        popUpTo(Routes.WELCOME) { inclusive = true }
+                    }
+                },
+            )
+        }
         composable(Routes.ONBOARDING) {
             ConnectionScreen(
                 firstRun = true,
                 onConnected = { repartirSurLesSessions() },
+                // Le scan reste atteignable apres le carrousel : c'est le meme chemin,
+                // et il ne doit pas dependre d'avoir vu ou passe les trois pages.
+                onScan = { navController.navigate(Routes.SCAN) },
             )
         }
     }

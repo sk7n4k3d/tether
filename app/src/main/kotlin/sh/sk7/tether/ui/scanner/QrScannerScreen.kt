@@ -203,9 +203,21 @@ private fun CameraApercu(onLien: (PairingLink.Demande) -> Unit) {
                             val texte = lireQr(image)
                             val demande = texte?.let { PairingLink.depuisTexte(it) }
                             if (demande != null && consomme.compareAndSet(false, true)) {
-                                principal.execute { onLien(demande) }
+                                principal.execute {
+                                    // ⚠️ Le retour part **avant** la navigation : une fois
+                                    // `onLien` appele, cet ecran est demonte et le signal
+                                    // n'aurait plus personne pour le porter.
+                                    RetourScan.reconnu(context)
+                                    onLien(demande)
+                                }
                             } else if (texte != null && averti.compareAndSet(false, true)) {
-                                principal.execute { avertissement = true }
+                                principal.execute {
+                                    // `averti` garantit un seul signal par passage : la
+                                    // camera lit plusieurs images par seconde, et un QR
+                                    // etranger reste devant l'objectif.
+                                    RetourScan.refuse(context)
+                                    avertissement = true
+                                }
                             }
                         }
                         image.close()

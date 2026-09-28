@@ -95,6 +95,23 @@ class ConnectionStore @Inject constructor(
         publish(normalized)
     }
 
+    /**
+     * Enregistre **la seule adresse**, et rien d'autre.
+     *
+     * ⚠️ Ecrite pour le scan d'un QR : le code d'appairage porte l'adresse du serveur,
+     * mais **pas le mot de passe** — c'est tout son interet. Ecrire par [save] aurait
+     * donc envoye une chaine vide a la place du mot de passe deja enregistre, et
+     * l'utilisateur configure se serait retrouve deconnecte par un scan.
+     *
+     * On n'appelle pas `publish` : le mot de passe est inchange, donc les identifiants
+     * en memoire le sont aussi. Les republier demanderait de relire le fichier pour rien.
+     */
+    suspend fun enregistrerAdresse(baseUrl: String) {
+        val propre = baseUrl.trim()
+        if (propre.isBlank()) return
+        dataStore.edit { it[KEY_BASE_URL] = propre }
+    }
+
     private fun publish(settings: ConnectionSettings) {
         credentialsProvider.set(settings.credentialsOrNull())
     }

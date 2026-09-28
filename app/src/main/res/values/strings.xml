@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  GENERE PAR OUTIL DEPUIS LE CODE : ne pas editer a la main sans
-  mettre a jour l'outil, sinon les deux divergent silencieusement.
   La base est l'anglais ; le francais vit dans values-fr/.
+  Les deux fichiers portent les **memes cles** : une cle presente dans une seule
+  langue n'est pas « non traduite », elle s'affiche dans l'autre — c'est ce que
+  verifie `RessourceTest`.
+  ⚠️ Ne pas regenerer ces fichiers avec l'outil de migration : il derive tout d'une
+  table figee, et les chaines ajoutees depuis n'y sont pas.
 -->
 <resources>
     <string name="acces_reseau_local_73c212">Local network access required</string>
@@ -18,6 +21,7 @@
     <string name="adresse_ab87f8">ADDRESS</string>
     <string name="adresse_doit_etre_e10114">This address must be exactly the one you expect.</string>
     <string name="adresse_mot_passe_1240c0">The address and password will be cleared from this phone.</string>
+    <string name="adresse_mot_passe_qr_145129">The address and password, or the QR /tether prints</string>
     <string name="adresse_point_acces_6af7b3">• your push endpoint address, and its encryption key.\\\\n</string>
     <string name="adresse_serveur_de7906">Server address</string>
     <string name="affichage_tronque_fichier_f285f2">Display truncated (large file).</string>
@@ -95,6 +99,7 @@
     <string name="capacite_ecriture_serveur_915a9f">• It is a write capability: this server will be able to send you a</string>
     <string name="caracteres_maximum_5d98f2">%1$s characters maximum</string>
     <string name="caracteres_minimum_3ae93a">%1$s characters minimum</string>
+    <string name="ce_qu_il_te_faut_008c8f">What you need</string>
     <string name="celui_serveur_opencode_7dba72">the opencode server\'s</string>
     <string name="champ_6c6a0f">1 field</string>
     <string name="champ_requis_c895d4">Required field.</string>
@@ -120,6 +125,7 @@
     <string name="composer_pulse_6bf03d">composer-pulse</string>
     <string name="composer_stop_f8a665">composer-stop</string>
     <string name="compte_c45740">Account</string>
+    <string name="configurer_main_f6bbdd">Set up manually</string>
     <string name="connecte_opencode_04883d">connected · opencode %1$s</string>
     <string name="connecter_fedf24">Connect</string>
     <string name="connexion_807c20">Connecting…</string>
@@ -243,6 +249,7 @@
     <string name="lecture_impossible_f1df6b">Read not possible</string>
     <string name="licence_mit_logiciel_a1a1c7">MIT licence — free software, with no dependency on</string>
     <string name="limite_affichage_filesviewmodel_b4fb78">The display limit is %1$s KB.</string>
+    <string name="lis_session_reponds_question_cf78cb">Read a session, answer a blocked question, approve a tool: everything waiting on a decision at your desk lands here.</string>
     <string name="lourd_dc257e">Heaviest</string>
     <string name="luminosite_ajustee_a11cb4">Brightness is adjusted to stay readable on a dark background, whatever the hue.</string>
     <string name="marqueurs_fin_tour_f41af7">End-of-turn markers</string>
@@ -299,6 +306,7 @@
     <string name="opencode_4b5a52">opencode</string>
     <string name="opencode_avancement_f123d4">opencode — progress</string>
     <string name="opencode_cours_387ac2">opencode — running</string>
+    <string name="opencode_demande_permission_896635">When opencode asks for a permission and nobody is at the screen, the session stays blocked. Tether tells you and lets you decide from the phone.</string>
     <string name="opencode_f119e9">opencode %1$s</string>
     <string name="opencode_server_password_b2a5ab">OPENCODE_SERVER_PASSWORD on the machine.</string>
     <string name="options_session_52b4f6">Session options</string>
@@ -307,12 +315,15 @@
     <string name="ouvrir_ecran_hors_08d976">Open the offline screen</string>
     <string name="ouvrir_reglages_ca731a">Open settings</string>
     <string name="ouvrir_reglages_systeme_dc1d26">Open system settings</string>
+    <string name="page_sur_83099c">Page %1$s of %2$s</string>
     <string name="part_cout_728b35">Where the cost goes</string>
     <string name="partager_conversation_350142">Share the conversation</string>
+    <string name="passer_5dc188">Skip</string>
     <string name="permission_refusee_alertes_527909">Permission refused: alerts will not show.</string>
     <string name="permissions_application_be85c6">” in the application permissions.</string>
     <string name="peuvent_etre_suivies_c116db">cannot be tracked nor undone.</string>
     <string name="peux_ecrire_ton_e4b2ed">You can write your message normally.</string>
+    <string name="plugin_tether_installe_88354f">The /tether plugin installed on that server</string>
     <string name="point_256_non_ad8426">uncompressed P-256 point expected (65 bytes, 0x04 prefix)</string>
     <string name="point_non_compresse_3ee4c7">uncompressed point expected (0x04 prefix)</string>
     <string name="pourras_accorder_depuis_fac7df">You can only re-grant it from the server.</string>
@@ -369,6 +380,7 @@
     <string name="scanner_consigne_7c21a8">Point the camera at the QR that /tether shows in the terminal</string>
     <string name="scanner_pas_appairage_2b9c54">That QR is not a Tether pairing code</string>
     <string name="scanner_qr_1f4e1d">Scan the QR</string>
+    <string name="scanner_reconnu_5c1a2e">QR recognized — check the server address</string>
     <string name="secret_authentification_authsecret_f109cb">auth secret: %1$s bytes, 16 expected</string>
     <string name="sections_indisponibles_abb861">Unavailable sections:</string>
     <string name="selection_d7eeed">Selecting…</string>
@@ -382,6 +394,7 @@
     <string name="serveur_injoignable_a136dc">Server unreachable</string>
     <string name="serveur_joignable_9759d5">Server reachable</string>
     <string name="serveur_non_configure_022fcf">No server configured.</string>
+    <string name="serveur_opencode_joignable_60677a">An opencode server your phone can reach</string>
     <string name="serveur_refuse_activer_67e27c">The server refused to enable “%1$s”.</string>
     <string name="serveur_refuse_agent_2c75af">The server refused. The agent is still waiting.</string>
     <string name="serveur_refuse_appliquer_b0c92c">The server refused to apply the revert.</string>
@@ -393,6 +406,7 @@
     <string name="serveur_repond_nouveau_923f04">The server answers again.</string>
     <string name="serveur_repondu_error_146bc6">The server answered %1$s.</string>
     <string name="serveur_rien_annonce_859273">The server announced nothing in this category.</string>
+    <string name="session_attendre_heures_c4ad39">A session can wait for hours</string>
     <string name="session_f7f199">Session</string>
     <string name="session_finie_6cb0e6">its session is finished</string>
     <string name="session_modifie_aucun_5075a0">This session changed no file.</string>
@@ -403,6 +417,7 @@
     <string name="statistiques_fdce30">Statistics</string>
     <string name="status_dot_c723c1">status-dot</string>
     <string name="status_dot_pulse_f2ffe5">status-dot-pulse</string>
+    <string name="suivant_596d29">Next</string>
     <string name="suivre_systeme_2fc03a">Follow the system</string>
     <string name="supprimer_1acfc1">Delete</string>
     <string name="supprimer_session_40a83f">Delete this session?</string>
@@ -424,6 +439,7 @@
     <string name="tokens_f0ab08">tokens in</string>
     <string name="tokens_out_332354">tokens out</string>
     <string name="ton_message_1677cf">Your message</string>
+    <string name="ton_serveur_opencode_poche_e3024a">Your opencode server, in your pocket</string>
     <string name="toobig_path_fait_7149b1">%1$s is %2$s KB.</string>
     <string name="tool_chevron_4d78ad">tool-chevron</string>
     <string name="total_occurrence_total_fdd500">  %1$s occurrences</string>

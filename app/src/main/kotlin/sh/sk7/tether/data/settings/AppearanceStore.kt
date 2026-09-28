@@ -3,6 +3,7 @@ package sh.sk7.tether.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -13,15 +14,15 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * **Le choix d'accent et de langue**, et rien d'autre.
+ * **Les preferences locales de l'app**, et rien d'autre.
  *
- * ## Pourquoi ces deux-la ensemble
+ * ## Ce qui les separe des reglages de serveur
  *
- * Ce sont les deux seules preferences qui changent **l'ecran lui-meme** plutot que son
- * contenu : la couleur et les mots. Tout le reste — serveur, repertoire, modele —
- * decrit ce a quoi l'app parle. Les regrouper evite deux DataStore pour deux cles, et
- * evite surtout que l'une soit lue par le theme et l'autre par l'ecran, avec le meme
- * defaut applique deux fois.
+ * Deux d'entre elles changent **l'ecran lui-meme** plutot que son contenu : la couleur
+ * et les mots. La troisieme — l'accueil vu — ne change rien a l'affichage mais decide
+ * **quel** ecran s'ouvre au lancement. Toutes les trois ont en commun de ne rien dire
+ * sur ce a quoi l'app parle : serveur, repertoire, modele decrivent la machine d'en
+ * face, et vivent dans `ConnectionStore`.
  *
  * ## L'accent est une **cle**, pas une couleur
  *
@@ -45,6 +46,7 @@ class AppearanceStore @Inject constructor(
 
     private val KEY_ACCENT = stringPreferencesKey("appearance.accent")
     private val KEY_LANGUE = stringPreferencesKey("appearance.langue")
+    private val KEY_ACCUEIL_VU = booleanPreferencesKey("appearance.accueilVu")
 
     /** L'accent choisi, reagit a chaque changement. */
     val accent: Flow<Accent> = dataStore.data.map { prefs ->
@@ -61,6 +63,26 @@ class AppearanceStore @Inject constructor(
      */
     val langue: Flow<String?> = dataStore.data.map { prefs ->
         prefs[KEY_LANGUE]?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * L'accueil a-t-il deja ete vu ?
+     *
+     * ⚠️ **Marque des qu'on quitte l'accueil, quelle que soit la sortie** — « Passer »,
+     * « Configurer a la main », « Scanner ». Pas seulement quand on atteint la derniere
+     * page : quelqu'un qui passe immediatement a compris qu'il n'en avait pas besoin, et
+     * lui remontrer le carrousel au prochain lancement serait le punir.
+     *
+     * Ce drapeau n'est jamais remis a `false` : il n'y a pas de « revoir l'accueil » dans
+     * les reglages, et un utilisateur qui vide les donnees de l'app le retrouve a `false`
+     * avec tout le reste.
+     */
+    val accueilVu: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_ACCUEIL_VU] ?: false
+    }
+
+    suspend fun marquerAccueilVu() {
+        dataStore.edit { it[KEY_ACCUEIL_VU] = true }
     }
 
     suspend fun choisirAccent(accent: Accent) {

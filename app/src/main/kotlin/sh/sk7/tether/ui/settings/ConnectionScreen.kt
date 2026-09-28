@@ -53,6 +53,7 @@ import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.Eye
 import com.composables.icons.lucide.EyeOff
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.QrCode
 import com.composables.icons.lucide.Server
 import com.composables.icons.lucide.ShieldCheck
 import com.composables.icons.lucide.WifiOff
@@ -97,6 +98,7 @@ fun ConnectionScreen(
     onBack: () -> Unit = {},
     firstRun: Boolean = false,
     onConnected: () -> Unit = {},
+    onScan: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: ConnectionViewModel = hiltViewModel(),
 ) {
@@ -205,6 +207,30 @@ fun ConnectionScreen(
             result = state.result,
             onClick = viewModel::testConnection,
         )
+
+        // ⚠️ **L'autre chemin, et il doit rester joignable pour toujours.**
+        //
+        // L'adresse et le mot de passe peuvent venir d'un QR : `/tether` l'affiche, et
+        // l'app le lit. Sans ce bouton, passer le carrousel fermait la seule porte qui
+        // menait au scan — il fallait recopier une adresse et un mot de passe a la main,
+        // sans aucun moyen de revenir en arriere.
+        //
+        // Il est sous le bouton principal parce que la saisie manuelle reste le cas
+        // normal quand on connait ses identifiants ; le scan est l'autre chemin, pas le
+        // chemin par défaut.
+        if (firstRun) {
+            androidx.compose.material3.OutlinedButton(
+                onClick = onScan,
+                shape = RoundedCornerShape(TetherDimensions.cornerMd),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp),
+            ) {
+                Icon(Lucide.QrCode, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(Spacing.sm))
+                Text(stringResource(R.string.scanner_qr_1f4e1d))
+            }
+        }
 
         TestOutcome(state.result, firstRun = firstRun)
 
