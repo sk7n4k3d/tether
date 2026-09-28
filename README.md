@@ -28,21 +28,6 @@ your own network or not. Notifications use **standard Web Push (RFC 8291/8292)**
 [UnifiedPush](https://unifiedpush.org/), so there is no FCM, no Google account, and no
 relay server to run.
 
-> ⚠️ **What has actually run, and what has not.** The app has been driven on a physical
-> Android device against a live `opencode serve`: the connection screen, the session list
-> and its usage figures, settings, both languages end to end, all seven accents applied
-> and surviving a restart, and the French plurals were observed on screen. That layer is
-> proven end to end; no static test can reach it.
->
-> Two things remain unobserved. The plugin's TUI dialog has never been rendered in a real
-> TUI — only the code path that builds it is replayed in a test. And no notification has
-> yet been encrypted by the server and decrypted on a real phone: the Web Push
-> cryptography is covered by tests, but the end-to-end trip has not been made.
->
-> Stable: the V2 API surface, pairing-link parsing, the QR encoder (checked against zxing,
-> module by module), Web Push cryptography, response typing, the settings and language
-> layer. Unproven: the push round trip and the TUI dialog, both named above.
-
 ---
 
 ## Why another client
