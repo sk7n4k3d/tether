@@ -28,14 +28,20 @@ your own network or not. Notifications use **standard Web Push (RFC 8291/8292)**
 [UnifiedPush](https://unifiedpush.org/), so there is no FCM, no Google account, and no
 relay server to run.
 
-> ⚠️ **The app has never run on a physical device.** The plugin has never been rendered in
-> a real TUI, and no push has been encrypted then decrypted end-to-end by an actual phone.
-> Everything is verified statically — 626 tests, 25 of them against a live `opencode serve`
-> — and dynamically unproven.
+> ⚠️ **What has actually run, and what has not.** The app has been driven on a physical
+> Android device against a live `opencode serve`: the connection screen, the session list
+> and its usage figures, settings, both languages end to end, all seven accents applied
+> and surviving a restart, and the French plurals were observed on screen. That layer is
+> proven end to end; no static test can reach it.
+>
+> Two things remain unobserved. The plugin's TUI dialog has never been rendered in a real
+> TUI — only the code path that builds it is replayed in a test. And no notification has
+> yet been encrypted by the server and decrypted on a real phone: the Web Push
+> cryptography is covered by tests, but the end-to-end trip has not been made.
 >
 > Stable: the V2 API surface, pairing-link parsing, the QR encoder (checked against zxing,
-> module by module), Web Push cryptography, response typing. Not stable: the user journey,
-> by definition. If your push never arrives, that is the most likely place to be looking.
+> module by module), Web Push cryptography, response typing, the settings and language
+> layer. Unproven: the push round trip and the TUI dialog, both named above.
 
 ---
 
@@ -104,7 +110,7 @@ human confirmation.
 
 ### Interface
 - **Material 3**, dark theme only — no half-done light mode
-- **Six accent colours**, and the brightness is computed for you
+- **Seven accent colours**, and the brightness is computed for you
 - **English and French**, following the phone's language by default
 - **Streaming and history are separate items** in the list, not two renderings of one
 - **Offline screen** that says the server is unreachable instead of showing an empty list
@@ -112,7 +118,7 @@ human confirmation.
 
 #### The accent colour is a hue, not a value
 
-You pick a hue; the app computes the brightness. Six are offered, and the one you
+You pick a hue; the app computes the brightness. Seven are offered, and the one you
 choose is adjusted until it clears the **3:1** contrast ratio against the app's own
 backgrounds — the threshold WCAG sets for interface elements rather than text.
 
@@ -165,9 +171,11 @@ notifications.
 cp -r plugin/tether ~/.config/opencode/plugins/
 ```
 
-That is the whole step. OpenCode auto-discovers `~/.config/opencode/plugin/` and
-`~/.config/opencode/plugins/`, file or directory. No `opencode.jsonc` entry is needed to
-load it — the `plugins` field is for npm packages like `"cc-safety-net@latest"`.
+That is the whole step. OpenCode discovers plugins in `~/.config/opencode/plugins/` — the
+plural, and each plugin is a **directory** (or a symlink to one). A bare `.ts` file dropped
+in that folder is not picked up; `opencode plugin list` will say "No plugins found". No
+`opencode.jsonc` entry is needed to load it — the `plugins` field there is for npm packages
+like `"cc-safety-net@latest"`.
 
 Restart OpenCode, then:
 
@@ -323,11 +331,23 @@ is in the manifest — it is what delivers the intent to the foreground.
 ## Development
 
 ```bash
-# Plugin — 124 tests, 25 of them against a live `opencode serve` (port 4299)
-node --experimental-strip-types --test plugin/tether/*.test.mjs
+# Plugin — 139 tests under node, plus 5 under Bun for the dialog.
+# List the files explicitly: the glob pulls in tui-setup.test.mjs, which imports tui.tsx
+# and dies with ERR_UNKNOWN_FILE_EXTENSION outside an OpenCode install.
+# 29 of the 139 run against a live `opencode serve` (port 4299) and skip if it is absent.
+node --experimental-strip-types --test \
+  plugin/tether/index.test.mjs plugin/tether/qr.test.mjs \
+  plugin/tether/registry.test.mjs plugin/tether/tui-config.test.mjs \
+  plugin/tether/tui-logic.test.mjs plugin/tether/ui-model.test.mjs \
+  plugin/tether/vapid.test.mjs plugin/tether/webpush.mutation.test.mjs \
+  plugin/tether/webpush.test.mjs
 
-# App — 502 JVM tests
+# The one test that needs the .tsx dialog, and therefore Bun and an OpenCode tree
+bun test plugin/tether/tui-setup.test.mjs
+
+# App — 523 JVM tests, plus 6 on a connected device
 ./gradlew :app:testDebugUnitTest
+./gradlew :app:connectedDebugAndroidTest
 
 # APK
 ./gradlew :app:assembleDebug
@@ -374,12 +394,13 @@ scripts/                pre-publication verification
 4. Open a pull request
 
 ```bash
-node --experimental-strip-types --test plugin/tether/*.test.mjs
+node --experimental-strip-types --test plugin/tether/index.test.mjs   # …see Development
 ./gradlew :app:testDebugUnitTest
 ```
 
-If your change touches push, pairing or cryptography, say what it fixes. None of those three
-has run on hardware yet: a test claiming otherwise deserves a careful read.
+If your change touches push, pairing or cryptography, say what it fixes. The push round trip
+has not been observed on a real phone, and the TUI dialog has never been rendered in a real
+TUI: a test claiming otherwise deserves a careful read.
 
 ---
 
