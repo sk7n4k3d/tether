@@ -4,16 +4,24 @@
 #
 # ## Pourquoi les motifs ne sont pas dans ce fichier
 #
-# Le plus evident serait d'ecrire ici `utilisateur` et `ntfy.example.com`. Ce fichier serait alors
-# **le seul fichier en faute** du depot — et il faut bien le Commit, donc le publier. Un
-# motif sensible stocke dans le depot est un motif fuite.
+# Le plus evident serait d'ecrire ici le nom d'utilisateur et le domaine, pour que
+# l'operateur n'ait rien a taper. Ce fichier serait alors **le seul fichier en faute** du
+# depot — et il faut bien le commiter, donc le publier. Un motif sensible stocke dans le
+# depot est un motif fuite. Le piege est tendu : le premier controle passe, puis signale
+# son propre en-tete a la ligne 1.
 #
 # Les motifs reels viennent donc de l'environnement :
 #
-#     TETHER_GREP_FORBIDDEN='motif1,motif2,motif3' ./scripts/check-publie.sh
+#     TETHER_GREP_FORBIDDEN='<motifs separes par des virgules>' ./scripts/check-publie.sh
 #
-# Ils vivent sur la machine qui filtre, et nulle part ailleurs. Chaque motif est
-# utilise comme expression reguliere eteinte (grep -E), donc le `\.` s'ecrit tel quel.
+# ## Les deux formes a couvrir, et pas une seule
+#
+#   - le compte utilise comme identite machine : `/home/<nom>`
+#   - le compte utilise comme adresse : `<nom>@`
+#
+# Le compte nu, lui, est public : il est dans l'URL du depot, dans le remote git, dans
+# la ligne de copyright. Un motif sur le compte entier hurle sur son propre README — et un
+# controle qui hurle sur du bruit s'arrete, puis ne protege plus rien.
 #
 # ## Ce que le script couvre
 #

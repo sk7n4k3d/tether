@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: Plugin (${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Le plugin n'a aucune dependance a installer : c'est du TypeScript execute
+      # directement par `node --experimental-strip-types`, et le SDK opencode est
+      # resolu par le serveur de test, pas par npm.
+      - name: Tests
+        run: node --experimental-strip-types --test plugin/tether/*.test.mjs
+
+  app:
+    name: App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ⚠️ Le wrapper doit etre executable. Git le stocke avec le bit, mais une
+      # extraction sur un systeme de fichiers sans leBit echoue sur `./gradlew` :
+      # le symptome est « permission denied » sur un fichier present.
+      - name: Rendre le wrapper executable
+        run: chmod +x gradlew
+
+      - name: Tests unitaires
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+
+      - name: Compiler l'APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tether-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

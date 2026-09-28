@@ -325,18 +325,20 @@ function toJoseFormat(der: Buffer): Buffer {
 
     if (value.length === 32) return value
 
-    // 31 octets : DER a **omis** des zeros de tete (le bit de poids fort de la valeur
-    // est a 0, donc pas d'octet nul a ajouter). Il faut un zero a gauche pour
-    // reconstituer la valeur sur 32 — un remplissage a gauche, donc, mais ici c'est
-    // correct, et c'est le SEUL cas ou il l'est.
+    // Moins de 32 octets : DER a **omis** des zeros de tete. Il en faut un a gauche
+    // pour reconstituer la valeur sur 32 — un remplissage a gauche, correct ici, et le
+    // SEUL cas ou il l'est.
     //
-    // ⚠️ C'est le cas que le stress-test a sorti : ~1 signature sur 166. Une version
-    // anterieure le traitait comme le cas general et produisait des signatures fausses
-    // — silencieuses, puisque rien ne leve d'erreur : la notification est simplement
-    // refusee par le distributeur.
-    if (value.length === 31) return Buffer.concat([Buffer.alloc(1), value])
+    // ⚠️ DER supprime **tous** les zeros de tete, pas un seul. Une valeur P-256
+    // (< 2^256) encodée en 30 octets est aussi legale qu'une valeur en 31, et aussi
+    // rare. Ne traiter que `=== 31` — ce que faisait la version precedente, sur la foi
+    // d'une mesure qui n'avait observe que 31 et 33 — revient a **lancer une
+    // exception sur environ une signature sur 128**. Le symptome production n'est pas
+    // une signature fausse, c'est un `vapidHeader` qui leve : la notification part
+    // sans en-tete VAPID, et le distributeur la refuse sans explication.
+    if (value.length < 32) return Buffer.concat([Buffer.alloc(32 - value.length), value])
 
-    throw new Error(`signature DER : entier de ${value.length} octets, trop court pour P-256`)
+    throw new Error(`signature DER : entier de ${value.length} octets, trop long pour P-256`)
   }
 
   return Buffer.concat([readInt(), readInt()])
