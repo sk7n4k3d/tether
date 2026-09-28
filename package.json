@@ -31,7 +31,6 @@
     "Les versions sont des planchers (`>=`), pas des equivalences : figer une plage",
     "casserait quand le TUI monte d'une version, sans que la version du plugin change.",
     "",
-    "## `tsconfig.json` a la racine, et c'est obligatoire",
     "",
     "Bun ne lit que le `tsconfig.json` du **projet qui contient le fichier compile**. Mesure :",
     "",
@@ -41,7 +40,20 @@
     "",
     "Comme le paquet installe vit dans un cache npm dont on ne controle pas la racine, le",
     "tsconfig livre ici sert aux developpeurs et a la verification ; c'est l'installation",
-    "des dependances ci-dessus qui rend le module chargeable en production."
+    "des dependances ci-dessus qui rend le module chargeable en production.",
+    "## Ou vit le `tsconfig.json`, et pourquoi c'est la racine du paquet",
+    "",
+    "Il est dans `plugin/tether/` — c'est-a-dire **la racine du paquet installe**.",
+    "Bun remonte les repertoires depuis le fichier compile et s'arrete au premier",
+    "`tsconfig.json` ; mesure, chaque palier donne un resultat different :",
+    "",
+    "  - `plugin/tether/tsconfig.json`  -> lu, l'erreur devient `@opentui/solid` ;",
+    "  - a la racine du **projet**       -> ignore si le fichier est sous node_modules ;",
+    "  - dans le `package.json`         -> ignore, Bun n'y lit pas `jsx`.",
+    "",
+    "C'est pour cela qu'il est pose dans `plugin/tether/` et qu'un second, a la racine",
+    "du depot, avait l'air correct et ne servait a rien : c'etait le fichier au mauvais",
+    "endroit, pour la mauvaise raison qu'il etait elegant."
   ],
   "exports": {
     "./server": "./plugin/tether/index.ts",
@@ -49,8 +61,7 @@
     "./tui": "./plugin/tether/tui.tsx"
   },
   "files": [
-    "plugin/tether",
-    "tsconfig.json"
+    "plugin/tether"
   ],
   "scripts": {
     "test": "node --experimental-strip-types --test plugin/tether/*.test.mjs"
