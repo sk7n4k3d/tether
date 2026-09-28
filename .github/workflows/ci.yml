@@ -29,7 +29,37 @@ jobs:
       # directement par `node --experimental-strip-types`, et le SDK opencode est
       # resolu par le serveur de test, pas par npm.
       - name: Tests
-        run: node --experimental-strip-types --test plugin/tether/*.test.mjs
+        # ⚠️ `tui-setup.test.mjs` en est **exclu** : il importe le TUI, donc du JSX.
+        # Node ne sait pas le charger, et le forcer a le faire ne ferait que
+        # l'echouer pour une raison sans rapport avec le code. Il a son propre
+        # job, avec Bun — voir `plugin-tui`.
+        run: |
+          node --experimental-strip-types --test \
+            plugin/tether/index.test.mjs \
+            plugin/tether/qr.test.mjs \
+            plugin/tether/registry.test.mjs \
+            plugin/tether/tui-config.test.mjs \
+            plugin/tether/tui-logic.test.mjs \
+            plugin/tether/ui-model.test.mjs \
+            plugin/tether/vapid.test.mjs \
+            plugin/tether/webpush.mutation.test.mjs \
+            plugin/tether/webpush.test.mjs
+
+  plugin-tui:
+    name: Plugin TUI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      # Le TUI se charge avec Bun, qui sait transformer le JSX. Node ne le peut pas :
+      # c'est la raison d'etre de ce job separe plutot que d'une option dans l'autre.
+      - name: Dependances
+        run: bun add --no-save @opentui/solid solid-js
+
+      - name: Tests
+        run: bun test plugin/tether/tui-setup.test.mjs
 
   app:
     name: App
