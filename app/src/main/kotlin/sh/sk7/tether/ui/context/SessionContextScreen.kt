@@ -41,6 +41,7 @@ import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
 import sh.sk7.tether.ui.i18n.Res
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * **Ce qui occupe la fenetre de contexte, et ce que ca coute.**
@@ -73,14 +74,14 @@ fun SessionContextScreen(
             }
 
             ContextUiState.Empty -> Centered(
-                title = Res.of(R.string.rien_fenetre_344f52),
+                title = stringResource(R.string.rien_fenetre_344f52),
                 body = "Cette session n'a encore rien envoyé à l'agent. " +
-                    Res.of(R.string.fenetre_remplira_premier_9569e8),
+                    stringResource(R.string.fenetre_remplira_premier_9569e8),
                 alert = false,
             )
 
             is ContextUiState.Error -> Centered(
-                title = Res.of(R.string.contexte_indisponible_58230a),
+                title = stringResource(R.string.contexte_indisponible_58230a),
                 body = current.message,
                 alert = true,
             )
@@ -93,10 +94,10 @@ fun SessionContextScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 item(key = "totals") {
-                    Block(title = Res.of(R.string.fenetre_3d6916)) {
+                    Block(title = stringResource(R.string.fenetre_3d6916)) {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             Text(
-                                text = "${current.entryCount} message" +
+                                text = pluralStringResource(R.plurals.message, current.entryCount, current.entryCount) +
                                     (if (current.entryCount > 1) "s" else "") +
                                     " partiront au prochain tour",
                                 style = MaterialTheme.typography.titleSmall,
@@ -104,8 +105,8 @@ fun SessionContextScreen(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                                Figure(count(current.totalInput), Res.of(R.string.tokens_f0ab08))
-                                Figure(count(current.totalOutput), Res.of(R.string.tokens_out_332354))
+                                Figure(count(current.totalInput), stringResource(R.string.tokens_f0ab08))
+                                Figure(count(current.totalOutput), stringResource(R.string.tokens_out_332354))
                                 Figure(money(current.totalCost), "coût")
                             }
                         }
@@ -117,7 +118,7 @@ fun SessionContextScreen(
                 // additionner 96 lignes pour le voir.
                 current.heaviest?.let { heavy ->
                     item(key = "heaviest") {
-                        Block(title = Res.of(R.string.lourd_dc257e)) {
+                        Block(title = stringResource(R.string.lourd_dc257e)) {
                             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -141,7 +142,7 @@ fun SessionContextScreen(
                                     // taille qui explique ou est passe le contexte. Afficher
                                     // 10 000 caracteres noierait l'ecran sans rien apprendre.
                                     Text(
-                                        text = Res.of(R.string.resume_count_heavy_9f1c77, count(heavy.summarySize.toLong())) +
+                                        text = stringResource(R.string.resume_count_heavy_9f1c77, count(heavy.summarySize.toLong())) +
                                             " caractères — il tient lieu de tout ce qui précède.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TetherTextSecondary,
@@ -153,7 +154,7 @@ fun SessionContextScreen(
                 }
 
                 item(key = "by-type-title") {
-                    Text(Res.of(R.string.part_cout_728b35),
+                    Text(stringResource(R.string.part_cout_728b35),
                         style = MaterialTheme.typography.titleSmall,
                         color = TetherTextPrimary,
                         fontWeight = FontWeight.SemiBold,

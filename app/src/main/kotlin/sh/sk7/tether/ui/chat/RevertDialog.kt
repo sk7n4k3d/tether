@@ -39,6 +39,7 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * **Confirmer un retour en arrière, en voyant ce qu'il touche.**
@@ -117,7 +118,11 @@ fun RevertDialog(
                     text = if (current.preview.isEmpty) {
                         stringResource(R.string.revenir_ici_1a6293)
                     } else {
-                        "Revenir ici modifiera ${current.preview.fileCount} fichier" +
+                        "Revenir ici modifiera " + pluralStringResource(
+                            R.plurals.fichier,
+                            current.preview.fileCount,
+                            current.preview.fileCount,
+                        ) +
                             (if (current.preview.fileCount > 1) "s" else "")
                     },
                     color = TetherTextPrimary,

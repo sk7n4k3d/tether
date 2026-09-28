@@ -443,7 +443,7 @@ private fun EmptyApprovals(formsWaiting: Int) {
                 if (formsWaiting == 1) {
                     stringResource(R.string.formulaire_attend_reponse_06efba)
                 } else {
-                    stringResource(R.string.formswaiting_formulaires_attendent_6acd09)
+                    stringResource(R.string.formswaiting_formulaires_attendent_6acd09, formsWaiting)
                 }
             } else {
                 "L'agent travaille avec les droits qu'il a déjà. " +

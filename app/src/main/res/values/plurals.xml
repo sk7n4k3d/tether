@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERE PAR OUTIL : ne pas editer a la main sans mettre a jour l'outil.
+
+  Les pluriels sont ici, et pas dans `strings.xml`, parce que le francais n'a pas la
+  meme regle que l'anglais : le pluriel porte sur le nom, et « 0 session » est
+  **singulier** en francais. Android sait cela ; `« %1$s autorisation(s) »` ne le sait
+  pas, et affiche « 1 autorisation(s) ».
+-->
+<resources>
+    <plurals name="sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+
+    <plurals name="message">
+        <item quantity="one">%1$d message</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+
+    <plurals name="formulaire">
+        <item quantity="one">%1$d formulaire attend une réponse</item>
+        <item quantity="other">%1$d formulaires attendent une réponse</item>
+    </plurals>
+
+    <plurals name="formulaire_attente">
+        <item quantity="one">%1$d formulaire</item>
+        <item quantity="other">%1$d formulaires</item>
+    </plurals>
+
+    <plurals name="arbre">
+        <item quantity="one">%1$d arbre</item>
+        <item quantity="other">%1$d arbres</item>
+    </plurals>
+
+    <plurals name="fichier">
+        <item quantity="one">%1$d fichier</item>
+        <item quantity="other">%1$d fichiers</item>
+    </plurals>
+
+    <plurals name="sous_agent">
+        <item quantity="one">%1$d sous-agent</item>
+        <item quantity="other">%1$d sous-agents</item>
+    </plurals>
+
+    <plurals name="actif">
+        <item quantity="one">%1$d actif</item>
+        <item quantity="other">%1$d actifs</item>
+    </plurals>
+
+    <plurals name="autorisation">
+        <item quantity="one">%1$d autorisation</item>
+        <item quantity="other">%1$d autorisations</item>
+    </plurals>
+
+    <plurals name="resultat">
+        <item quantity="one">%1$d résultat</item>
+        <item quantity="other">%1$d résultats</item>
+    </plurals>
+
+    <plurals name="occurrence">
+        <item quantity="one">%1$d occurrence</item>
+        <item quantity="other">%1$d occurrences</item>
+    </plurals>
+
+    <plurals name="caracteres">
+        <item quantity="one">%1$d caractère</item>
+        <item quantity="other">%1$d caractères</item>
+    </plurals>
+
+    <plurals name="caractere_max">
+        <item quantity="one">%1$d caractère maximum</item>
+        <item quantity="other">%1$d caractères maximum</item>
+    </plurals>
+
+    <plurals name="caractere_min">
+        <item quantity="one">%1$d caractère minimum</item>
+        <item quantity="other">%1$d caractères minimum</item>
+    </plurals>
+
+    <plurals name="choix_min">
+        <item quantity="one">%1$d choix minimum</item>
+        <item quantity="other">%1$d choix minimum</item>
+    </plurals>
+
+    <plurals name="choix_max">
+        <item quantity="one">%1$d choix maximum</item>
+        <item quantity="other">%1$d choix maximum</item>
+    </plurals>
+
+    <plurals name="obligatoire">
+        <item quantity="one">%1$d obligatoire</item>
+        <item quantity="other">%1$d obligatoires</item>
+    </plurals>
+
+    <plurals name="autre">
+        <item quantity="one">%1$d autre</item>
+        <item quantity="other">%1$d autres</item>
+    </plurals>
+
+    <plurals name="session_attente">
+        <item quantity="one">%1$d session en attente</item>
+        <item quantity="other">%1$d sessions en attente</item>
+    </plurals>
+</resources>

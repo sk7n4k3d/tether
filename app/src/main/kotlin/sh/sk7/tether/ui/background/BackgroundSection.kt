@@ -192,7 +192,7 @@ private fun BackgroundRow(
             startedAt?.let { start ->
                 val minutes = (now - start) / 60_000
                 if (minutes > 0) {
-                    Text(stringResource(R.string.depuis_minutes_min_1b885f),
+                    Text(stringResource(R.string.depuis_minutes_min_1b885f, minutes),
                         style = TetherDataStyle,
                         color = TetherTextMuted,
                     )

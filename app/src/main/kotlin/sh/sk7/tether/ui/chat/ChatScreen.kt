@@ -330,12 +330,12 @@ fun ChatScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Lucide.ArrowLeft, contentDescription = Res.of(R.string.retour_e5befb))
+                            Icon(Lucide.ArrowLeft, contentDescription = stringResource(R.string.retour_e5befb))
                         }
                     },
                     actions = {
                         IconButton(onClick = { searchOpen = !searchOpen }) {
-                            Icon(Lucide.Search, contentDescription = Res.of(R.string.rechercher_conversation_045f86))
+                            Icon(Lucide.Search, contentDescription = stringResource(R.string.rechercher_conversation_045f86))
                         }
                         // ⚠️ « Passer en arrière-plan » n'apparaît QUE quand quelque chose tourne.
                         // La route est un no-op quand rien ne bloque (doc serveur) : l'afficher au
@@ -346,7 +346,7 @@ fun ChatScreen(
                             IconButton(onClick = viewModel::backgroundTools) {
                                 Icon(
                                     Lucide.PanelBottomOpen,
-                                    contentDescription = Res.of(R.string.deplacer_outils_arriere_3bd804),
+                                    contentDescription = stringResource(R.string.deplacer_outils_arriere_3bd804),
                                 )
                             }
                         }
@@ -355,16 +355,16 @@ fun ChatScreen(
                         // et qu'un client de chat n'a pas. Les enfouir reviendrait a les rendre
                         // invisibles — or c'est precisement ce qu'on vient chercher.
                         IconButton(onClick = onOpenDiff) {
-                            Icon(Lucide.GitCompare, contentDescription = Res.of(R.string.fichiers_modifies_75be38))
+                            Icon(Lucide.GitCompare, contentDescription = stringResource(R.string.fichiers_modifies_75be38))
                         }
                         IconButton(onClick = onOpenContext) {
-                            Icon(Lucide.Layers, contentDescription = Res.of(R.string.fenetre_contexte_e0de8f))
+                            Icon(Lucide.Layers, contentDescription = stringResource(R.string.fenetre_contexte_e0de8f))
                         }
                         // ⚠️ L'export est une action d'ECRAN, pas de message : on exporte la
                         // conversation entiere. Le mettre dans le menu d'un message laisserait
                         // croire qu'on n'exporte que lui.
                         IconButton(onClick = { exporting = true }) {
-                            Icon(Lucide.Download, contentDescription = Res.of(R.string.exporter_conversation_a7bf5e))
+                            Icon(Lucide.Download, contentDescription = stringResource(R.string.exporter_conversation_a7bf5e))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -729,7 +729,7 @@ private fun QueuedBar(
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         Text(
-            text = if (queued.size == 1) Res.of(R.string.message_attente_37261a) else "${queued.size} messages en attente",
+            text = if (queued.size == 1) stringResource(R.string.message_attente_37261a) else "${queued.size} messages en attente",
             style = TetherDataStyle,
             color = TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
@@ -759,7 +759,7 @@ private fun QueuedRow(
     onCancel: () -> Unit,
     onToggleMode: (String) -> Unit,
 ) {
-    val modeLabel = if (message.isSteering) Res.of(R.string.corrige_tour_cours_7b555b) else Res.of(R.string.attend_tour_b9c8a6)
+    val modeLabel = if (message.isSteering) stringResource(R.string.corrige_tour_cours_7b555b) else stringResource(R.string.attend_tour_b9c8a6)
     val tint = if (message.isSteering) LocalAccent.current else TetherTextSecondary
 
     Row(
@@ -780,7 +780,7 @@ private fun QueuedRow(
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = message.text.ifBlank { Res.of(R.string.message_sans_texte_362f1e) },
+                text = message.text.ifBlank { stringResource(R.string.message_sans_texte_362f1e) },
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextPrimary,
                 maxLines = 2,
@@ -804,9 +804,9 @@ private fun QueuedRow(
                     // attente (queue). L'icone ne suffit pas seule — la description dit l'action.
                     imageVector = if (message.isSteering) Lucide.Hourglass else Lucide.Zap,
                     contentDescription = if (message.isSteering) {
-                        Res.of(R.string.faire_attendre_message_3bbfc9)
+                        stringResource(R.string.faire_attendre_message_3bbfc9)
                     } else {
-                        Res.of(R.string.corriger_tour_cours_fd9c81)
+                        stringResource(R.string.corriger_tour_cours_fd9c81)
                     },
                     tint = TetherTextSecondary,
                     modifier = Modifier.size(14.dp),
@@ -826,7 +826,7 @@ private fun QueuedRow(
             IconButton(onClick = onCancel, modifier = Modifier.size(28.dp)) {
                 Icon(
                     imageVector = Lucide.X,
-                    contentDescription = Res.of(R.string.annuler_message_attente_812a6f),
+                    contentDescription = stringResource(R.string.annuler_message_attente_812a6f),
                     tint = TetherTextSecondary,
                     modifier = Modifier.size(14.dp),
                 )
@@ -1006,7 +1006,7 @@ private fun MessageActions(
         //    **jamais**, et le bouton s'affichait sur des messages non confirmes. C'est la
         //    propriete du modele qui tranche, pas une copie du prefixe dans un fichier d'UI.
         if (onRevert != null && message.role == Role.Assistant && !message.isOptimistic && !isLast) {
-            MessageAction(Res.of(R.string.revenir_ici_aed777), Lucide.Undo2) { onRevert(message) }
+            MessageAction(stringResource(R.string.revenir_ici_aed777), Lucide.Undo2) { onRevert(message) }
         }
     }
 }
@@ -1146,13 +1146,13 @@ private fun HistoryTopRow(
                     )
                 }
                 Text(
-                    text = if (loading) Res.of(R.string.chargement_01cba1) else Res.of(R.string.remonter_historique_5d6bfc),
+                    text = if (loading) stringResource(R.string.chargement_01cba1) else stringResource(R.string.remonter_historique_5d6bfc),
                     style = TetherDataStyle,
                     color = TetherTextSecondary,
                 )
             }
         } else {
-            Text(Res.of(R.string.debut_conversation_953d3d),
+            Text(stringResource(R.string.debut_conversation_953d3d),
                 style = TetherDataStyle,
                 color = TetherTextMuted,
             )
@@ -1340,7 +1340,7 @@ private fun RawFallback(raw: String) {
     // serait une complication pour rien, et le projet s'interdit les controles sans effet.
     if (raw.length > RAW_COLLAPSE_THRESHOLD) {
         CollapsibleBlock(
-            summary = Res.of(R.string.contenu_brut_formatrawsize_8d25a7, formatRawSize(raw.length)),
+            summary = stringResource(R.string.contenu_brut_formatrawsize_8d25a7, formatRawSize(raw.length)),
             detail = raw,
             summaryColor = TetherTextSecondary,
             detailColor = TetherTextSecondary,
@@ -1519,7 +1519,7 @@ private fun ChatSearchBar(
             )
             Box(modifier = Modifier.weight(1f)) {
                 if (query.isEmpty()) {
-                    Text(Res.of(R.string.rechercher_conversation_045f86),
+                    Text(stringResource(R.string.rechercher_conversation_045f86),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TetherTextSecondary,
                     )
@@ -1543,7 +1543,7 @@ private fun ChatSearchBar(
             // modificateurs ne peut plus l'inverser.
             // ⚠️ Lue **avant** le `Modifier` : le lambda de `semantics` s'execute au
             // moment de la pose du modificateur, hors de l'arbre de composition.
-            val descFermerRecherche = Res.of(R.string.fermer_recherche_af7116)
+            val descFermerRecherche = stringResource(R.string.fermer_recherche_af7116)
             Box(
                 modifier = Modifier
                     .size(TetherDimensions.touchTarget)
@@ -1567,13 +1567,13 @@ private fun ChatSearchBar(
         if (query.isNotBlank()) {
             Text(
                 text = if (result.isEmpty) {
-                    Res.of(R.string.aucun_resultat_query_3e9148)
+                    stringResource(R.string.aucun_resultat_query_3e9148, query)
                 } else {
                     val msgs = result.messageCount
                     val total = result.total
                     buildString {
-                        append(Res.of(R.string.msgs_message_msgs_d27038, if (msgs > 1) "s" else ""))
-                        append(Res.of(R.string.total_occurrence_total_fdd500, if (total > 1) "s" else ""))
+                        append(stringResource(R.string.msgs_message_msgs_d27038, if (msgs > 1) "s" else ""))
+                        append(stringResource(R.string.total_occurrence_total_fdd500, if (total > 1) "s" else ""))
                         // ⚠️ **On dit ou ca se cache** (bug B14). « 3 messages » sans rien de
                         // visible a l'ecran laisse croire a un bug : le texte est dans le
                         // raisonnement ou une sortie d'outil, tous deux **replies**. Nommer le
@@ -1654,9 +1654,9 @@ private fun ScrollToBottomButton(
             Icon(
                 imageVector = Lucide.ArrowDown,
                 contentDescription = if (streaming) {
-                    Res.of(R.string.agent_travaille_aller_31ca84)
+                    stringResource(R.string.agent_travaille_aller_31ca84)
                 } else {
-                    Res.of(R.string.aller_fin_conversation_529c3a)
+                    stringResource(R.string.aller_fin_conversation_529c3a)
                 },
                 modifier = Modifier.size(20.dp),
             )

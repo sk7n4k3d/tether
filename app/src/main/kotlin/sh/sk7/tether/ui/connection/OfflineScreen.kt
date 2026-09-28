@@ -99,10 +99,10 @@ fun OfflineScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val (icon, title) = when (state.status) {
-            ConnectionStatus.Unauthorized -> Lucide.KeyRound to Res.of(R.string.identifiants_refuses_085fd1)
-            ConnectionStatus.NotConfigured -> Lucide.Settings to Res.of(R.string.aucun_serveur_configure_380be4)
-            ConnectionStatus.Online -> Lucide.PlugZap to Res.of(R.string.serveur_joignable_9759d5)
-            else -> Lucide.WifiOff to Res.of(R.string.serveur_injoignable_a136dc)
+            ConnectionStatus.Unauthorized -> Lucide.KeyRound to stringResource(R.string.identifiants_refuses_085fd1)
+            ConnectionStatus.NotConfigured -> Lucide.Settings to stringResource(R.string.aucun_serveur_configure_380be4)
+            ConnectionStatus.Online -> Lucide.PlugZap to stringResource(R.string.serveur_joignable_9759d5)
+            else -> Lucide.WifiOff to stringResource(R.string.serveur_injoignable_a136dc)
         }
 
         Icon(
@@ -145,7 +145,7 @@ fun OfflineScreen(
         }
 
         Action(
-            label = if (state.checking) Res.of(R.string.verification_30a679) else "Réessayer",
+            label = if (state.checking) stringResource(R.string.verification_30a679) else "Réessayer",
             icon = Lucide.RefreshCw,
             primary = true,
             enabled = !state.checking,
@@ -155,7 +155,7 @@ fun OfflineScreen(
         )
 
         Action(
-            label = Res.of(R.string.reglages_00d632),
+            label = stringResource(R.string.reglages_00d632),
             icon = Lucide.Settings,
             primary = false,
             enabled = true,
@@ -209,19 +209,19 @@ private fun AddressCard(host: String, status: ConnectionStatus) {
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        Text(Res.of(R.string.adresse_ab87f8),
+        Text(stringResource(R.string.adresse_ab87f8),
             style = TetherDataStyle,
             color = TetherTextSecondary,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = host.ifBlank { Res.of(R.string.non_renseignee_183c75) },
+            text = host.ifBlank { stringResource(R.string.non_renseignee_183c75) },
             style = TetherDataStyle,
             color = TetherTextPrimary,
         )
         if (looksLocal && status != ConnectionStatus.Online) {
             // ⚠️ Le cas qui merite d'etre dit : sur un telephone, `127.0.0.1` est le telephone.
-            Text(Res.of(R.string.telephone_127_designe_d8d31a) +
+            Text(stringResource(R.string.telephone_127_designe_d8d31a) +
                       " " + stringResource(R.string.utilise_machine_fait_c8b7d4),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherAlert,

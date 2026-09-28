@@ -105,7 +105,8 @@ fun ServerScreen(
                                 modifier = Modifier.size(16.dp),
                             )
                             Text(
-                                text = state.version?.let { stringResource(R.string.opencode_f119e9) } ?: "opencode",
+                                text = state.version?.let { stringResource(R.string.opencode_f119e9, it) }
+                                    ?: "opencode",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TetherTextPrimary,
                             )
@@ -352,7 +353,8 @@ private fun NamedLine(
 @Composable
 private fun MoreLine(remaining: Int, what: String) {
     Text(
-        text = stringResource(R.string.remaining_autre_remaining_57e09b, if (remaining > 1) "s" else "", what),
+        text = stringResource(R.string.remaining_autre_remaining_57e09b, remaining) +
+            " " + what,
         style = TetherDataStyle,
         color = TetherTextMuted,
     )

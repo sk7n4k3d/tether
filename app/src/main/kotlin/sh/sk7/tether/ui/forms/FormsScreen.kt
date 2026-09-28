@@ -126,7 +126,7 @@ private fun FormList(
         item(key = "count") {
             Text(
                 text = if (state.forms.size == 1) {
-                    Res.of(R.string.formulaire_attend_reponse_95c199)
+                    stringResource(R.string.formulaire_attend_reponse_95c199)
                 } else {
                     "${state.forms.size} formulaires attendent une réponse"
                 },
@@ -180,8 +180,8 @@ private fun FormCard(form: FormInfoDto, onClick: () -> Unit) {
         }
         Text(
             text = buildString {
-                append(if (form.fields.size == 1) Res.of(R.string.champ_6c6a0f) else "${form.fields.size} champs")
-                if (required > 0) append(Res.of(R.string.required_obligatoire_368684) + if (required > 1) "s" else "")
+                append(if (form.fields.size == 1) stringResource(R.string.champ_6c6a0f) else "${form.fields.size} champs")
+                if (required > 0) append(stringResource(R.string.required_obligatoire_368684, required))
             },
             style = TetherDataStyle,
             color = TetherTextSecondary,
@@ -189,7 +189,7 @@ private fun FormCard(form: FormInfoDto, onClick: () -> Unit) {
         // ⚠️ Une elicitation MCP (`sessionID:"global"`) ne vient d'aucune session : le dire evite
         // de croire qu'une conversation est bloquee alors que la question est globale.
         if (form.isGlobal) {
-            Text(Res.of(R.string.question_globale_hors_46c623),
+            Text(stringResource(R.string.question_globale_hors_46c623),
                 style = MaterialTheme.typography.bodySmall,
                 color = TetherTextMuted,
             )
@@ -223,7 +223,7 @@ private fun FormDetail(
                     color = TetherTextPrimary,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(Res.of(R.string.cochez_recu_ressources_b72d25) +
+                Text(stringResource(R.string.cochez_recu_ressources_b72d25) +
                           " " + stringResource(R.string.reponse_serveur_exige_c2a2d1),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
@@ -248,7 +248,7 @@ private fun FormDetail(
         if (hidden.isNotEmpty()) {
             item(key = "hidden") {
                 Text(
-                    text = hidden.joinToString(prefix = Res.of(R.string.champs_fournis_agent_96cb48), separator = ", ") { it.label() },
+                    text = hidden.joinToString(prefix = stringResource(R.string.champs_fournis_agent_96cb48), separator = ", ") { it.label() },
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextMuted,
                 )
@@ -441,7 +441,7 @@ private fun ExternalField(field: FormFieldDto) {
         field.url?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = TetherDataStyle, color = LocalAccent.current)
         }
-        Text(Res.of(R.string.sera_confirme_comme_27018c),
+        Text(stringResource(R.string.sera_confirme_comme_27018c),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextMuted,
         )
@@ -454,11 +454,11 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         if (state.fieldErrors.isNotEmpty()) {
             Notice(
-                Res.of(R.string.envoi_bloque_b58f67) + state.fieldErrors.joinToString(", ") { it.message },
+                stringResource(R.string.envoi_bloque_b58f67) + state.fieldErrors.joinToString(", ") { it.message },
             )
         }
             // La description est lue ici : `semantics` s'execute hors composition.
-            val descEnvoyer_reponse = Res.of(R.string.envoyer_reponse_5783f5)
+            val descEnvoyer_reponse = stringResource(R.string.envoyer_reponse_5783f5)
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(TetherDimensions.cornerSm))
@@ -476,10 +476,10 @@ private fun SubmitRow(state: FormsUiState, onSubmit: () -> Unit) {
                     strokeWidth = 2.dp,
                     color = LocalAccent.current,
                 )
-                Text(Res.of(R.string.envoi_a62561), style = TetherDataStyle, color = TetherTextSecondary)
+                Text(stringResource(R.string.envoi_a62561), style = TetherDataStyle, color = TetherTextSecondary)
             } else {
                 Icon(Lucide.Send, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(14.dp))
-                Text(Res.of(R.string.envoyer_e9ce24), style = TetherDataStyle, color = LocalAccent.current, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.envoyer_e9ce24), style = TetherDataStyle, color = LocalAccent.current, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -533,7 +533,7 @@ private fun EmptyForms(error: String?, onRetry: () -> Unit) {
             modifier = Modifier.size(32.dp),
         )
         Text(
-            text = if (error != null) Res.of(R.string.lecture_impossible_f1df6b) else Res.of(R.string.aucun_formulaire_attente_f42b48),
+            text = if (error != null) stringResource(R.string.lecture_impossible_f1df6b) else stringResource(R.string.aucun_formulaire_attente_f42b48),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
@@ -541,13 +541,13 @@ private fun EmptyForms(error: String?, onRetry: () -> Unit) {
         Text(
             text = error
                 ?: "L'agent n'attend aucune réponse pour le moment. " +
-                Res.of(R.string.formulaire_apparaitra_ici_58c6e4),
+                stringResource(R.string.formulaire_apparaitra_ici_58c6e4),
             style = MaterialTheme.typography.bodySmall,
             color = TetherTextSecondary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
         if (error != null) {
-            Text(Res.of(R.string.reessayer_895d41),
+            Text(stringResource(R.string.reessayer_895d41),
                 style = TetherDataStyle,
                 color = LocalAccent.current,
                 modifier = Modifier

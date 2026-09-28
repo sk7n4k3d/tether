@@ -18,6 +18,7 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * **En-tete de consommation** — toujours visible en haut de la liste, jamais demande.
@@ -56,7 +57,7 @@ fun UsageHeader(usage: UsageInfo, modifier: Modifier = Modifier) {
                 )
             }
             Text(
-                text = "sur ${usage.sessions} sessions",
+                text = "sur " + pluralStringResource(R.plurals.sessions, usage.sessions, usage.sessions),
                 style = TetherDataStyle,
                 color = TetherTextSecondary,
             )

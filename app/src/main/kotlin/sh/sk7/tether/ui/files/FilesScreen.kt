@@ -199,7 +199,7 @@ private fun BrowseSection(
                         text = if (term.isBlank()) {
                             stringResource(R.string.dossier_vide_e999c9)
                         } else {
-                            stringResource(R.string.aucun_fichier_dossier_3c389a)
+                            stringResource(R.string.aucun_fichier_dossier_3c389a, term)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherTextSecondary,
@@ -450,7 +450,7 @@ private fun RecursiveSearchSection(
                     modifier = Modifier.size(14.dp),
                 )
             }
-            Text(stringResource(R.string.chercher_query_partout_4f86fb),
+            Text(stringResource(R.string.chercher_query_partout_4f86fb, query, localCount),
                 style = TetherDataStyle,
                 color = LocalAccent.current,
             )
@@ -460,7 +460,7 @@ private fun RecursiveSearchSection(
 
         results?.let { found ->
             if (found.isEmpty()) {
-                Text(stringResource(R.string.aucun_fichier_query_7c2d9d),
+                Text(stringResource(R.string.aucun_fichier_query_7c2d9d, query),
                     style = MaterialTheme.typography.bodySmall,
                     color = TetherTextSecondary,
                 )

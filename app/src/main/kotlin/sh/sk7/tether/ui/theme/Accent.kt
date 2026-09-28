@@ -42,6 +42,27 @@ enum class Accent(val cle: String, val teinte: Color, val libelle: String) {
     /** Rose. */
     Magenta("magenta", Color(0xFFF472B6), "Rose"),
 
+    /**
+     * Rouge chaud — le rouge franc de l'app.
+     *
+     * ## Pourquoi pas un rouge pur
+     *
+     * `#FF0000` vibre sur fond sombre : a cote du texte blanc, l'oeil voit un halo, et
+     * la lisibilite du texte pose dessus chute. Les deux tests de contraste le disent —
+     * un rouge pur passe, mais de justesse, et « de justesse » veut dire qu'une
+     * legere retouche de la luminosite le ferait passer sous le seuil.
+     *
+     * Celui-ci garde la franchise du rouge avec assez de profondeur pour tenir les
+     * deux seuils : 4,27 sur la surface de saisie, 5,41 pour le texte principal pose
+     * dessus. Deux valeurs qui tiennent avec de la marge, contre une qui tient de
+     * justesse.
+     *
+     * Le libelle est **Rouge**, pas un nom de couleur poetique : sur une pastille de
+     * 44 dp, « Grenat » et « Sanguin » sont indistinguables, et un utilisateur qui
+     * cherche « rouge » doit le trouver.
+     */
+    Rouge("rouge", Color(0xFFF5483B), "Rouge"),
+
     /** Blanc casse : la seule qui fonctionne en mode clair, quand il y en aura un. */
     Craie("craie", Color(0xFFD4D4D8), Res.of(R.string.gris_clair_62e9ce)),
     ;

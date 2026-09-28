@@ -362,7 +362,7 @@ fun SessionRow(
                 // parent : un sous-agent n'a pas de sous-agents. Le libellé dit « actifs », pas
                 // « enfants » — le total connu est déjà porté par le chevron.
                 if (!isSub && activeSubs > 0) {
-                    Text(stringResource(R.string.activesubs_actif_d7a451) + if (activeSubs > 1) "s" else "",
+                    Text(stringResource(R.string.activesubs_actif_d7a451, activeSubs),
                         style = TetherDataStyle,
                         color = LocalAccent.current,
                         modifier = Modifier

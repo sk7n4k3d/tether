@@ -115,7 +115,6 @@
     <string name="composer_pulse_6bf03d">composer-pulse</string>
     <string name="composer_stop_f8a665">composer-stop</string>
     <string name="compte_c45740">Compte</string>
-    <string name="connecte_75c661">connecté</string>
     <string name="connecte_opencode_04883d">connecté · opencode %1$s</string>
     <string name="connecter_fedf24">Se connecter</string>
     <string name="connexion_807c20">Connexion…</string>
@@ -401,6 +400,7 @@
     <string name="supprimer_session_40a83f">Supprimer cette session ?</string>
     <string name="systeme_propose_demande_3449aa">Si le système ne propose plus la demande, autorise « Appareils à proximité</string>
     <string name="t_192_ca76d6">sur 192.0.2.10.</string>
+    <string name="t_connecte_75c661">connecté</string>
     <string name="taux_echec_6c8876">taux d\'échec</string>
     <string name="telephone_127_designe_d8d31a">Sur un téléphone, 127.0.0.1 désigne le téléphone lui-même.</string>
     <string name="telephone_27f1e6">telephone.</string>

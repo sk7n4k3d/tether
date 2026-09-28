@@ -54,6 +54,7 @@ import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextSecondary
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
+import androidx.compose.ui.res.pluralStringResource
 
 /**
  * **Les arbres de travail isolés.**
@@ -205,7 +206,7 @@ fun WorktreeScreen(
                 if (state.items.isNotEmpty()) {
                     item(key = "list-title") {
                         Text(
-                            text = "${state.items.size} arbre" +
+                            text = pluralStringResource(R.plurals.arbre, state.items.size, state.items.size) +
                                 (if (state.items.size > 1) "s" else "") + " de travail",
                             style = MaterialTheme.typography.titleSmall,
                             color = TetherTextPrimary,

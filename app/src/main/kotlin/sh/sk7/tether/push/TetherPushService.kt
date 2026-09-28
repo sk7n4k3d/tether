@@ -572,7 +572,7 @@ fun describePushStatus(status: PushStatus, chaine: (Int) -> String): PushVerdict
 
     else -> PushVerdict(
         kind = PushStateKind.Ready,
-        label = chaine(R.string.connecte_75c661),
+        label = chaine(R.string.t_connecte_75c661),
         detail = chaine(R.string.endpoint_enregistre_alertes_834e66),
         tone = PushTone.Ready,
         retryable = true,
