@@ -41,6 +41,14 @@ export const Tether = {
             properties: { p256dh: { type: "string" }, auth: { type: "string" } },
             required: ["p256dh", "auth"],
           },
+          /**
+           * Le jeton lu dans le QR, **a usage unique**.
+           *
+           * Il est obligatoire cote implementation — pas dans `required`, parce que le
+           * schema n'est pas applique et que `required`manquerait n'empecherait rien.
+           * Le mettre ici documente le contrat ; `consumePairing` le fait respecter.
+           */
+          pairingToken: { type: "string" },
           alerts: {
             type: "object",
             properties: { turnEnd: { type: "boolean" }, attention: { type: "boolean" }, progress: { type: "boolean" } },
@@ -61,6 +69,18 @@ export const Tether = {
         // Erreurs declarees : chaque cle devient un `type` dans la reponse. Le client
         // peut donc les traiter nommement au lieu d'analyser un message libre.
         invalid: {
+          type: "object",
+          properties: { reason: { type: "string" } },
+          required: ["reason"],
+          additionalProperties: false,
+        },
+        /**
+         * Pas d'appairage, ou jeton deja consomme.
+         *
+         * Distincte de `invalid` parce que l'app doit reagir differemment : `invalid`
+         * veut dire « corrige ta requete », `unpaired` veut dire « rescane le QR ».
+         */
+        unpaired: {
           type: "object",
           properties: { reason: { type: "string" } },
           required: ["reason"],
@@ -121,8 +141,8 @@ export const Tether = {
     },
 
     /**
-     * L'etat d'un appairage en cours. Ne renvoie **jamais** le jeton : il vit dans
-     * le QR, que seul l'utilisateur scanne.
+     * L'etat d'un appairage en cours. Ne renvoie **jamais** le jeton : l'app n'en a
+     * pas besoin, c'est elle qui le *presente*.
      */
     pairingStatus: {
       input: { type: "object", properties: {} },
@@ -131,6 +151,38 @@ export const Tether = {
         properties: { active: { type: "boolean" }, expiresInMs: { type: "number" } },
         required: ["active"],
         additionalProperties: false,
+      },
+    },
+
+    /**
+     * Le TUI demande un jeton et recoit le **lien complet**, pret a encoder en QR.
+     *
+     * Cette route est la seule ou le jeton transite en clair. Elle est derriere la meme
+     * authentification que le reste de l'API, donc elle n'est atteignable que depuis la
+     * machine ou l'utilsateur a deja entre le mot de passe. `localhost` en `http` est
+     * accepte en developpement ; tout le reste doit etre en `https`, sinon le lien
+     * d'appairage ferait voyager le jeton en clair sur le reseau.
+     */
+    pair: {
+      input: {
+        type: "object",
+        properties: { server: { type: "string" } },
+        required: ["server"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: { link: { type: "string" }, expiresInMs: { type: "number" } },
+        required: ["link"],
+        additionalProperties: false,
+      },
+      errors: {
+        invalid: {
+          type: "object",
+          properties: { reason: { type: "string" } },
+          required: ["reason"],
+          additionalProperties: false,
+        },
       },
     },
   },

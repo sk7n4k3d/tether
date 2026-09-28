@@ -24,6 +24,7 @@
  */
 
 import { readFileSync } from "node:fs"
+import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto"
 
 import { resolveConfig, disabledBy, type TetherConfig } from "./config.js"
 import { encrypt, pushHeaders, vapidHeader, type PushSubscription } from "./webpush.js"
@@ -39,6 +40,14 @@ import {
   type Alerts,
 } from "./registry.js"
 import { encode, decode, attentionTitle, type Decoded } from "./protocol.js"
+import {
+  newToken,
+  pairingLink,
+  isValid,
+  remainingMs,
+  PAIRING_TTL_MS,
+  type Pairing,
+} from "./pairing.js"
 import { Tether } from "./rpc.js"
 
 const STORAGE_KEY = "devices"
@@ -180,18 +189,49 @@ export default {
     // ------------------------------------------------------------------
     // L'appairage — le jeton a usage unique que porte le QR
     //
-    // ⚠️ Declare **avant** le RPC : la fermeture `pairingStatus` le capture, et une
-    // `const` plus bas serait en zone morte au moment de l'appel. Une declaration
-    // apres usage se voit au premier `ReferenceError` en production, pas a la
-    // compilation.
+    // ⚠️ Un jeton a la fois, pas une `Map`. La version precedente gardait une
+    // `Map<string, number>` et lisait `pairing.get()` **sans argument** : une `Map`
+    // rend `undefined` pour une cle absente, donc `active` etait toujours `false` et
+    // aucun jeton n'etait jamais cree. Le type ne lattrape pas — `Map.get()` accepte
+    // une cle facultative — et rien ne leve : le statut disait juste « inactif » en
+    // permanence. Un seul objet `Pairing | null` ne permet pas cette erreur.
     // ------------------------------------------------------------------
 
-    const pairing = new Map<string, number>()
+    let current: Pairing | null = null
 
-    const pairingExpiryMs = (): number => {
-      const deadlines = [...pairing.values()]
-      if (deadlines.length === 0) return 0
-      return Math.max(0, Math.min(...deadlines) - Date.now())
+    const pairingExpiryMs = (): number => remainingMs(isValid(current) ? current : null)
+
+    /** Le jeton courant s'il est encore valable, sinon `null`. */
+    const livePairing = (): Pairing | null => (isValid(current) ? current : null)
+
+    /**
+     * Emet un jeton, **en remplacant** le precedent.
+     *
+     * Un seul a la fois est volontaire : deux QR affiches simultanement pourreraient
+     * l'utilisateur, et le second serait invalide sans qu'il puisse le savoir. La
+     * regle cote serveur est « un jeton vivant a la fois ».
+     */
+    const mintPairing = (server: string): Pairing => {
+      current = { token: newToken(), expiresAt: Date.now() + PAIRING_TTL_MS }
+      log("info", { event: "pairing_minted", expiresInMs: PAIRING_TTL_MS })
+      return current
+    }
+
+    /**
+     * Consomme le jeton present par l'app : a usage unique.
+     *
+     * Consommer **avant** d'eregistrer est ce qui rend l'usage unique vrai. Si
+     * l'enregistrement echoue apres, le jeton est perdu et l'utilisateur doit rescanner
+     * — c'est le bon compromis : preferer un jeton mort a un jeton reutilisable.
+     */
+    const consumePairing = (token: unknown): string | null => {
+      if (typeof token !== "string" || token.length === 0) return "jeton d'appairage manquant"
+      const vivant = livePairing()
+      if (!vivant) return "jeton d'appairage expire ou deja utilise"
+      // Comparaison a temps constant : le jeton est un secret, et sa longueur est fixe.
+      if (!timingSafeEqual(token, vivant.token)) return "jeton d'appairage invalide"
+      current = null
+      return null
     }
 
     // ------------------------------------------------------------------
@@ -217,6 +257,14 @@ export default {
         // 400 avec leur `type`, donc l'app peut les traiter nommement.
         const problem = validateSubscription(input)
         if (problem) return mctx.error("invalid", problem, { reason: problem })
+
+        // Le jeton d'appairage est **consomme** ici, avant tout enregistrement : c'est
+        // lui qui fait la ceremonie. Un endpoint UnifiedPush est une capacite
+        // d'ecriture sur le telephone ; savoir l'endpoint ne prouve pas le consentement
+        // a le recevoir, et le mot de passe du serveur prouve qu'on peut piloter
+        // opencode, pas qu'on veut etre notifie.
+        const jeton = consumePairing(input.pairingToken)
+        if (jeton) return mctx.error("unpaired", jeton, { reason: jeton })
 
         const device: Device = {
           deviceId: String(input.deviceId).slice(0, 64),
@@ -264,14 +312,32 @@ export default {
       },
 
       /**
-       * L'app demande le lien d'appairage en cours.
-       *
-       * Le jeton n'est **jamais** renvoye par ce RPC : il vit dans le QR, que seul
-       * l'utilisateur scanne. Renvoyer l'etat suffit a l'app, qui n'a pas besoin de
-       * le jeton — c'est elle qui le *presente*.
+       * L'etat d'un appairage en cours. Ne renvoie **jamais** le jeton : l'app n'en a
+       * pas besoin, c'est elle qui le *presente*.
        */
       async pairingStatus(_input: any, _mctx: any) {
-        return { active: pairing.get() !== null, expiresInMs: pairingExpiryMs() }
+        return { active: livePairing() !== null, expiresInMs: pairingExpiryMs() }
+      },
+
+      /**
+       * Le TUI demande un jeton, pour l'afficher en QR.
+       *
+       * C'est le seul point ou le jeton transite en clair, et il n'est disponible que
+       * depuis le TUI **sur la machine ou l' utilisateur a deja entre le mot de passe**
+       * — donc derriere la meme authentification que tout le reste de l'API. Le QR est
+       * la seule chose que l'utilisateur transporte, et il expire en 30 minutes.
+       */
+      async pair(input: any, mctx: any) {
+        const server = typeof input?.server === "string" ? input.server.trim() : ""
+        if (server.length === 0) return mctx.error("invalid", "adresse du serveur manquante", { reason: "adresse du serveur manquante" })
+        // Meme contrainte que `endpoint` : un lien d'appairage en `http://` ou en
+        // `file://` ferait pointer le telephone vers un service interne.
+        if (!server.startsWith("https://") && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(server)) {
+          return mctx.error("invalid", "adresse du serveur refusee (https, ou localhost en local)", { reason: "adresse du serveur refusee" })
+        }
+
+        const p = mintPairing(server)
+        return { link: pairingLink(server, p.token), expiresInMs: PAIRING_TTL_MS }
       },
     }
 
@@ -374,6 +440,22 @@ function validateSubscription(input: any): string | null {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Egalite a temps constant, sur deux chaines de **longueur egale**.
+ *
+ * Un jeton d'appairage est un secret : le comparer avec `===` laisse fuiter, par la
+ * duree de la comparaison, combien de caracteres premiers sont corrects. Sur 22
+ * caracteres base64url, ca reduit le travail de brute force de 22 a 21 — peu, mais le
+ * cout de la correctitude est nul, alors autant le payer.
+ *
+ * La longueur est verifiee avant : `timingSafeEqual` de `node:crypto` exige des buffers
+ * de meme taille, et un jeton d'une autre longueur n'est de toute facon pas valide.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  return nodeTimingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"))
+}
 
 function makeLogger(config: TetherConfig) {
   return (level: "info" | "warn" | "debug", payload: Record<string, unknown>) => {
