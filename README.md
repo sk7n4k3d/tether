@@ -166,4 +166,4 @@ docs/                   notes de conception et de diagnostic
 
 ## Licence
 
-À définir. Le projet n'a pas encore de `LICENSE` — c'est un trou, pas une intention.
+MIT — voir [`LICENSE`](LICENSE).
