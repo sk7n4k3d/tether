@@ -1,0 +1,36 @@
+{
+  "name": "tether",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Plugin opencode V2 : appairage d'appareils et notifications Web Push (RFC 8291) via UnifiedPush",
+  "license": "MIT",
+  "//": [
+    "Ce `package.json` existe pour que le plugin soit installable par",
+    "`opencode plugin add`, qui lit le champ `name` puis resout `<name>/server`,",
+    "`<name>/tui` et `<name>/rpc` (voir `PluginHost.resolve`).",
+    "",
+    "Il ne declare aucune dependance : le plugin n'en a aucune. Le client Android",
+    "est un projet Gradle a cote, et n'a rien a voir avec npm — `private: true`",
+    "l'empeche d'aboutir sur un registre par erreur.",
+    "",
+    "Les `exports` sont explicites, et c'est volontaire. Sans eux, la resolution",
+    "devine l'extension : le fichier du TUI est `tui.tsx`, qu'aucune resolution",
+    "par nom court ne trouve. Nommer chaque point d'entree evite cette dependance",
+    "a la convention d'extension du runner."
+  ],
+  "exports": {
+    "./server": "./plugin/tether/index.ts",
+    "./rpc": "./plugin/tether/rpc.ts",
+    "./tui": "./plugin/tether/tui.tsx"
+  },
+  "files": [
+    "plugin/tether"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test plugin/tether/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
