@@ -206,6 +206,26 @@ test("la charge utile porte un numero de version", () => {
   assert.equal(parsed.v, PROTOCOL_VERSION)
 })
 
+test("le titre du resume voyage, et reste optionnel", () => {
+  // ⚠️ Additif en v1 : une app qui ne connait pas `title` l'ignore et recompose le sien.
+  // C'est le seul moyen d'envoyer le titre d'un resume — l'en-tete `Title` de ntfy ne
+  // traverse pas UnifiedPush.
+  const avec = decode(encode({ text: "Trois fichiers modifies.", title: "Mise a jour Kotlin" }))
+  assert.equal(avec.title, "Mise a jour Kotlin")
+  assert.equal(avec.text, "Trois fichiers modifies.")
+
+  const sans = decode(encode({ text: "Trois fichiers modifies." }))
+  assert.equal(sans.title, undefined, "pas de titre vide dans la charge utile")
+  assert.equal(JSON.parse(encode({ text: "x" })).title, undefined, "la cle est absente, pas vide")
+})
+
+test("un titre vide n'est pas ecrit dans la charge utile", () => {
+  // `title: ""` ferait afficher une notification sans titre cote app, qui ecraserait le
+  // titre recompose. Absent vaut mieux que vide.
+  const parsed = JSON.parse(encode({ text: "x", title: "   " }))
+  assert.equal(parsed.title, undefined)
+})
+
 test("le JSON resout le probleme que les marqueurs ne pouvaient pas resoudre", () => {
   // Le test qui a fait changer le format. Un texte utilisateur **contenant** le
   // marqueur ne peut plus etre confondu avec un marqueur de transport : il vit

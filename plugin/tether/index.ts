@@ -23,7 +23,8 @@
  * pilotable, ce qu'il n'est pas.
  */
 
-import { readFileSync } from "node:fs"
+import { appendFileSync, readFileSync } from "node:fs"
+import { homedir } from "node:os"
 import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto"
 
 import { resolveConfig, disabledBy, type TetherConfig } from "./config.js"
@@ -40,6 +41,17 @@ import {
   type Alerts,
 } from "./registry.js"
 import { encode, decode, attentionTitle, type Decoded } from "./protocol.js"
+import { TOOL_NAMED, classify, sessionIdOf } from "./classify.js"
+import {
+  progressText,
+  summarize,
+  truncateBytes,
+  turnCompletedAt,
+  turnMaterial,
+  turnStartedAt,
+  type Resume,
+  type Resumeur,
+} from "./summary.js"
 import {
   newToken,
   pairingLink,
@@ -52,42 +64,15 @@ import { Tether } from "./rpc.js"
 
 const STORAGE_KEY = "devices"
 
-/** evenements V2 : la forme reelle, mesuree. `session.idle` ne suffit plus. */
-const TURN_END = new Set(["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])
-const ATTENTION = new Set(["permission.asked", "form.created"])
-
-/** Ce qu'on a decide de notifier, en pur. Teste sans opencode. */
-export function classify(event: any): { kind: "turnEnd" | "attention" | "progress" | null; tool?: string } {
-  const type: string | undefined = event?.type
-
-  if (ATTENTION.has(type ?? "")) {
-    return { kind: "attention", tool: toolOf(event) }
-  }
-  if (TURN_END.has(type ?? "")) {
-    return { kind: "turnEnd" }
-  }
-  if (typeof type === "string" && type.startsWith("session.tool.")) {
-    return { kind: "progress", tool: toolOf(event) }
-  }
-  return { kind: null }
-}
-
 /**
- * Le nom de l'outil. ⚠️ Mesure : `session.tool.called` **ne porte pas** `name`, il vient
- * de `session.tool.input.started`. Sans cette memorisation, la carte affiche « outil
- * inconnu » — et c'est le bug qui a fait porter lattention sur ce chemin en 2026-09.
+ * La cle du stockage ou le TUI ecrit la configuration.
+ *
+ * ⚠️ Le serveur ne la **lisait pas**. `resolveConfig(ctx.options ?? {})` ne passait que les
+ * options d'`opencode.jsonc`, donc tout ce qui se reglait depuis `/tether config` —
+ * `serverUrl`, `minSeconds`, `summaryUrl` — partait dans un stockage que personne ne relisait.
+ * C'est le meme defaut que `summaryUrl` lui-meme : une option declaree, documentee, et morte.
  */
-function toolOf(event: any): string | undefined {
-  const payload = event?.data ?? {}
-  if (typeof payload.name === "string" && payload.name) return payload.name
-  if (typeof payload.tool === "string" && payload.tool) return payload.tool
-  return undefined
-}
-
-/** L'identifiant de session, ou la forme V2 (`data.sessionID`) ou le legacy. */
-export function sessionIdOf(event: any): string | undefined {
-  return event?.data?.sessionID ?? event?.sessionID ?? event?.properties?.sessionID
-}
+const CONFIG_KEY = "config"
 
 export default {
   id: "tether",
@@ -96,7 +81,16 @@ export default {
   features: { rpc: true, tui: true },
 
   async setup(ctx: any) {
-    const config = resolveConfig(ctx?.options ?? {})
+    // ⚠️ Trois couches, dans l'ordre : ce que l'utilisateur a regle depuis `/tether config`
+    // (le stockage), puis les options d'`opencode.jsonc`, puis l'environnement. Lire le
+    // stockage est le correctif : sans lui, le reglage fait dans le TUI n'atteignait jamais
+    // le serveur (voir `CONFIG_KEY`).
+    const reglages = await ctx.storage.get(CONFIG_KEY)
+    const config = resolveConfig(
+      ctx?.options ?? {},
+      process.env,
+      (reglages && typeof reglages === "object" ? reglages : {}) as Record<string, string>,
+    )
     const log = makeLogger(config)
 
     log("info", {
@@ -370,7 +364,7 @@ export default {
     // Le flux d'evenements
     // ------------------------------------------------------------------
 
-    /** Sessions notifiees, pour ne pas renvoyer deux fois la meme fin de tour. */
+    /** Tours notifies, pour ne pas renvoyer deux fois la meme fin de tour. */
     const seen = new Set<string>()
     const trimSeen = (): void => {
       if (seen.size <= 200) return
@@ -383,10 +377,151 @@ export default {
       }
     }
 
+    /**
+     * Le nom de chaque appel d'outil, par son `id`.
+     *
+     * ⚠️ Indispensable, et pas un confort : `session.tool.called` ne porte pas `name`. Sans
+     * cette memoire, l'etape s'affiche `Etape en cours` — c'est-a-dire sans rien dire.
+     * Elague a 200 entrees : un tour n'en produit jamais autant.
+     */
+    const toolNames = new Map<string, string>()
+
+    /**
+     * Le resumeur, tel que la configuration le decrit — ou `null` si elle ne le decrit pas.
+     *
+     * La cle est lue **a chaque resume**, pas au demarrage : une rotation de cle ne demande
+     * alors aucun redemarrage, et la valeur ne stagne pas en memoire du serveur.
+     */
+    const resumeur = (): Resumeur | null => {
+      const url = config.summaryUrl
+      const fichier = config.summaryKeyFile
+      if (!url || !fichier) return null
+      if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+      let cle = ""
+      try {
+        cle = readFileSync(fichier.replace(/^~(?=\/|$)/, homedir()), "utf8").trim()
+      } catch (error) {
+        log("warn", { event: "summary_key_unreadable", reason: String(error) })
+        return null
+      }
+      if (cle.length === 0) return null
+      return { url, cle, modele: config.summaryModel }
+    }
+
+    /** Le resume du tour, ou `null` — et `null` n'est jamais une erreur : c'est le repli brut. */
+    const resumer = async (material: string): Promise<Resume | null> => {
+      const cible = resumeur()
+      if (!cible) return null
+      const resume = await summarize(material, cible)
+      if (!resume) log("debug", { event: "summary_fallback" })
+      return resume
+    }
+
+    /**
+     * **La fin d'un tour : lire la session, resumer, publier.**
+     *
+     * ⚠️ Le texte publie n'est plus `"Tour termine"`. Quatre mots qui ne disent rien du travail
+     * fait — et le resume etait deja declare dans la configuration depuis le premier commit,
+     * sans avoir jamais ete branche.
+     *
+     * ⚠️ Les **sous-sessions** (delegations de sous-agents) sont ignorees : leur travail remonte
+     * sous le nom de la session parente, et notifier les deux ferait deux alertes pour un tour.
+     */
+    const notifierFinDeTour = async (event: any, sessionID: string | undefined): Promise<void> => {
+      if (!sessionID) return
+
+      let session: any
+      try {
+        session = await ctx.session.get({ sessionID })
+      } catch (error) {
+        // Sans la session, on ne peut ni filtrer les sous-sessions ni lire le tour. On notifie
+        // quand meme : une notification pauvre vaut mieux qu'un silence inexplique.
+        log("warn", { event: "session_get_failed", reason: String(error) })
+        await pushAll("turnEnd", { text: "Tour termine", sessionID })
+        return
+      }
+
+      if (session?.parentID) {
+        log("debug", { event: "turn_end_child_skipped", sessionID })
+        return
+      }
+
+      let messages: unknown = []
+      try {
+        messages = await ctx.session.context({ sessionID })
+      } catch (error) {
+        log("warn", { event: "session_context_failed", sessionID, reason: String(error) })
+      }
+
+      // ⚠️ La cle dit **quel** tour, pas **quelle** session : dedupliquer sur la session ne
+      // notifiait qu'une fois par session, quel que soit le nombre de tours.
+      const fin = turnCompletedAt(messages)
+      const cle = `${sessionID}:${fin ?? "?"}`
+      if (seen.has(cle)) {
+        log("debug", { event: "turn_end_duplicate", sessionID })
+        return
+      }
+      seen.add(cle)
+      trimSeen()
+
+      const debut = turnStartedAt(messages)
+      const duree = debut !== null && fin !== null ? Math.round((fin - debut) / 1000) : null
+      if (config.minSeconds > 0 && duree !== null && duree < config.minSeconds) {
+        log("debug", { event: "turn_end_too_short", sessionID, duree })
+        return
+      }
+
+      const material = turnMaterial(messages, config.maxBytes)
+      if (material.trim().length === 0) {
+        log("debug", { event: "turn_end_empty", sessionID })
+        return
+      }
+
+      const resume = await resumer(material)
+      const echec = String(event?.type ?? "").includes("failed")
+
+      // ⚠️ Repli sur le materiau brut, tronque : sans resumeur configure, c'est la liste des
+      // actions du tour. C'est moins lisible qu'une phrase, et c'est exact — la regle du projet
+      // est de ne jamais inventer un texte a la place de ce qui s'est passe.
+      const corps = resume?.corps ?? truncateBytes(material, config.maxBytes)
+      const texte = echec ? "⚠ Tour en echec\n\n" + corps : corps
+
+      await pushAll("turnEnd", {
+        text: texte,
+        ...(resume?.titre ? { title: resume.titre } : {}),
+        sessionID,
+      })
+      log("info", {
+        event: "turn_end_notified",
+        sessionID,
+        duree,
+        resume: resume !== null,
+        octets: texte.length,
+      })
+    }
+
     const controller = new AbortController()
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          const type: string | undefined = event?.type
+
+          // Le nom de l'outil arrive **dans un autre evenement** que son entree : on le
+          // memorise ici, on publie plus bas. Sans ce `continue`, l'evenement tomberait dans
+          // `classify`, qui ne le reconnait pas.
+          if (type === TOOL_NAMED) {
+            const id = event?.data?.id
+            const name = event?.data?.name
+            if (typeof id === "string" && typeof name === "string") {
+              toolNames.set(id, name)
+              if (toolNames.size > 200) {
+                const plusAncien = toolNames.keys().next().value
+                if (plusAncien !== undefined) toolNames.delete(plusAncien)
+              }
+            }
+            continue
+          }
+
           const decision = classify(event)
           if (!decision.kind) continue
 
@@ -401,21 +536,19 @@ export default {
           }
 
           if (decision.kind === "progress") {
+            const toolID = event?.data?.id
+            const nom = typeof toolID === "string" ? toolNames.get(toolID) : undefined
             await pushAll("progress", {
-              text: decision.tool ? `${decision.tool} en cours` : "Etape en cours",
+              // `bash : npm install` plutot que `bash en cours` — le detail vient de l'entree
+              // reelle de l'outil, jamais d'un libelle de notre cru.
+              text: progressText(nom, event?.data?.input),
               ...(sessionID ? { sessionID } : {}),
               progress: true,
             })
             continue
           }
 
-          if (sessionID) {
-            if (seen.has(sessionID)) continue
-            seen.add(sessionID)
-            trimSeen()
-          }
-
-          await pushAll("turnEnd", { text: "Tour termine", ...(sessionID ? { sessionID } : {}) })
+          await notifierFinDeTour(event, sessionID)
         }
       } catch (error) {
         if (!controller.signal.aborted) log("warn", { event: "event_stream_failed", reason: String(error) })
@@ -486,6 +619,18 @@ function makeLogger(config: TetherConfig) {
     const line = JSON.stringify({ level, ...payload })
     if (level === "warn") console.error(`[tether] ${line}`)
     else console.info(`[tether] ${line}`)
+
+    // ⚠️ `debugLogFile` etait declare et documente, mais **jamais ecrit** : le service de fond
+    // n'expose pas la sortie standard de ses plugins, donc le journal de diagnostic annonce
+    // dans le README etait inutilisable en pratique. Meme famille de defaut que `summaryUrl`.
+    //
+    // ⚠️ Une erreur d'ecriture n'est **jamais fatale** : le journal sert a diagnostiquer, il ne
+    // doit pas devenir une panne de plus.
+    if (config.debugLogFile) {
+      try {
+        appendFileSync(config.debugLogFile, `${new Date().toISOString()} ${line}\n`)
+      } catch {}
+    }
   }
 }
 

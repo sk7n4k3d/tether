@@ -54,7 +54,7 @@
     "plugin/tether"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types --test plugin/tether/index.test.mjs plugin/tether/qr.test.mjs plugin/tether/registry.test.mjs plugin/tether/tui-config.test.mjs plugin/tether/tui-logic.test.mjs plugin/tether/ui-model.test.mjs plugin/tether/vapid.test.mjs plugin/tether/webpush.mutation.test.mjs plugin/tether/webpush.test.mjs",
+    "test": "node --experimental-strip-types --test plugin/tether/classify.test.mjs plugin/tether/index.test.mjs plugin/tether/qr.test.mjs plugin/tether/registry.test.mjs plugin/tether/summary.test.mjs plugin/tether/tui-config.test.mjs plugin/tether/tui-logic.test.mjs plugin/tether/ui-model.test.mjs plugin/tether/vapid.test.mjs plugin/tether/webpush.mutation.test.mjs plugin/tether/webpush.test.mjs",
     "test:tui": "bun test plugin/tether/tui-setup.test.mjs"
   },
   "dependencies": {

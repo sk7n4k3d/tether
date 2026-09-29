@@ -27,9 +27,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   applied to the context
 - Full internationalisation: 433 strings in English and French, including error messages
   prepared outside the component tree
+- Turn-end summaries: the plugin sends the turn to an OpenAI-compatible endpoint and puts
+  the returned title and sentence in the notification. Unconfigured, the raw list of
+  actions is sent instead — never a bare "turn finished"
+- Progress steps name the tool **and** its input (`bash : npm install`), read from the
+  tool call itself rather than from a generic label
 
 ### Fixed
 
+- The notification summariser was declared in the configuration, documented in the README,
+  and never wired: every turn ended with the literal text "Tour termine". It is now called,
+  and a failure of the summariser falls back to the raw turn rather than losing the alert
+- Turn-end de-duplication was keyed on the session, so a session notified **once** whatever
+  the number of turns. The key is now (session, end of turn)
+- Every `session.tool.*` event published: three encrypted pushes per tool for a single
+  displayed step. Only `session.tool.called` publishes now
+- Configuration set from the TUI was never read back by the server: `resolveConfig` was
+  called with `opencode.jsonc` options only, so `serverUrl`, `minSeconds` and the summary
+  settings went into a store nobody read
+- `debugLogFile` was documented and never written, which made the diagnostic log
+  unusable in practice — a background service does not expose its plugins' stdout
 - After connecting or pairing, the app stayed on the screen that had just finished:
   `popBackStack()` from the connection screen does nothing when it is the start
   destination, and a successful pairing did not navigate at all. Both now land on sessions

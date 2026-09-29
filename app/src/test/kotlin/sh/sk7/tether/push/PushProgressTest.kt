@@ -80,6 +80,37 @@ class PushProgressTest {
     }
 
     // ------------------------------------------------------------------
+    // parsePush — le titre du resume (cle `title`, additive)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `le titre du resume est lu, et le texte reste le corps`() {
+        // ⚠️ Le `Title` de ntfy ne traverse pas UnifiedPush : le resume doit voyager DANS le
+        // corps. Sans cette cle, la notification s'intitulerait « opencode » et le resume
+        // n'apparaitrait que dans le corps — l'information utile en petit.
+        val payload = parsePush(
+            """{"v":1,"text":"Trois fichiers modifies et les tests passent.","title":"Mise a jour Kotlin","sessionID":"ses_9"}"""
+        )
+
+        assertEquals("Mise a jour Kotlin", payload.title)
+        assertEquals("Trois fichiers modifies et les tests passent.", payload.text)
+    }
+
+    @Test
+    fun `un titre absent n ecrase pas le titre recompose`() {
+        // ⚠️ Non-regression : les avancements et les approbations n'en portent pas, et une app
+        // qui recevrait un corps v0 non plus. `null` laisse `TetherNotifier` recomposer.
+        assertEquals(null, parsePush("""{"v":1,"text":"Etape en cours","progress":true}""").title)
+        assertEquals(null, parsePush("Termine\n\ntether:session=ses_1").title)
+    }
+
+    @Test
+    fun `un titre fait de blanc est traite comme absent`() {
+        // Un titre vide afficherait un en-tete vide a la place du repli — pire que pas de titre.
+        assertEquals(null, parsePush("""{"v":1,"text":"x","title":"   "}""").title)
+    }
+
+    // ------------------------------------------------------------------
     // parsePush — le format v0, en repli
     // ------------------------------------------------------------------
 

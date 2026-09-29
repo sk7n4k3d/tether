@@ -70,11 +70,14 @@ enum class PushKind {
  * @param sessionID la session concernee, telle qu'annoncee par le publieur — un **indice**,
  *   jamais une autorite (voir [TetherNotifier]).
  * @param text le texte a afficher, **lignes de routage retirees**.
+ * @param title le titre du resume, quand le publieur en fournit un. `null` sur un corps v0,
+ *   sur un avancement, et sur toute app qui n'a pas encore la cle `title`.
  */
 data class PushPayload(
     val kind: PushKind,
     val sessionID: String?,
     val text: String,
+    val title: String? = null,
 )
 
 /** Ligne ajoutee par le plugin pour annoncer une etape d'avancement. */
@@ -130,6 +133,9 @@ private fun decoderJson(raw: String): PushPayload? {
         },
         sessionID = runCatching { objet["sessionID"]?.jsonPrimitive?.content }.getOrNull(),
         text = texte,
+        // ⚠️ Additif : une app plus ancienne que le publieur ignore simplement la cle. Un
+        // titre vide ou blanc est traite comme absent — il ecraserait le titre recompose.
+        title = runCatching { objet["title"]?.jsonPrimitive?.content }.getOrNull()?.takeIf { it.isNotBlank() },
     )
 }
 

@@ -92,6 +92,11 @@ human confirmation.
 - **Endpoint rotation handled**: distributors reissue their endpoint on restart, and Tether
   re-declares it automatically
 - **Alerts for turn end, attention needed, and progress** — independently configurable
+- **Progress steps are silent and replace each other**, so a turn that runs twenty tools
+  shows one changing line, not twenty alerts
+- **Turn-end summaries**: the notification carries the assistant's summary — a title plus a
+  sentence — instead of a bare "turn finished". Without a summariser configured, the raw
+  list of actions is sent rather than nothing
 
 ### Interface
 - **Material 3**, dark theme only — no half-done light mode
@@ -268,11 +273,41 @@ no password.
 | `TETHER_DEBUG_LOG_FILE` | Where that log goes |
 | `TETHER_SUMMARY_URL` | OpenAI-compatible endpoint for summarising notifications |
 | `TETHER_SUMMARY_KEY_FILE` | File holding the key — the path, never the key |
+| `TETHER_SUMMARY_MODEL` | Model to ask for; empty lets the endpoint route |
 
 `TETHER_SERVER_URL` matters more than the others: it is the address inside the QR, so it is
 the address **your phone** must be able to reach. A `127.0.0.1` in a QR meant for another
 device cannot work. It is also the only way to set that address without a config file, since
 a plugin dropped in `plugins/` receives `options = {}`.
+
+### Summaries
+
+A turn-end notification is only worth waking up for if it says what happened. With
+`summaryUrl` and `summaryKeyFile` set, the plugin sends the turn — the assistant's text plus
+the tool calls, which is where most of the work is — to your endpoint, and puts the returned
+title and sentence in the notification:
+
+```jsonc
+{
+  "tether": {
+    "summaryUrl": "http://localhost:8080/v1/chat/completions",
+    "summaryKeyFile": "/home/you/.config/opencode/summary-key",
+    "summaryModel": "small-local-model"
+  }
+}
+```
+
+Two properties are deliberate:
+
+- **No default endpoint, no default model.** Nothing points at anyone's infrastructure; an
+  unconfigured summariser is simply absent, and the notification says what happened in the
+  tool's own words.
+- **A failed summariser is not a failed notification.** Any error — down, timeout, prose
+  instead of JSON — falls back to the raw turn. The notification is less pretty, never lost.
+
+The key is read from the file on every summary, so rotating it needs no restart. `/tether
+config` offers the same three settings; they are stored by the plugin, not in your
+`opencode.jsonc`.
 
 ### `opencode.jsonc`
 
@@ -320,21 +355,21 @@ is in the manifest — it is what delivers the intent to the foreground.
 ## Development
 
 ```bash
-# Plugin — 139 tests under node, plus 5 under Bun for the dialog.
+# Plugin — 167 tests under node, plus 5 under Bun for the dialog.
 # List the files explicitly: the glob pulls in tui-setup.test.mjs, which imports tui.tsx
 # and dies with ERR_UNKNOWN_FILE_EXTENSION outside an OpenCode install.
-# 29 of the 139 run against a live `opencode serve` (port 4299) and skip if it is absent.
+# 29 of the 167 run against a live `opencode serve` (port 4299) and skip if it is absent.
 node --experimental-strip-types --test \
-  plugin/tether/index.test.mjs plugin/tether/qr.test.mjs \
-  plugin/tether/registry.test.mjs plugin/tether/tui-config.test.mjs \
-  plugin/tether/tui-logic.test.mjs plugin/tether/ui-model.test.mjs \
-  plugin/tether/vapid.test.mjs plugin/tether/webpush.mutation.test.mjs \
-  plugin/tether/webpush.test.mjs
+  plugin/tether/classify.test.mjs plugin/tether/index.test.mjs plugin/tether/qr.test.mjs \
+  plugin/tether/registry.test.mjs plugin/tether/summary.test.mjs \
+  plugin/tether/tui-config.test.mjs plugin/tether/tui-logic.test.mjs \
+  plugin/tether/ui-model.test.mjs plugin/tether/vapid.test.mjs \
+  plugin/tether/webpush.mutation.test.mjs plugin/tether/webpush.test.mjs
 
 # The one test that needs the .tsx dialog, and therefore Bun and an OpenCode tree
 bun test plugin/tether/tui-setup.test.mjs
 
-# App — 523 JVM tests, plus 6 on a connected device
+# App — 551 JVM tests, plus 6 on a connected device
 ./gradlew :app:testDebugUnitTest
 ./gradlew :app:connectedDebugAndroidTest
 

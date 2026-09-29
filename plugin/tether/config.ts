@@ -36,6 +36,8 @@ export interface TetherConfig {
   summaryUrl: string | null
   /** Fichier contenant la cle du resumeur. Chemin, jamais la cle. */
   summaryKeyFile: string | null
+  /** Modele a demander au resumeur. Vide = on laisse l'endpoint router. */
+  summaryModel: string | null
   /** Cle P-256 pour VAPID, en PEM. Vide = pas d'en-tete VAPID envoye. */
   vapidPrivateKeyFile: string | null
 }
@@ -98,6 +100,7 @@ export function resolveConfig(
     debugLogFile: couche("debugLogFile", options.debugLogFile, env.TETHER_DEBUG_LOG_FILE),
     summaryUrl: couche("summaryUrl", options.summaryUrl, env.TETHER_SUMMARY_URL),
     summaryKeyFile: couche("summaryKeyFile", options.summaryKeyFile, env.TETHER_SUMMARY_KEY_FILE),
+    summaryModel: couche("summaryModel", options.summaryModel, env.TETHER_SUMMARY_MODEL),
     vapidPrivateKeyFile: couche("vapidPrivateKeyFile", options.vapidPrivateKeyFile, env.TETHER_VAPID_KEY_FILE),
   }
 }

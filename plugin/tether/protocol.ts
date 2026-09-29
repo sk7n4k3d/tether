@@ -22,11 +22,16 @@
  * distinguer le transport du contenu — et l'envoyer en JSON.
  *
  * ```
- * { "v": 1, "text": "…", "sessionID": "ses_…", "progress": false }
+ * { "v": 1, "text": "…", "title": "…", "sessionID": "ses_…", "progress": false }
  * ```
  *
  * `v` est obligatoire : le jour où le format change, l'app sait qu'elle a affaire à
  * autre chose au lieu de deviner.
+ *
+ * `title` est **optionnel et additif** (ajouté en v1, pas en v2) : une app qui ne le connaît
+ * pas l'ignore et recompose son titre comme avant. C'est le seul moyen d'envoyer le titre d'un
+ * résumé sans casser les téléphones non mis à jour — l'en-tête `Title` de ntfy, lui, ne
+ * traverse pas UnifiedPush (voir `TetherNotifier`).
  *
  * ## Compatibilite
  *
@@ -43,6 +48,8 @@ export interface Payload {
   v: number
   /** Texte lisible par l'humain. Jamais une instruction : un avertissement. */
   text: string
+  /** Titre du resume, quand il y en a un. L'app le prefere a son titre recompose. */
+  title?: string
   /** Session concernée, pour que le tap ouvre la bonne. */
   sessionID?: string
   /** `true` si c'est une étape d'avancement dans un tour en cours. */
@@ -52,15 +59,20 @@ export interface Payload {
 /** Ce que l'app sait reconstruire d'un corps recu. */
 export interface Decoded {
   text: string
+  title?: string
   sessionID?: string
   progress: boolean
 }
 
 /** Construit la charge utile. `text` est nettoye : pas de saut de ligne final. */
-export function encode(options: { text: string; sessionID?: string; progress?: boolean }): string {
+export function encode(options: { text: string; title?: string; sessionID?: string; progress?: boolean }): string {
+  // ⚠️ Un titre fait de blanc vaut un titre absent : ecrit vide, il ecraserait cote app le
+  // titre recompose et la notification n'aurait plus d'en-tete du tout.
+  const titre = options.title?.trim() ?? ""
   const payload: Payload = {
     v: PROTOCOL_VERSION,
     text: options.text.trimEnd(),
+    ...(titre.length > 0 ? { title: titre } : {}),
     ...(options.sessionID ? { sessionID: options.sessionID } : {}),
     ...(options.progress ? { progress: true } : {}),
   }
@@ -103,6 +115,7 @@ function tryDecodeJson(body: string): Decoded | null {
 
   return {
     text: candidate.text,
+    ...(typeof candidate.title === "string" && candidate.title.trim() ? { title: candidate.title } : {}),
     ...(typeof candidate.sessionID === "string" && candidate.sessionID ? { sessionID: candidate.sessionID } : {}),
     progress: candidate.progress === true,
   }

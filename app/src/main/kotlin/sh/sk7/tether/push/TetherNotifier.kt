@@ -182,7 +182,12 @@ object TetherNotifier {
         // transmet que le corps du message. On ne peut donc pas réafficher « approbation : shell ».
         // On recompose un titre à partir de ce qu'on sait **nous-mêmes** (une décision attend),
         // et on garde le corps reçu tel quel — il reste la seule information du publieur.
-        val title = when (decision) {
+        //
+        // ⚠️ Sauf quand le publieur met son titre **dans le corps**, sous la clé `title` du
+        // protocole v1 : c'est le cas du resume de fin de tour (« Mise a jour Kotlin » plutot
+        // que « opencode »). Le titre recompose reste le repli, jamais l'inverse — sinon le
+        // resume perdrait son en-tete des qu'une app ne connait pas la cle.
+        val title = payload.title?.takeIf { it.isNotBlank() } ?: when (decision) {
             PushDecision.Ongoing -> Res.of(R.string.autorisation_requise_703188)
             PushDecision.Progress -> Res.of(R.string.opencode_cours_387ac2)
             else -> "opencode"
