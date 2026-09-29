@@ -3,8 +3,10 @@ package sh.sk7.tether.data.settings
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import sh.sk7.tether.data.api.BasicAuthCredentials
@@ -78,7 +80,12 @@ class ConnectionStore @Inject constructor(
     private val credentialsProvider: InMemoryCredentialsProvider,
 ) {
     /** Reglages courants, observes en continu. */
-    val settings: Flow<ConnectionSettings> = dataStore.data.map(::decode)
+    val settings: Flow<ConnectionSettings> = dataStore.data
+        // Un fichier illisible ne doit pas empecher l'app de **lire** ses reglages : le
+        // pire qui puisse arriver est de repartir des defauts, pas de fermer l'ecran de
+        // connexion qui sert justement a les corriger.
+        .catch { emit(emptyPreferences()) }
+        .map(::decode)
 
     /** Reglages courants (lecture ponctuelle) ; pousse aussi les identifiants. */
     suspend fun current(): ConnectionSettings = decode(dataStore.data.first()).also(::publish)
@@ -116,10 +123,17 @@ class ConnectionStore @Inject constructor(
         credentialsProvider.set(settings.credentialsOrNull())
     }
 
+    /**
+     * ⚠️ **Chaque cle est lue a l'abri d'un `runCatching`**, et pas via un `catch` global
+     * sur le flux : `prefs[cle]` demande la valeur du type attendu et **leve** une
+     * `ClassCastException` si le fichier en porte un autre. Renvoyer tout aux defauts
+     * parce qu'une seule cle est douteuse effacerait des reglages valides — l'utilisateur
+     * perdrait son adresse parce qu'un accent a ete mal ecrit.
+     */
     private fun decode(prefs: Preferences): ConnectionSettings = ConnectionSettings(
-        baseUrl = prefs[KEY_BASE_URL] ?: ConnectionSettings.DEFAULT_BASE_URL,
-        password = prefs[KEY_PASSWORD].orEmpty(),
-        directory = prefs[KEY_DIRECTORY] ?: ConnectionSettings.DEFAULT_DIRECTORY,
+        baseUrl = prefs.lireTexte(KEY_BASE_URL, ConnectionSettings.DEFAULT_BASE_URL),
+        password = prefs.lireTexte(KEY_PASSWORD, "").orEmpty(),
+        directory = prefs.lireTexte(KEY_DIRECTORY, ConnectionSettings.DEFAULT_DIRECTORY),
     )
 
     private companion object {

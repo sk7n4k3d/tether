@@ -5,8 +5,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import sh.sk7.tether.ui.i18n.LangueCache
 import sh.sk7.tether.ui.theme.Accent
@@ -49,9 +51,9 @@ class AppearanceStore @Inject constructor(
     private val KEY_ACCUEIL_VU = booleanPreferencesKey("appearance.accueilVu")
 
     /** L'accent choisi, reagit a chaque changement. */
-    val accent: Flow<Accent> = dataStore.data.map { prefs ->
-        Accent.depuisCle(prefs[KEY_ACCENT])
-    }
+    val accent: Flow<Accent> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> Accent.depuisCle(prefs.lireTexte(KEY_ACCENT, "")) }
 
     /**
      * La langue choisie, **ou `null`** pour « suivre le systeme ».
@@ -61,9 +63,9 @@ class AppearanceStore @Inject constructor(
      * exactement le reproche qu'on veut eviter (« l'app est en anglais alors que mon
      * telephone est en francais »).
      */
-    val langue: Flow<String?> = dataStore.data.map { prefs ->
-        prefs[KEY_LANGUE]?.takeIf { it.isNotBlank() }
-    }
+    val langue: Flow<String?> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs.lireTexte(KEY_LANGUE, "").takeIf { it.isNotBlank() } }
 
     /**
      * L'accueil a-t-il deja ete vu ?
@@ -77,9 +79,9 @@ class AppearanceStore @Inject constructor(
      * les reglages, et un utilisateur qui vide les donnees de l'app le retrouve a `false`
      * avec tout le reste.
      */
-    val accueilVu: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_ACCUEIL_VU] ?: false
-    }
+    val accueilVu: Flow<Boolean> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs.lireBooleen(KEY_ACCUEIL_VU, false) }
 
     suspend fun marquerAccueilVu() {
         dataStore.edit { it[KEY_ACCUEIL_VU] = true }
