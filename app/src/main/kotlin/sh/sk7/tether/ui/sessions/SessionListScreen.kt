@@ -141,13 +141,19 @@ fun SessionListScreen(
     // repond) : ne teinter qu'avec les permissions ferait dire « calme » a l'icone alors qu'un
     // agent attend une reponse. Le contenu de description distingue les deux pour ne pas annoncer
     // un fait faux a un lecteur d'ecran.
-    // ⚠️ Au repos, le bouclier doit avoir **exactement** la couleur de ses voisines
-    // (`Lucide.Activity`, `RefreshCw`, `Settings` n'ont aucune teinte et prennent celle
-    // de la barre). Avec `TetherTextPrimary` — blanc vif — il etait plus lumineux que les
-    // trois autres **alors que rien n'attendait** : il avait l'air actif, ou selectionne,
-    // et attirait l'oeil pour ne rien dire. Le signal n'a de sens que quand il signale.
+    // ⚠️ **Le bouclier est le seul a porter un etat, et il est eteint au repos.**
+    //
+    // Les trois autres icones de la barre sont des actions toujours disponibles : elles
+    // restent en `TetherTextPrimary`. Le bouclier, lui, ne sert qu'a **signaler** qu'une
+    // session est bloquee sur une question. Eteint, il doit se lire comme tel — gris, donc
+    // moins present que les actions ; allume, il passe en ambre et devient l'element le
+    // plus visible de la barre.
+    //
+    // ⚠️ L'inverse (bouclier blanc au repos) avait ete essaye et rendait le signal
+    // muet : l'icone attirait l'oeil en permanence, donc le jour ou elle changeait de
+    // couleur pour dire « quelque chose attend », personne ne le remarquait.
     val pendingTint =
-        if (pendingApprovals + pendingForms > 0) TetherAlert else LocalContentColor.current
+        if (pendingApprovals + pendingForms > 0) TetherAlert else TetherTextSecondary
     val approvalsLabel = approvalsSummary(pendingApprovals, pendingForms)
     var renaming by remember { mutableStateOf<SessionItem?>(null) }
     var deleting by remember { mutableStateOf<SessionItem?>(null) }
@@ -164,7 +170,11 @@ fun SessionListScreen(
                 ),
                 actions = {
                     IconButton(onClick = onOpenStats) {
-                        Icon(Lucide.Activity, contentDescription = stringResource(R.string.statistiques_fdce30))
+                        Icon(
+                            Lucide.Activity,
+                            contentDescription = stringResource(R.string.statistiques_fdce30),
+                            tint = TetherTextPrimary,
+                        )
                     }
                     // ⚠️ L'acces aux approbations est dans la barre principale, pas enfoui dans
                     // les reglages : c'est **la** raison d'etre d'une app compagne (une session
@@ -191,10 +201,18 @@ fun SessionListScreen(
                     // d'une main, lecteur d'ecran). Le swipe reste la voie rapide ; ce bouton est
                     // la voie accessible — deux contraintes differentes, pas un doublon.
                     IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Lucide.RefreshCw, contentDescription = stringResource(R.string.recharger_b10ee5))
+                        Icon(
+                            Lucide.RefreshCw,
+                            contentDescription = stringResource(R.string.recharger_b10ee5),
+                            tint = TetherTextPrimary,
+                        )
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Lucide.Settings, contentDescription = stringResource(R.string.reglages_00d632))
+                        Icon(
+                            Lucide.Settings,
+                            contentDescription = stringResource(R.string.reglages_00d632),
+                            tint = TetherTextPrimary,
+                        )
                     }
                 },
             )
