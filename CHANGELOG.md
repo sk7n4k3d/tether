@@ -30,6 +30,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Turn-end summaries: the plugin sends the turn to an OpenAI-compatible endpoint and puts
   the returned title and sentence in the notification. Unconfigured, the raw list of
   actions is sent instead — never a bare "turn finished"
+- Long turns are summarised by **map-reduce** instead of being cut: the material is split on
+  line boundaries, each fragment gets one sentence, the sentences are cached by content hash
+  (bounded, oldest out), and the thesis is written from them. Measured on a real 6 515-byte
+  turn: the summary now cites a result that was in the *second* fragment, which the old
+  3 800-byte cut made unreachable
 - Progress steps name the tool **and** its input (`bash : npm install`), read from the
   tool call itself rather than from a generic label
 

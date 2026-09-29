@@ -310,6 +310,26 @@ config` offers the same three settings; they are stored by the plugin, not in yo
 `opencode.jsonc` — and the server reads that store at startup, so a change there needs a
 plugin reload rather than a restart.
 
+#### Long turns are split, not truncated
+
+An agent's turn is not a sentence. Measured on a real session: the heaviest turn was **6 515
+bytes** — 173 tool calls, 59 text parts — and a summariser that reads 6 000 bytes at a time
+sees the whole thing. Three steps, and they are visible in the logs:
+
+1. **Split on line boundaries.** A fragment never ends mid-command: a line cut in half would
+   make the summary say "ran `npm instal`". A single line longer than a fragment is truncated
+   *with a visible marker*, because an unannounced cut is a lie.
+2. **One sentence per fragment, cached by content hash.** The same fragment never reaches the
+   model twice — a turn that splits into 20 fragments costs 21 calls, not 40. The cache is
+   bounded (200 entries, oldest out) because an agent that works for hours would otherwise
+   leak memory for the lifetime of the server.
+3. **Then the thesis**, from those sentences, in the same `{title, summary}` shape as a short
+   turn. A fragment that fails is *named* in the input rather than dropped, and a failed
+   thesis falls back to the joined sentences — never to raw kilobytes in a notification.
+
+The material itself is capped at 120 KB, keeping the **end** of the turn (that is where the
+result is) and stating how much of the beginning was left out.
+
 ### `opencode.jsonc`
 
 Options are only read when the plugin entry is an object:
@@ -364,10 +384,10 @@ is in the manifest — it is what delivers the intent to the foreground.
 ## Development
 
 ```bash
-# Plugin — 167 tests under node, plus 5 under Bun for the dialog.
+# Plugin — 180 tests under node, plus 5 under Bun for the dialog.
 # List the files explicitly: the glob pulls in tui-setup.test.mjs, which imports tui.tsx
 # and dies with ERR_UNKNOWN_FILE_EXTENSION outside an OpenCode install.
-# 29 of the 167 run against a live `opencode serve` (port 4299) and skip if it is absent.
+# 29 of the 180 run against a live `opencode serve` (port 4299) and skip if it is absent.
 node --experimental-strip-types --test \
   plugin/tether/classify.test.mjs plugin/tether/index.test.mjs plugin/tether/qr.test.mjs \
   plugin/tether/registry.test.mjs plugin/tether/summary.test.mjs \

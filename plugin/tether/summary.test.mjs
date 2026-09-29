@@ -19,15 +19,22 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  CacheFragments,
+  PLAFOND_MATERIAU,
+  TAILLE_FRAGMENT,
+  empreinte,
+  fragmenter,
   oneLine,
   progressText,
   shortenPath,
   summarize,
+  summarizeFragmente,
   summarizeToolInput,
   truncateBytes,
   turnCompletedAt,
   turnMaterial,
   turnStartedAt,
+  tronquerParLaFin,
 } from "./summary.ts"
 
 // ---------------------------------------------------------------------------
@@ -231,3 +238,205 @@ test("summarize n'appelle pas le reseau quand il n'y a rien a resumer", async ()
   assert.equal(await summarize("   ", RESUMEUR, fetchFn), null)
   assert.equal(appele, false)
 })
+
+// ---------------------------------------------------------------------------
+// Les tours longs — decoupe, cache, combinaison
+// ---------------------------------------------------------------------------
+
+/**
+ * Un `fetch` factice qui consomme une reponse par appel.
+ *
+ * - une chaine = 200 avec ce contenu ;
+ * - un nombre = un code HTTP (donc un echec) ;
+ * - une `Error` = une panne reseau.
+ *
+ * Chaque appel est enregistre dans `capture.appels`, avec le corps **parse** : c'est ce qui
+ * permet de verifier le nombre de requetes et ce qui est reellement parti vers le modele.
+ */
+const fetchSequence = (reponses, capture = { appels: [] }) => {
+  return async (_url, options) => {
+    capture.appels.push(JSON.parse(options.body))
+    const r = reponses.shift()
+    if (r === undefined) return reponseJson('{"titre":"t","resume":"r"}')
+    if (r instanceof Error) throw r
+    if (typeof r === "number") {
+      return { ok: false, status: r, json: async () => ({}), body: { cancel: async () => {} } }
+    }
+    return reponseJson(r)
+  }
+}
+
+const octets = (texte) => Buffer.byteLength(texte, "utf8")
+
+test("fragmenter decoupe sur des frontieres de ligne, sans rien perdre", () => {
+  // ⚠️ La regle du projet : ne jamais couper une commande en deux. Un fragment qui finit sur
+  // `npm instal` ferait dire au resume que c'est ce qui a ete lance.
+  const lignes = Array.from({ length: 40 }, (_, i) => `- shell : commande numero ${i}`)
+  const materiau = lignes.join("\n")
+  const fragments = fragmenter(materiau, 100)
+
+  assert.ok(fragments.length > 1, "il faut vraiment decouper")
+  for (const fragment of fragments) {
+    assert.ok(octets(fragment) <= 100, `fragment trop gros : ${octets(fragment)}`)
+  }
+  // Chaque fragment est une tranche CONTIGUE des lignes d'origine, et l'ensemble les restitue
+  // toutes, dans l'ordre : decouper ne perd rien.
+  const aplati = fragments.flatMap((f) => f.split("\n"))
+  assert.deepEqual(aplati, lignes)
+})
+
+test("fragmenter ne coupe jamais une ligne, meme trop longue", () => {
+  // L'unique entorse, et elle doit etre VISIBLE : une base64 de 200 Ko ne part pas telle quelle.
+  const geante = "x".repeat(500)
+  const fragments = fragmenter(geante, 100)
+
+  assert.equal(fragments.length, 1)
+  assert.ok(octets(fragments[0]) <= 100, `fragment trop gros : ${octets(fragments[0])}`)
+  assert.ok(fragments[0].includes("(tronque)"), "la coupure est annoncee, pas silencieuse")
+})
+
+test("fragmenter absorbe les cas vides", () => {
+  assert.deepEqual(fragmenter("", 100), [])
+  assert.deepEqual(fragmenter("a", 0), ["a"], "une taille nulle laisse passer tel quel")
+  assert.deepEqual(fragmenter("court", 6000), ["court"])
+})
+
+test("tronquerParLaFin garde la fin et annonce ce qu'elle a coupe", () => {
+  const texte = `${"a".repeat(500)}FINALE`
+  const coupe = tronquerParLaFin(texte, 100)
+
+  assert.ok(coupe.includes("FINALE"), "la fin du tour est ce qui parle")
+  assert.ok(coupe.includes("du debut du tour omis"), "et le debut coupe est dit, pas efface")
+  assert.equal(tronquerParLaFin("court", 100), "court", "un texte qui tient n'est pas touche")
+  assert.equal(tronquerParLaFin("court", 0), "court", "un plafond nul desactive la coupe")
+})
+
+test("empreinte : stable, et differente des que le contenu change", () => {
+  assert.equal(empreinte("abc"), empreinte("abc"))
+  assert.notEqual(empreinte("abc"), empreinte("abd"))
+  assert.equal(empreinte("abc").length, 40, "sha1 hex : le cache ne doit pas dependre d'un hash maison")
+})
+
+test("le cache est borne, et evince le plus ancien", () => {
+  // ⚠️ Sans plafond, c'est une fuite : des heures de travail = des milliers de fragments.
+  const cache = new CacheFragments(2)
+  cache.set("a", "1")
+  cache.set("b", "2")
+  cache.set("c", "3")
+
+  assert.equal(cache.taille, 2)
+  assert.equal(cache.get("a"), undefined, "le plus ancien est sorti")
+  assert.equal(cache.get("b"), "2")
+  assert.equal(cache.get("c"), "3")
+
+  cache.vider()
+  assert.equal(cache.taille, 0)
+  assert.throws(() => new CacheFragments(0), "une capacite nulle serait un cache qui ne cache rien")
+})
+
+test("un tour court ne paie qu'une requete", async () => {
+  // Le cas courant : pas de carte en plus, pas de fragment, pas de these intermediaire.
+  const capture = { appels: [] }
+  const resume = await summarizeFragmente("un petit tour", RESUMEUR, options(), fetchSequence([], capture))
+
+  assert.equal(capture.appels.length, 1)
+  assert.equal(resume.corps, "r")
+})
+
+test("un tour long : un resume par fragment, puis la these", async () => {
+  const materiau = tourLong()
+  const capture = { appels: [] }
+  const fetchFn = fetchSequence(["phrase A", "phrase B", "phrase C", '{"titre":"Grand tour","resume":"Trois fragments."}'], capture)
+
+  const resume = await summarizeFragmente(materiau, RESUMEUR, options(100), fetchFn)
+
+  assert.equal(fragmenter(materiau, 100).length, 3, "12 lignes de 20 octets a 100 octets = 3 fragments")
+  assert.equal(capture.appels.length, 4, "3 fragments + 1 these")
+  // Les 3 premiers appels demandent UNE phrase (max_tokens 120), le dernier la these.
+  assert.deepEqual(capture.appels.slice(0, 3).map((a) => a.max_tokens), [120, 120, 120])
+  assert.equal(capture.appels[3].max_tokens, 300)
+  for (const phrase of ["phrase A", "phrase B", "phrase C"]) {
+    assert.ok(capture.appels[3].messages[0].content.includes(phrase), `la these doit porter « ${phrase} »`)
+  }
+  assert.equal(resume.titre, "Grand tour")
+  assert.equal(resume.corps, "Trois fragments.")
+})
+
+test("un fragment deja resume ne repasse pas au modele", async () => {
+  // C'est le cache qui rend l'operation tenable quand un tour en produit cinquante.
+  const materiau = tourLong()
+  const cache = new CacheFragments()
+
+  const premier = { appels: [] }
+  await summarizeFragmente(materiau, RESUMEUR, { ...options(100), cache }, fetchSequence(["A", "B", "C", '{"titre":"t","resume":"r"}'], premier))
+  assert.equal(premier.appels.length, 4)
+
+  const second = { appels: [] }
+  await summarizeFragmente(materiau, RESUMEUR, { ...options(100), cache }, fetchSequence([], second))
+  assert.equal(second.appels.length, 1, "seule la these repasse")
+  assert.equal(cache.taille, 3)
+})
+
+test("un fragment en echec ne disparait pas de la these", async () => {
+  // ⚠️ Le piege : perdre un fragment silencieusement ferait dire au resume que le tour = la
+  // moitie de ce qui existe. Une moitie du travail, c'est un mensonge.
+  const materiau = tourLong()
+  const capture = { appels: [] }
+  const fetchFn = fetchSequence([500, "phrase B", "phrase C", '{"titre":"t","resume":"r"}'], capture)
+
+  const resume = await summarizeFragmente(materiau, RESUMEUR, options(100), fetchFn)
+
+  assert.equal(resume.corps, "r", "le tour est bien resume")
+  assert.ok(capture.appels[3].messages[0].content.includes("fragment illisible"), "le fragment mort est signale")
+})
+
+test("une these finale en echec rend quand meme les phrases des fragments", async () => {
+  // Rendre `null` ferait republier des dizaines de kilo-octets bruts dans une notification.
+  const capture = { appels: [] }
+  const fetchFn = fetchSequence(["phrase A", "phrase B", "phrase C", new Error("reseau mort")], capture)
+
+  const resume = await summarizeFragmente(tourLong(), RESUMEUR, options(100), fetchFn)
+
+  assert.notEqual(resume, null, "on ne rend jamais rien")
+  assert.equal(resume.titre, null)
+  for (const phrase of ["phrase A", "phrase B", "phrase C"]) {
+    assert.ok(resume.corps.includes(phrase), `« ${phrase} » manque dans ${resume.corps}`)
+  }
+})
+
+test("le materiau d'un tour long n'est plus coupe a 3 800 octets", () => {
+  // ⚠️ La mesure qui a declenche tout : un tour de 173 appels d'outils perdait 45 % de son
+  // materiau avant le resumeur. La fragmentation remplace la troncature — donc le materiau
+  // monte jusqu'au plafond, et c'est le resume qui se fragmente.
+  const gros = [utilisateur(1), assistant(Array.from({ length: 500 }, (_, i) => textePart(`ligne ${i} ${"x".repeat(40)}`)))]
+  const materiau = turnMaterial(gros)
+
+  assert.ok(octets(materiau) > 6000, `le materiau devrait depasser 6 000 octets, il en fait ${octets(materiau)}`)
+  assert.ok(octets(materiau) <= PLAFOND_MATERIAU + 200, `et rester sous le plafond : ${octets(materiau)}`)
+  assert.ok(materiau.includes("ligne 499"), "la derniere ligne est la")
+})
+
+test("un materiau enorme garde la FIN, et le dit", () => {
+  // Pour « qu'a fait l'agent », la fin porte le resultat — mais le debut coupe doit etre dit.
+  const enorme = [utilisateur(1), assistant([textePart("x".repeat(500) + " FINALE")])]
+  const materiau = turnMaterial(enorme, 200)
+
+  assert.ok(octets(turnMaterial(enorme)) > 200, "le materiau de depart est bien au-dessus du plafond")
+  assert.ok(materiau.includes("FINALE"), "la fin est la")
+  assert.ok(materiau.includes("du debut du tour omis"), "et la coupe est annoncee")
+  assert.ok(octets(materiau) <= 200 + 60, `le materiau doit rester borne : ${octets(materiau)}`)
+})
+
+/**
+ * 12 lignes de 19 caracteres, donc 20 octets chacune avec la fin de ligne.
+ *
+ * A 100 octets par fragment, `fragmenter` en fait **3** (5 + 5 + 2). Le compte est calcule ici a
+ * la main : un test qui appelle la fonction qu'il teste ne prouve rien.
+ */
+function tourLong() {
+  return Array.from({ length: 12 }, (_, i) => `- shell : aaaa${String(i).padStart(3, "0")}bbbbbb`).join("\n")
+}
+
+function options(tailleFragment = TAILLE_FRAGMENT) {
+  return { tailleFragment, cache: new CacheFragments() }
+}

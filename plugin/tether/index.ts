@@ -43,8 +43,10 @@ import {
 import { encode, decode, attentionTitle, type Decoded } from "./protocol.js"
 import { TOOL_NAMED, classify, sessionIdOf } from "./classify.js"
 import {
+  CacheFragments,
+  TAILLE_FRAGMENT,
   progressText,
-  summarize,
+  summarizeFragmente,
   truncateBytes,
   turnCompletedAt,
   turnMaterial,
@@ -419,6 +421,17 @@ export default {
     const toolNames = new Map<string, string>()
 
     /**
+     * Les resumes de fragments, memorises pour la duree de l'instance.
+     *
+     * ⚠️ Il vit **ici** et pas dans le stockage du plugin, sur deux raisons : une instance
+     * remplace la precedente a chaque rechargement, donc un cache persistant serait ecrit par une
+     * instance et lu par une autre qui ignore quand meme les changements ; et un resume de
+     * fragment n'a de valeur que tant que le fragment est dans la fenetre de travail. Ce qu'on
+     * evite, c'est de repayer le meme fragment dans la meme minute.
+     */
+    const cache = new CacheFragments()
+
+    /**
      * Le resumeur, tel que la configuration le decrit — ou `null` si elle ne le decrit pas.
      *
      * La cle est lue **a chaque resume**, pas au demarrage : une rotation de cle ne demande
@@ -444,7 +457,7 @@ export default {
     const resumer = async (material: string): Promise<Resume | null> => {
       const cible = resumeur()
       if (!cible) return null
-      const resume = await summarize(material, cible)
+      const resume = await summarizeFragmente(material, cible, { tailleFragment: TAILLE_FRAGMENT, cache })
       if (!resume) log("debug", { event: "summary_fallback" })
       return resume
     }
@@ -503,7 +516,14 @@ export default {
         return
       }
 
-      const material = turnMaterial(messages, config.maxBytes)
+      // ⚠️ **Le materiau n'est plus tronque ici.** Avant, il passait par `config.maxBytes`
+      // (3 800 octets) : mesure du 2026-09-29, un tour normal d'agent (173 appels d'outils) en
+      // perdait 45 %, et son resume ne pouvait donc pas en parler. C'est `summarizeFragmente` qui
+      // gere maintenant la taille, en **decoupant** plutot qu'en coupant.
+      //
+      // `maxBytes` reste le plafond du **repli brut** : une notification de plusieurs kilo-octets
+      // dans le volet, c'est bien moins utile qu'une phrase.
+      const material = turnMaterial(messages)
       if (material.trim().length === 0) {
         log("debug", { event: "turn_end_empty", sessionID })
         return
