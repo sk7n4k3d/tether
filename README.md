@@ -307,19 +307,28 @@ Two properties are deliberate:
 
 The key is read from the file on every summary, so rotating it needs no restart. `/tether
 config` offers the same three settings; they are stored by the plugin, not in your
-`opencode.jsonc`.
+`opencode.jsonc` — and the server reads that store at startup, so a change there needs a
+plugin reload rather than a restart.
 
 ### `opencode.jsonc`
 
-Options are only read when the plugin is declared in its object form:
+Options are only read when the plugin entry is an object:
 
 ```jsonc
 {
-  "tether": {
-    "serverUrl": "https://opencode.example.com:4096"
-  }
+  "plugins": [
+    {
+      "package": "git+https://github.com/sk7n4k3d/tether.git",
+      "options": { "serverUrl": "https://opencode.example.com:4096" }
+    }
+  ]
 }
 ```
+
+⚠️ **Not** a bare string, and **not** a `["package", { … }]` pair — OpenCode 2.0.12 rejects the
+pair as `kind=invalid` and skips the plugin **silently**: the RPC stops answering and nothing
+says so on either side. A bare string works but always gives `options = {}`. Measured, not
+assumed.
 
 `serverUrl` beats `TETHER_SERVER_URL`, which beats what the TUI detects.
 

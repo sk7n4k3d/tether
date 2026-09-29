@@ -111,6 +111,38 @@ export default {
     }
 
     // ------------------------------------------------------------------
+    // Une seule instance active par processus
+    //
+    // ⚠️ **Defaut mesure le 2026-09-29.** `POST /api/location/reload` — et le rechargement
+    // automatique declenche par une modification d'`opencode.jsonc` — **rejoue `setup` sans
+    // demonter l'instance precedente**. Trois rechargements plus tard, trois flux d'evenements
+    // publiaient le meme evenement trois fois : trois notifications, et jusqu'a trois sonneries
+    // pour une seule fin de tour. Le menage rendu par `setup` n'est pas appele.
+    //
+    // La garde vit sur `globalThis`, pas dans une variable de module : rien ne promet que deux
+    // chargements partagent le meme registre de modules, et c'est precisement le cas qu'on veut
+    // attraper. La nouvelle instance **prend la main** et arrete l'ancienne — l'inverse (la
+    // nouvelle se tait) figerait la configuration au premier chargement, ce qui est pire que le
+    // defaut qu'on corrige.
+    //
+    // ⚠️ L'arret a lieu **avant** `rpc.register` : le `dispose()` de l'ancien handle retirerait
+    // l'enregistrement que la nouvelle instance vient de poser.
+    // ------------------------------------------------------------------
+
+    const CLE_INSTANCE = Symbol.for("tether.instance.active")
+    const registre = globalThis as unknown as Record<symbol, (() => void) | undefined>
+    const precedente = registre[CLE_INSTANCE]
+    if (precedente) {
+      log("info", { event: "instance_replaced" })
+      try {
+        precedente()
+      } catch (error) {
+        // Une instance morte qui refuse de mourir ne doit pas empecher la nouvelle de vivre.
+        log("warn", { event: "instance_stop_failed", reason: String(error) })
+      }
+    }
+
+    // ------------------------------------------------------------------
     // La poussee
     // ------------------------------------------------------------------
 
@@ -555,9 +587,19 @@ export default {
       }
     })()
 
-    return () => {
+    /** L'arret de **cette** instance : le flux d'evenements, puis le handle RPC. */
+    const stop = (): void => {
       controller.abort()
       handle.dispose().catch(() => {})
+    }
+    registre[CLE_INSTANCE] = stop
+
+    return () => {
+      // ⚠️ Ne retirer la cle que si elle est encore la notre : une instance plus recente a pu
+      // prendre la main entre-temps, et effacer la sienne la laisserait orpheline — donc active
+      // et indefiniment remplacable.
+      if (registre[CLE_INSTANCE] === stop) delete registre[CLE_INSTANCE]
+      stop()
     }
   },
 }
