@@ -412,13 +412,15 @@ fun Composer(
                         )
                     }
                     // L'envoi. Deux seuls etats utiles : fleche (envoyer) et carre d'arret.
-                    // ⚠️ `minimumInteractiveComponentSize` : l'icone fait 20 dp, mais Material
-                    // étend la zone sensible a **48 dp**. C'est le controle qu'on presse le plus
-                    // dans l'app — le rater est le pire des defauts d'ergonomie.
+                    // ⚠️ **48 dp, la cible tactile d'Android — et pas 36.** Mesure du 2026-09-29 :
+                    // le bouton faisait 36 dp avec un glyphe de 20 dp. La zone sensible etait bien
+                    // a 48 (`minimumInteractiveComponentSize`), mais ce qui SE VOIT restait 36 :
+                    // c'est le controle qu'on presse le plus dans l'app, et le seul dont le
+                    // dessin etait plus petit que sa propre cible. Le rond vaut desormais la
+                    // cible, donc ce qu'on vise a l'oeil est ce qu'on touche.
                     Box(
                         modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .size(36.dp)
+                            .size(48.dp)
                             .clip(RoundedCornerShape(percent = 50))
                             .clickable(
                                 enabled = showStop || hasContent,
@@ -442,7 +444,7 @@ fun Composer(
                                 imageVector = Lucide.ArrowUp,
                                 contentDescription = null,
                                 tint = buttonColor.copy(alpha = arrowAlpha),
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                         if (stopAlpha > 0f) {
@@ -450,7 +452,7 @@ fun Composer(
                                 imageVector = Lucide.CircleStop,
                                 contentDescription = null,
                                 tint = buttonColor.copy(alpha = stopAlpha),
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }
