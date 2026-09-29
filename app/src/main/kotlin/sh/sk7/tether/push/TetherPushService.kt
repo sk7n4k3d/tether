@@ -67,7 +67,15 @@ class TetherPushService : PushService() {
      */
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
         Log.i(TAG, "nouvel endpoint (temporaire=${endpoint.temporary})")
-        val memorise = PushSubscription.remember(applicationContext, endpoint, instance)
+        // ⚠️ Le troisieme parametre est le **nom du distributeur**, pas l'instance
+        // UnifiedPush : il part au serveur, qui s'en sert pour dire a l'utilisateur par
+        // ou passent ses notifications. L'instance est vide chez nous (un seul canal) et
+        // remplissait le champ d'une chaine vide.
+        val memorise = PushSubscription.remember(
+            applicationContext,
+            endpoint,
+            UnifiedPush.getSavedDistributor(applicationContext),
+        )
         if (!memorise) {
             // Un endpoint temporaire ne vaut rien : il meurt avec le distributeur. On ne
             // le remplace donc pas par l'ancien, qui reste valide, et on ne dit rien de
@@ -75,45 +83,15 @@ class TetherPushService : PushService() {
             Log.w(TAG, "endpoint non memorise (temporaire ou incomplet), abonnement conserve")
             return
         }
-        redeclarerAupresDuServeur()
-        PushEndpointRelay.publish(applicationContext, endpoint.url)
-    }
-
-    /**
-     * Re-declare l'abonnement courant aupres du serveur appaire, s'il y en a un.
-     *
-     * ⚠️ Silencieux par conception : c'est un rattrapage, pas une action demandee. Un
-     * echec ici n'a rien a afficher — l'endpoint memorise reste bon, et le prochain
-     * redemarrage du distributeur retentera. Le logged suffit, et un message visible
-     * pour un-channel arriere-plan alarma l'utilisateur sans raison.
-     */
-    private fun redeclarerAupresDuServeur() {
-        val enregistrement = DeviceRegistration.load(applicationContext)
-        if (enregistrement == null) {
-            // Pas encore appaire : rien a re-declarer. L'ecran de confirmation fera
-            // l'appel complet, jeton compris.
-            return
-        }
-        val abonnement = PushSubscription.load(applicationContext) ?: return
-        val point = EntryPointAccessors.fromApplication(applicationContext, PushEntryPoint::class.java)
-        point.pushScope().coroutines.launch {
-            try {
-                val ok = point.gateway().registerDevice(
-                    settings = point.connectionStore().current(),
-                    server = enregistrement.server,
-                    deviceId = point.identity().id(),
-                    endpoint = abonnement.url,
-                    p256dh = abonnement.p256dh,
-                    authSecret = abonnement.auth,
-                    // Aucun jeton : appareil deja connu. Une chaine vide vaut absence.
-                    pairingToken = "",
-                    distributor = abonnement.distributor,
-                )
-                Log.i(TAG, "re-declaration ${if (ok) "acceptee" else "refusee"} par le serveur")
-            } catch (e: Exception) {
-                Log.w(TAG, "re-declaration impossible : ${e.message}")
-            }
-        }
+        // ⚠️ **On ne publie plus sur un relais.** L'ancien chemin postait l'endpoint sur
+        // une URL d'exemple codee en dur, qui ne pouvait pas repondre — donc chaque
+        // publication echouait, et le seul effet visible etait un `last-endpoint` jamais
+        // ecrit, que l'ecran Reglages lisait pour annoncer « Endpoint : aucun » alors que
+        // l'abonnement etait bel et bien enregistre.
+        //
+        // Le serveur appaire se declare par le RPC `subscribe` : tout de suite si
+        // l'appareil est deja connu, sinon par l'ecran de confirmation, qui porte le jeton.
+        redeclarerAbonnement(applicationContext)
     }
 
     /**
@@ -177,138 +155,81 @@ class TetherPushService : PushService() {
 }
 
 /**
- * **Transmission de l'endpoint** vers le serveur, via un topic ntfy relais.
+ * **Re-declare l'abonnement courant aupres du serveur appaire, s'il y en a un.**
  *
- * ### Le probleme
- * Pour qu'une notification arrive, il faut que le **publieur** (le plugin opencode sur
- * le serveur) connaisse l'endpoint genere par le distributeur du telephone. Or cet endpoint
- * n'existe **que** sur le telephone, et opencode n'expose **aucune route** pour le stocker
- * (verifie sur `/openapi.json` : `/api/experimental/config` n'accepte que `shell`).
+ * ### Pourquoi une fonction, et plus un relais
  *
- * ### La solution : le topic comme boite aux lettres
- * L'app publie son endpoint sur le topic `TetherEndpoint` (`write-only` anonyme) ; le plugin
- * opencode, lui, **lit** ce topic avec un compte qui en a le droit. C'est un canal **a sens
- * unique**, et c'est exactement ce qu'il faut : personne d'autre ne peut lire l'endpoint, et
- * l'app n'a besoin d'aucun secret pour ecrire.
+ * L'endpoint n'existe que sur le telephone, et le serveur doit le connaitre pour pousser.
+ * L'ancien chemin passait par un **relais** : l'app postait son endpoint sur un topic ntfy
+ * que le plugin lisait de son cote. Ce chemin a ete remplace par le RPC `subscribe` — mais
+ * l'appel est reste, avec une URL d'**exemple** codee en dur, qui ne pouvait pas repondre.
  *
- * ⚠️ Ne PAS tenter de « faire plus simple » en ecrivant un fichier sur le serveur : la route
- * `/api/session/{id}/shell` renvoie **500** a cause d'un plugin mal configure
- * (`cc-safety-net` : shell `fish` vs option `posix`). Ce chemin est casse pour l'instant, et
- * il n'est de toute facon pas necessaire.
+ * Consequence mesuree en test prod : chaque publication echouait, `last-endpoint` n'etait
+ * jamais ecrit, et l'ecran Reglages en concluait « Endpoint : aucun » alors que
+ * l'abonnement etait bel et bien enregistre. L'app n'a donc jamais pu s'appairer.
  *
- * ⚠️ L'endpoint **est une capacite d'ecriture** : qui le connait peut publier sur ce topic.
- * On l'envoie donc sur un canal prive en lecture, jamais dans un log partage.
+ * ### Le throttle
+ *
+ * ⚠️ `onNewEndpoint` n'est appele par le distributeur qu'**au demarrage de son processus** ;
+ * l'app, elle, revient au premier plan des dizaines de fois par jour. Re-declarer a chaque
+ * retour serait un appel reseau pour rien. La date n'est ecrite **qu'apres une reussite**,
+ * donc un echec reseau se rejoue naturellement au passage suivant.
+ *
+ * ⚠️ **Silencieux par conception** : c'est un rattrapage, pas une action demandee. L'ecran
+ * de confirmation, lui, fait l'appel complet — jeton compris — et affiche son resultat.
  */
-object PushEndpointRelay {
+fun redeclarerAbonnement(context: Context) {
+    // Pas encore appaire : rien a re-declarer. C'est l'ecran de confirmation qui fera le
+    // premier enregistrement, puisqu'il est le seul a porter le jeton.
+    val enregistrement = DeviceRegistration.load(context) ?: return
+    val abonnement = PushSubscription.load(context) ?: return
 
-    /** Topic relais : ecriture anonyme, lecture reservee. */
-    private const val RELAY_URL = "https://ntfy.example.com/TetherEndpoint"
+    val prefs = context.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+    val due = endpointNeedsRepublish(
+        lastEndpoint = prefs.getString("last-endpoint", null),
+        current = abonnement.url,
+        lastAtMillis = prefs.getLong("last-endpoint-at", 0L),
+        nowMillis = System.currentTimeMillis(),
+        intervalMillis = REPUBLISH_INTERVAL_MS,
+    )
+    if (!due) return
 
-    /**
-     * Delai avant de republier l'endpoint, meme inchange.
-     *
-     * ⚠️ **3 h, et pas 6 h.** Le commentaire d'origine annoncait « la moitie du cache ntfy par
-     * defaut (12 h) » — or la configuration **reelle** de ce serveur est `cache-duration: 6h`
-     * (mesure : `/mnt/pools/apps/ntfy/config/server.yml` sur le TrueNAS, le 2026-09-26). Republier
-     * a 6 h laissait donc une **marge nulle** : le message expirait a l'instant precis ou l'app
-     * republiait, et toute publication en retard (app non rouverte, envoi echoue) vidait le relais.
-     *
-     * ⚠️ Consequence mesuree de ce mode d'echec : le plugin ne retrouve plus l'endpoint et se
-     * replie sur le topic fixe — notif recue par le client ntfy, **pas par Tether**, sans aucune
-     * erreur nulle part. Le telephone semble muet, l'app paraît en panne.
-     *
-     * ⚠️ Republier est un POST de quelques dizaines d'octets : le cout est nul, et tres inferieur
-     * a celui d'une notification perdue en silence. On garde la moitie du cache comme regle, quelle
-     * que soit sa valeur, pour que la marge survive a un changement de configuration du serveur.
-     */
-    const val REPUBLISH_INTERVAL_MS = 3 * 60 * 60 * 1000L
-
-    /**
-     * Recoit l'endpoint annonce par le distributeur ([TetherPushService.onNewEndpoint]).
-     *
-     * ⚠️ On **persiste** l'envoi : l'endpoint change quand l'app est reinstallee ou quand le
-     * distributeur renouvelle son topic. On le republie donc a chaque fois qu'il change.
-     */
-    fun publish(context: Context, endpoint: String) {
-        if (endpoint.isBlank()) return
-        val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
-        val lastEndpoint = prefs.getString("last-endpoint", null)
-        val lastAt = prefs.getLong("last-endpoint-at", 0L)
-        val due = endpointNeedsRepublish(
-            lastEndpoint = lastEndpoint,
-            current = endpoint,
-            lastAtMillis = lastAt,
-            nowMillis = System.currentTimeMillis(),
-            intervalMillis = REPUBLISH_INTERVAL_MS,
-        )
-        if (!due) return
-        // ⚠️ On n'ecrit la date QUE si l'envoi part reellement (voir `send`).
-        send(context, prefs, endpoint)
-    }
-
-    /**
-     * **Republie l'endpoint deja connu**, sans en annoncer un nouveau.
-     *
-     * ⚠️ Pourquoi cette methode existe — c'est un mode d'echec **mesure**, pas une precaution :
-     * `onNewEndpoint` n'est appele par le distributeur qu'**au demarrage du processus**. Or le
-     * processus de Tether survit des heures en arriere-plan. Avec une seule publication au boot,
-     * le message du relais expirait (cache ntfy) et l'endpoint disparaissait jusqu'a la prochaine
-     * ouverture **a froid** — le plugin publiait alors sur un topic que Tether n'ecoute pas.
-     *
-     * ⚠️ Appelee quand l'app repasse au premier plan : c'est le seul moment ou l'on est sur que
-     * le processus tourne sans dependre d'un reveil par le reseau. Le cout d'un appel inutile est
-     * nul (la date est verifiee) ; le cout de l'oubli est un telephone muet.
-     */
-    fun refresh(context: Context) {
-        val prefs = context.getSharedPreferences("tether-push", Context.MODE_PRIVATE)
-        val endpoint = prefs.getString("last-endpoint", null) ?: return
-        val lastAt = prefs.getLong("last-endpoint-at", 0L)
-        val due = endpointNeedsRepublish(
-            lastEndpoint = endpoint,
-            current = endpoint,
-            lastAtMillis = lastAt,
-            nowMillis = System.currentTimeMillis(),
-            intervalMillis = REPUBLISH_INTERVAL_MS,
-        )
-        if (!due) return
-        send(context, prefs, endpoint)
-    }
-
-    /**
-     * Envoie l'endpoint, et **date l'envoi uniquement s'il a reussi**.
-     *
-     * ⚠️ C'est le bug que corrige le commentaire d'origine : il annoncait « le `last-endpoint`
-     * n'a pas ete ecrit si l'envoi a echoue » alors que l'ecriture avait lieu **avant** l'envoi,
-     * inconditionnellement. Un echec reseau laissait donc une date recente, et l'endpoint n'etait
-     * pas repreublie avant l'intervalle complet — soit exactement la fenetre ou le relais se vide.
-     */
-    private fun send(context: Context, prefs: android.content.SharedPreferences, endpoint: String) {
-        // Envoi en arriere-plan : on ne bloque jamais le thread du distributeur.
-        Thread {
-            runCatching {
-                val connection = URL(RELAY_URL).openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 10_000
-                connection.outputStream.use { it.write(endpoint.toByteArray()) }
-                val code = connection.responseCode
-                Log.i("TetherPush", "endpoint publie sur le relais (http=$code)")
-                connection.disconnect()
-                if (code in 200..299) {
-                    prefs.edit()
-                        .putString("last-endpoint", endpoint)
-                        .putLong("last-endpoint-at", System.currentTimeMillis())
-                        .apply()
-                }
-            }.onFailure { e ->
-                // Echec reseau : l'endpoint n'est pas perdu, il sera republie au prochain
-                // passage au premier plan (la date n'a pas ete ecrite).
-                Log.w("TetherPush", "publication de l'endpoint impossible", e)
+    val point = EntryPointAccessors.fromApplication(context, PushEntryPoint::class.java)
+    point.pushScope().coroutines.launch {
+        try {
+            val ok = point.gateway().registerDevice(
+                settings = point.connectionStore().current(),
+                server = enregistrement.server,
+                deviceId = point.identity().id(),
+                endpoint = abonnement.url,
+                p256dh = abonnement.p256dh,
+                authSecret = abonnement.auth,
+                // Aucun jeton : l'appareil est deja connu. Une chaine vide vaut absence.
+                pairingToken = "",
+                distributor = abonnement.distributor,
+            )
+            if (ok) {
+                prefs.edit()
+                    .putString("last-endpoint", abonnement.url)
+                    .putLong("last-endpoint-at", System.currentTimeMillis())
+                    .apply()
             }
-        }.start()
+            Log.i("TetherPush", "re-declaration ${if (ok) "acceptee" else "refusee"} par le serveur")
+        } catch (e: Exception) {
+            Log.w("TetherPush", "re-declaration impossible : ${e.message}")
+        }
     }
 }
+
+/**
+ * Delai avant de re-declarer, meme inchange.
+ *
+ * ⚠️ Une duree plutot qu'un « a chaque fois » : le cout d'un appel inutile est faible,
+ * mais celui d'une boucle sur un serveur injoignable ne l'est pas. Trois heures laissent
+ * une marge confortable pour un endpoint qui ne change qu'a la reinstallation de l'app ou­tion de l'app ou
+ * au renouvellement du topic par le distributeur.
+ */
+internal const val REPUBLISH_INTERVAL_MS = 3 * 60 * 60 * 1000L
 
 /**
  * **L'etat des notifications, tel que l'UI peut le dire sans mentir.**
@@ -330,7 +251,7 @@ object PushEndpointRelay {
  * levait pas et l'endpoint n'arrivait **jamais**. Un distributeur retenu n'est donc qu'une
  * **capacite**, pas une **reussite**.
  *
- * ⚠️ L'endpoint est relu depuis le meme `SharedPreferences` que [PushEndpointRelay] : c'est la
+ * ⚠️ L'endpoint est relu depuis le meme `SharedPreferences` que [redeclarerAbonnement] : c'est la
  * valeur **reellement transmise** au serveur, donc l'etat le moins mensonger possible. Sa
  * presence prouve qu'un `onNewEndpoint` a eu lieu au moins une fois.
  */
@@ -355,7 +276,7 @@ data class PushStatus(
     val isReady: Boolean get() = hasDistributor && notificationsAllowed && endpoint != null
 }
 
-/** Le nom de fichier partage avec [PushEndpointRelay] : une seule source, pas deux. */
+/** Le nom de fichier partage avec [redeclarerAbonnement] : une seule source, pas deux. */
 private const val PUSH_PREFS = "tether-push"
 
 /** Duree de vie volontairement courte : l'endpoint est peu expose et change rarement. */
@@ -374,9 +295,11 @@ private const val ENDPOINT_DISPLAY_LENGTH = 24
 fun pushStatus(context: Context): PushStatus {
     val distributor = UnifiedPush.getSavedDistributor(context)
     val allowed = notificationsAllowed(context)
-    val endpoint = context
-        .getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
-        .getString("last-endpoint", null)
+    // ⚠️ **La source est l'abonnement, pas `last-endpoint`.** Ce dernier n'etait ecrit
+    // que par l'ancien relais, qui ne repondait pas : l'ecran Reglages annoncait donc
+    // « Endpoint : aucun » alors que l'endpoint etait stocke, et l'utilisateur cherchait
+    // une panne la ou il n'y en avait pas.
+    val endpoint = PushSubscription.load(context)?.url
     return PushStatus(
         distributor = distributor,
         notificationsAllowed = allowed,

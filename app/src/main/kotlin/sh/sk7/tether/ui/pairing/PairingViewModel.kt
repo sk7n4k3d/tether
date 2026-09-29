@@ -173,9 +173,11 @@ class PairingViewModel @Inject constructor(
         val abonnement = _state.value.abonnement ?: return
         if (_state.value.enCours) return
 
+        android.util.Log.i("TetherPush", "autoriser : appel de subscribe (serveur=${demande.server})")
         _state.update { it.copy(enCours = true, erreur = null) }
         scope.launch {
             val settings = store.current()
+            android.util.Log.i("TetherPush", "autoriser : baseUrl=${settings.baseUrl} configure=${settings.isConfigured}")
             runCatching {
                 gateway.registerDevice(
                     settings = settings,
@@ -189,6 +191,7 @@ class PairingViewModel @Inject constructor(
                 )
             }
                 .onSuccess { ok ->
+                    android.util.Log.i("TetherPush", "autoriser : reponse ok=$ok")
                     if (ok) {
                         // ⚠️ Le serveur n'est retenu **qu'apres** un enregistrement reussi.
                         // L'inverse ferait croire a l'app qu'elle est connectee alors que le
@@ -206,6 +209,7 @@ class PairingViewModel @Inject constructor(
                     }
                 }
                 .onFailure { cause ->
+                    android.util.Log.w("TetherPush", "autoriser : echec ${cause::class.simpleName} : ${cause.message}")
                     _state.update {
                         it.copy(
                             enCours = false,

@@ -213,8 +213,8 @@ class PushProgressTest {
         // strictement inferieur au cache, avec au moins un facteur 2 de securite.
         val cacheNtfyReel = 6 * 60 * 60 * 1000L
         assertTrue(
-            PushEndpointRelay.REPUBLISH_INTERVAL_MS * 2 <= cacheNtfyReel,
-            "intervalle=${PushEndpointRelay.REPUBLISH_INTERVAL_MS} ms, cache ntfy=$cacheNtfyReel ms",
+            REPUBLISH_INTERVAL_MS * 2 <= cacheNtfyReel,
+            "intervalle=${REPUBLISH_INTERVAL_MS} ms, cache ntfy=$cacheNtfyReel ms",
         )
     }
 

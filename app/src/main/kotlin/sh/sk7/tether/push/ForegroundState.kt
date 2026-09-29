@@ -54,7 +54,7 @@ class ForegroundState @Inject constructor() : Application.ActivityLifecycleCallb
         // prochaine ouverture a froid — et le plugin se replie alors sur un topic que Tether
         // n'ecoute pas : notifications muettes, sans erreur nulle part.
         if (startedActivities == 1) {
-            appContext?.let { PushEndpointRelay.refresh(it) }
+            appContext?.let { redeclarerAbonnement(it) }
         }
     }
 

@@ -618,7 +618,19 @@ sealed interface FormAnswerValue {
 // donnerait une classe par methode pour une forme identique.
 // ---------------------------------------------------------------------------
 
-/** `{ "input": { … } }` — l'enveloppe de toute appel RPC. */
+/**
+ * `{ "input": { … } }` — l'enveloppe de tout appel RPC.
+ *
+ * ⚠️ **`@Serializable` est indispensable, et son absence a un mode d'echec silencieux.**
+ * Sans elle, ktor ne peut pas serialiser le corps : chaque appel RPC echoue sur une
+ * `SerializationException` (« Serializer for class 'RpcRequest' is not found ») **avant**
+ * de partir sur le reseau. Vu du serveur, il ne s'est rien passe ; vu de l'app, l'ecran
+ * de confirmation restait ouvert sans message, comme si le bouton n'avait pas ete touche.
+ *
+ * C'est ce qui est arrive : `subscribe`, `devices`, `unsubscribe` — tout le RPC de
+ * l'appairage — n'a jamais quitte le telephone.
+ */
+@Serializable
 data class RpcRequest(val input: JsonObject)
 
 /**

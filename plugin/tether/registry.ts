@@ -126,12 +126,25 @@ export function unsubscribeReason(status: number): string {
   }
 }
 
-/** La vue publique d'un appareil. Point de passage unique vers l'extérieur. */
+/**
+ * La vue publique d'un appareil. Point de passage unique vers l'extérieur.
+ *
+ * ⚠️ **Une cle absente ne doit pas etre presente a `undefined`.** Le serveur valide la
+ * valeur **en memoire** contre le schema JSON, pas le JSON serialise : `label: undefined`
+ * est une cle qui existe, de type `undefined`, et le schema qui declare `type: "string"`
+ * la refuse. L'erreur remonte alors en `rpc.invalid_output` — « Expected string at
+ * ["devices"][0]["label"] » — et la **route entiere** echoue, y compris pour les appareils
+ * qui, eux, ont un label.
+ *
+ * Consequence mesuree : `devices` etait inutilisable des qu'un seul appareil s'appariait
+ * sans nom, ce qui est le cas par defaut — l'app n'en envoie pas.
+ */
 export function publicView(device: Device): PublicDevice {
   return {
     deviceId: device.deviceId,
-    label: device.label,
-    distributor: device.distributor,
+    // Etale conditionnel : la cle n'existe que si elle a une valeur.
+    ...(device.label ? { label: device.label } : {}),
+    ...(device.distributor ? { distributor: device.distributor } : {}),
     registeredAt: device.registeredAt,
     alerts: { ...device.alerts },
   }
