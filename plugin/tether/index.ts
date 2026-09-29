@@ -45,6 +45,7 @@ import { TOOL_NAMED, classify, sessionIdOf } from "./classify.js"
 import {
   CacheFragments,
   TAILLE_FRAGMENT,
+  fragmenter,
   progressText,
   summarizeFragmente,
   truncateBytes,
@@ -532,6 +533,12 @@ export default {
       const resume = await resumer(material)
       const echec = String(event?.type ?? "").includes("failed")
 
+      // ⚠️ Le compte de fragments est **dans le journal**, et pas deduit apres coup : c'est la
+      // seule preuve qu'a l'oeil qu'un tour long a bien ete fragmente plutot que tronque. Une
+      // fonction qu'on ne peut pas observer en production est une fonction dont personne ne
+      // verifies qu'elle tourne.
+      const fragments = fragmenter(material, TAILLE_FRAGMENT).length
+
       // ⚠️ Repli sur le materiau brut, tronque : sans resumeur configure, c'est la liste des
       // actions du tour. C'est moins lisible qu'une phrase, et c'est exact — la regle du projet
       // est de ne jamais inventer un texte a la place de ce qui s'est passe.
@@ -548,6 +555,9 @@ export default {
         sessionID,
         duree,
         resume: resume !== null,
+        // 1 = un seul appel au modele ; > 1 = reduction par etapes, autant de fragments.
+        fragments,
+        octetsMateriau: material.length,
         octets: texte.length,
       })
     }
