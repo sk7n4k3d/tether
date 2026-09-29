@@ -4,6 +4,10 @@ import sh.sk7.tether.domain.model.PermissionDecision
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
 import sh.sk7.tether.ui.i18n.Res
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * **Faut-il afficher une notification, et de quelle nature ?**
@@ -80,21 +84,81 @@ private val PROGRESS_MARKER = Regex("""tether:progress=(?:\S+)""")
 private val SESSION_MARKER = Regex("""tether:session=(\S+)""")
 
 /**
- * **Faut-il republier l'endpoint sur le relais ?**
+ * **Decode le corps d'un push. JSON d'abord, marqueurs en repli.**
+ *
+ * ### Le defaut que ceci ferme, constate sur un vrai push
+ *
+ * Le plugin est passe au **JSON v1** (`{"v":1,…}`, voir `protocol.ts`) en annoncant que
+ * « l'app lit les deux, JSON d'abord, marqueurs en repli ». Ce repli n'avait jamais ete
+ * ecrit ici : l'app ne cherchait que les marqueurs `tether:progress=`.
+ *
+ * Consequence mesuree sur le premier push reel : le corps JSON ne contenait aucun
+ * marqueur, donc `kind` retombait **toujours** sur `TurnEnd`. Chaque etape d'avancement
+ * sonnait comme une fin de tour — exactement l'inverse de la notification silencieuse — et
+ * le JSON, jamais retire, s'affichait brut a l'ecran.
+ *
+ * ⚠️ **Un corps qui commence par `{` est du JSON, et rien d'autre.** Si l'analyse echoue,
+ * on ne retombe **pas** sur les marqueurs : aucun corps v0 ne commence par `{`, donc le
+ * repli afficherait litteralement `{"v":1}` dans la notification. C'est la meme regle que
+ * cote serveur — les deux doivent lire le meme format, sinon ils divergent en silence.
+ *
+ * ⚠️ `text` absent = corps invalide, et on rend le texte brut plutot que rien : mieux vaut
+ * une notification etrange qu'une notification absente dont l'utilisateur ignore l'origine.
+ */
+fun parsePush(raw: String): PushPayload {
+    if (raw.trimStart().startsWith("{")) {
+        decoderJson(raw)?.let { return it }
+    }
+    return decoderMarqueurs(raw)
+}
+
+/** Le format v1 : `{"v":1,"text":"…","sessionID":"…","progress":true}`. */
+private fun decoderJson(raw: String): PushPayload? {
+    val objet = try {
+        Json.parseToJsonElement(raw).jsonObject
+    } catch (_: Exception) {
+        // Un `{` malforme : ce n'est pas du v1, et ce n'est pas du v0 non plus.
+        return null
+    }
+    val texte = runCatching { objet["text"]?.jsonPrimitive?.content }.getOrNull() ?: return null
+    if (texte.isBlank()) return null
+    return PushPayload(
+        kind = if (objet["progress"]?.jsonPrimitive?.booleanOrNull == true) {
+            PushKind.Progress
+        } else {
+            PushKind.TurnEnd
+        },
+        sessionID = runCatching { objet["sessionID"]?.jsonPrimitive?.content }.getOrNull(),
+        text = texte,
+    )
+}
+
+/** Le format v0 : le texte, puis `tether:progress=1`, puis `tether:session=<id>`. */
+private fun decoderMarqueurs(raw: String): PushPayload {
+    val kind = if (PROGRESS_MARKER.containsMatchIn(raw)) PushKind.Progress else PushKind.TurnEnd
+    val sessionID = SESSION_MARKER.find(raw)?.groupValues?.get(1)
+    val text = raw
+        .replace(PROGRESS_MARKER, "")
+        .replace(SESSION_MARKER, "")
+        .trim()
+    return PushPayload(kind = kind, sessionID = sessionID, text = text)
+}
+/**
+ * **Faut-il re-declarer l'abonnement aupres du serveur ?**
  *
  * ⚠️ Fonction **pure**, et pas un `if` en ligne : la regle decide si le telephone peut encore
- * recevoir une notification, et une erreur ici ne se voit **nulle part** (le relais se vide en
- * silence, le plugin se replie sur un topic fixe). Un test la verrouille sans Android.
+ * recevoir une notification, et une erreur ici ne se voit **nulle part** — le serveur garde un
+ * endpoint perime et publie dans le vide, sans qu'aucune erreur n'apparaisse des deux cotes.
  *
- * ⚠️ On republie quand l'endpoint **change** (reinstallation, renouvellement du distributeur) ou
- * quand la precedente publication est **perimee**. Les deux cas ont la meme consequence s'ils sont
- * rates : le serveur ne retrouve plus l'endpoint et publie ailleurs.
+ * ⚠️ On re-declare quand l'endpoint **change** (reinstallation, renouvellement du distributeur)
+ * ou quand la precedente declaration est **perimee**. Les deux cas ont la meme consequence s'ils
+ * sont rates : le serveur publie sur un point d'acces que le telephone n'ecoute plus.
  *
- * @param lastEndpoint l'endpoint de la derniere publication reussie, ou `null`.
+ * @param lastEndpoint l'endpoint de la derniere declaration reussie, ou `null`.
  * @param current l'endpoint que le distributeur vient d'annoncer.
- * @param lastAtMillis date de la derniere publication, en millisecondes epoch.
+ * @param lastAtMillis date de la derniere declaration, en millisecondes epoch.
  * @param nowMillis maintenant, en millisecondes epoch.
- * @param intervalMillis duree au-dela de laquelle une publication est consideree perimee.
+ * @param intervalMillis duree au-dela de laquelle une declaration est consideree perimee.
  */
 fun endpointNeedsRepublish(
     lastEndpoint: String?,
@@ -115,32 +179,6 @@ fun endpointNeedsRepublish(
  * ouverte — et l'etape resterait affichee alors que le travail est fini.
  */
 fun shouldClearProgress(kind: PushKind): Boolean = kind == PushKind.TurnEnd
-
-/**
- * **Decode le corps d'un message de push.**
- *
- * ⚠️ Fonction **pure**, et c'est deliberé : c'est ici que se joue la distinction entre une alerte
- * qui doit sonner et un avancement qui doit se taire. Un test la verrouille sans Android.
- *
- * ⚠️ Les lignes de routage sont **retirees du texte affiche** : ce sont des en-tetes de transport,
- * pas de l'information pour l'humain. Les laisser a l'ecran serait exactement le contraire de la
- * regle « ne jamais mentir » — on afficherait `tether:progress=1` a quelqu'un qui veut savoir ce
- * que fait son agent.
- *
- * ⚠️ **Absence de marqueur = fin de tour.** C'est le comportement historique : le plugin publie
- * une fin de tour sans marqueur, et un publieur tiers (le topic accepte l'ecriture anonyme) ne
- * doit pas pouvoir changer la nature d'une notification. Le defaut le plus **visible** (alerte)
- * est donc aussi le plus sur : il n'enterre rien en silence.
- */
-fun parsePush(raw: String): PushPayload {
-    val kind = if (PROGRESS_MARKER.containsMatchIn(raw)) PushKind.Progress else PushKind.TurnEnd
-    val sessionID = SESSION_MARKER.find(raw)?.groupValues?.get(1)
-    val text = raw
-        .replace(PROGRESS_MARKER, "")
-        .replace(SESSION_MARKER, "")
-        .trim()
-    return PushPayload(kind = kind, sessionID = sessionID, text = text)
-}
 
 /**
  * **Une demande d'autorisation sur laquelle la notification peut proposer des boutons.**

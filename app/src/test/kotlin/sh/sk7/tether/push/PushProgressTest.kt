@@ -21,7 +21,66 @@ import kotlin.test.assertTrue
 class PushProgressTest {
 
     // ------------------------------------------------------------------
-    // parsePush — ce que le message annonce, et ce qu'on montre
+    // parsePush — le format JSON v1, puis les marqueurs en repli
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `le JSON v1 est reconnu, et sa progression rendue silencieuse`() {
+        // ⚠️ Le defaut trouve sur un vrai push : le plugin etait passe au JSON v1 en annoncant
+        // que « l'app lit les deux, JSON d'abord ». Ce repli n'existait pas ici, donc le corps
+        // JSON ne portait aucun marqueur `tether:progress=` — `kind` retombait sur `TurnEnd` et
+        // **chaque etape d'avancement sonnait comme une fin de tour**. Exactement l'inverse.
+        val payload = parsePush(
+            """{"v":1,"text":"Etape en cours","sessionID":"ses_f1b32e13","progress":true}"""
+        )
+
+        assertEquals(PushKind.Progress, payload.kind)
+        assertEquals("Etape en cours", payload.text)
+        assertEquals("ses_f1b32e13", payload.sessionID)
+    }
+
+    @Test
+    fun `un JSON v1 sans progression reste une fin de tour`() {
+        val payload = parsePush("""{"v":1,"text":"Termine","sessionID":"ses_9"}""")
+
+        assertEquals(PushKind.TurnEnd, payload.kind)
+        assertEquals("Termine", payload.text)
+        assertEquals("ses_9", payload.sessionID)
+    }
+
+    @Test
+    fun `le texte d un JSON n est jamais le JSON`() {
+        // Le deuxieme defaut du meme incident : faute d'etre retire, le corps s'affichait brut.
+        // « { "v":1, "text": … } » a l'ecran a la place de la phrase.
+        val payload = parsePush("""{"v":1,"text":"Trois fichiers modifies","progress":false}""")
+
+        assertEquals("Trois fichiers modifies", payload.text)
+        assertFalse(payload.text.contains("{"))
+    }
+
+    @Test
+    fun `un JSON malforme ne fait pas retomber sur les marqueurs`() {
+        // ⚠️ Aucun corps v0 ne commence par `{`. Un repli sur les marqueurs afficherait donc
+        // litteralement `{"v":1}` dans la notification — le format doit se decider sur le
+        // premier caractere, comme cote serveur.
+        val payload = parsePush("""{"v":1,"text":""")
+
+        assertEquals(PushKind.TurnEnd, payload.kind)
+        assertTrue(payload.text.startsWith("{"))
+    }
+
+    @Test
+    fun `un JSON sans texte ne notifie pas une phrase vide`() {
+        val payload = parsePush("""{"v":1,"progress":true}""")
+
+        // On retombe sur le texte brut : mieux vaut une notification etrange qu'une
+        // notification vide dont l'utilisateur ignore l'origine.
+        assertEquals(PushKind.TurnEnd, payload.kind)
+        assertTrue(payload.text.isNotBlank())
+    }
+
+    // ------------------------------------------------------------------
+    // parsePush — le format v0, en repli
     // ------------------------------------------------------------------
 
     @Test
