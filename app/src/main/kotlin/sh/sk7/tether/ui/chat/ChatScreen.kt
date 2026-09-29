@@ -1631,7 +1631,6 @@ private fun ScrollToBottomButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val animationsOn = animationsAllowed()
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     androidx.compose.material3.Surface(
         modifier = modifier

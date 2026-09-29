@@ -1,12 +1,9 @@
 package sh.sk7.tether.ui.chat
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -43,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -222,26 +220,20 @@ fun Composer(
     // `heightIn` coupe le texte et le curseur sort du cadre.
     val scrollState = rememberScrollState()
 
-    // --- Le lisere d'activite : un fil teal qui respire quand un tour tourne ---
+    // --- Le lisere d'activite : un fil teal sous la barre quand un tour tourne ---
     //
-    // ⚠️ Pulsation **infinie**, donc soumise a « réduire les animations » : un mouvement continu
-    // impose a quelqu'un qui l'a desactive peut provoquer un malaise vestibulaire (WCAG 2.3.3).
-    // Sans animation, le lisere reste **teal plein** : l'information « ca tourne » est toujours
-    // la, elle ne clignote simplement plus.
-    val pulseEnabled = animationsAllowed()
-    val pulseTransition = rememberInfiniteTransition(label = Res.of(R.string.composer_874ad8))
-    val pulse by pulseTransition.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = Res.of(R.string.composer_pulse_6bf03d),
-    )
-    val pulseAlpha = if (pulseEnabled) pulse else 0.40f
-    // Lisere teal sous la barre : la version du fil qui passe par la zone de saisie.
-    val edgeColor = if (busy) LocalAccent.current.copy(alpha = pulseAlpha) else Color.Transparent
+    // ⚠️ **Plus de respiration : le lisere est fixe.** Le 2026-09-29, sur le Pixel, l'app
+    // prenait **37 % d'un cœur en permanence** (RenderThread 27 %, 616 images en 10 s) sur un
+    // simple ecran Sessions ; la meme mesure avec les animations systeme coupees donnait
+    // **0,9 %** et **2 images en 10 s**. Le composer etant sur tous les ecrans de chat, une
+    // pulsation infinie ici recurrait ce cout partout — et l'information « un tour tourne »
+    // tient dans un fil teal continu.
+    //
+    // Le lisere reste soumis a « reduire les animations » : coupe, il disparait — c'est le
+    // comportement attendu d'un mouvement, meme fige, et la couleur ne porte pas seule
+    // l'information quand l'utilisateur a demande moins de stimuli (WCAG 2.3.3).
+    val lisereVisible = busy && animationsAllowed()
+    val lisereCouleur = LocalAccent.current
 
     Column(modifier = modifier.fillMaxWidth()) {
         // ------------------------------------------------ LES PIECES JOINTES EN ATTENTE
@@ -461,11 +453,18 @@ fun Composer(
         }
 
         // Le lisere d'activite : 2 dp sous la barre, invisible au repos.
+        //
+        // ⚠️ `drawBehind` et non `background(edgeColor)` : c'est la **lecture différée** qui fait
+        // tout. `pulse` est lu dans cette lambda, donc chaque frame ne redessine que cette bande —
+        // aucune recomposition, aucune re-mesure, aucun passage par le main thread.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(2.dp)
-                .background(edgeColor),
+                .drawBehind {
+                    if (!lisereVisible) return@drawBehind
+                    drawRect(color = lisereCouleur.copy(alpha = 0.40f))
+                },
         ) {}
     }
 }

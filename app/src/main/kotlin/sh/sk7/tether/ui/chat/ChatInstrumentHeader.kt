@@ -1,7 +1,6 @@
 package sh.sk7.tether.ui.chat
 
 import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -22,7 +22,6 @@ import com.composables.icons.lucide.Cpu
 import com.composables.icons.lucide.Lucide
 import sh.sk7.tether.domain.model.SessionUiState
 import sh.sk7.tether.domain.model.SessionStatus
-import sh.sk7.tether.ui.theme.animationsAllowed
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.LocalAccent
 import sh.sk7.tether.ui.theme.TetherAlert
@@ -157,19 +156,10 @@ private fun StatusDot(status: SessionStatus) {
     // reste a **alpha fixe** : l'information « ca tourne » est toujours la, elle ne clignote plus.
     // C'est exactement la regle deja appliquee au lisere du Composer, pour que les deux zones
     // disent la meme chose de la meme facon.
-    val animationsOn = animationsAllowed()
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = Res.of(R.string.status_dot_c723c1))
-    val pulse by transition.animateFloat(
-        initialValue = 0.14f,
-        targetValue = 0.42f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(1400),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse,
-        ),
-        label = Res.of(R.string.status_dot_pulse_f2ffe5),
-    )
-    val haloAlpha = if (!running) 0f else if (animationsOn) pulse else 0.28f
-
+    //
+    // ⚠️ Corrigé le 2026-09-29 : le halo est **fixe**. Une respiration infinie coutait **27 % du
+    // RenderThread** en permanence (616 images en 10 s, 37 % d'un cœur sur l'ecran Sessions),
+    // pour une information qu'une couleur pleine donne deja. Cf. l'arbitrage dans SessionRow.
     androidx.compose.foundation.layout.Box(
         modifier = Modifier.size(18.dp),
         contentAlignment = Alignment.Center,
@@ -179,7 +169,7 @@ private fun StatusDot(status: SessionStatus) {
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .size(16.dp)
-                    .background(color.copy(alpha = haloAlpha), androidx.compose.foundation.shape.CircleShape),
+                    .drawBehind { drawCircle(color = color.copy(alpha = 0.28f)) },
             )
         }
         androidx.compose.foundation.layout.Box(

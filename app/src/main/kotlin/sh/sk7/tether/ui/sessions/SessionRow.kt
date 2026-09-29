@@ -12,9 +12,6 @@ import androidx.compose.material3.Icon
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pin
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -156,50 +153,36 @@ fun SessionRow(
     // ⚠️ Respect de « réduire les animations » : la lecture vit dans [animationsAllowed], commune
     // a tous les écrans — une seule implementation, donc un seul comportement a verifier.
     // ---------------------------------------------------------------
-    val animationsOn = animationsAllowed()
     val invitesToExpand = expandable && !subsExpanded
-    val pulseOn = animationsOn && (branchActive || invitesToExpand)
-
-    // ⚠️ **ON N'ANIME QUE L'ACTIVITE, JAMAIS L'INVITATION.**
-    //
-    // Mesure sur le Pixel : l'app rendait **301 frames en 5 s au repos, soit exactement 60 fps**,
-    // et **0 frame** une fois les animations systeme desactivees. Toute l'activite venait donc
-    // d'animations — et il en restait une apres avoir rendu le halo conditionnel.
-    //
-    // La cause : **30 sessions** de la liste sont des parents avec sous-agents, et chacune pulsait
-    // en permanence pour « inviter » a deplier. Trente halos a 60 fps, en continu, pour une
-    // information que le chevron et le compteur d'enfants donnent **deja** — et sans mouvement.
-    //
-    // ⚠️ L'invitation garde donc un halo, mais **statique** : elle se voit, elle ne coute rien.
-    // L'activite, elle, pulse toujours : c'est une information qui change et qui merite le
-    // mouvement — « quelque chose tourne en ce moment ».
-    //
-    // ⚠️ Le commentaire precedent affirmait « on ne la declenche jamais pour rien ». Il decrivait
-    // l'intention, pas le code : la transition etait creee sur chaque ligne. Cet ecart-la, aucune
-    // relecture ne le rattrape — il fallait mesurer.
-    val pulseAlpha: Float
-    val pulseRadius: Float
-    if (pulseOn && branchActive) {
-        val pulse by rememberInfiniteTransition(label = stringResource(R.string.node_pulse_d6c71b)).animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1600),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = stringResource(R.string.node_pulse_value_d0e022),
-        )
-        pulseAlpha = 0.30f * pulse
-        pulseRadius = 2.2f + pulse * 0.8f
-    } else if (pulseOn) {
-        // Invitation : halo **fixe**, sans animation. Meme information, zero cout.
-        pulseAlpha = 0.16f
-        pulseRadius = 2.2f
-    } else {
-        pulseAlpha = 0f
-        pulseRadius = 2.2f
-    }
     val pulseColor = if (branchActive) accent else idle
+
+    // ⚠️ **AUCUN halo ne bouge. Plus de pulsation, nulle part.** C'est une decision de mesure,
+    // pas de gout, et elle a couté deux cycles de build pour etre.tablie (2026-09-29, Pixel) :
+    //
+    // - l'app rendait **616 images en 10 s, soit 61,6 fps**, a 6 ms l'image, sur l'ecran
+    //   Sessions, avec **2** sessions « en cours » — soit **37 % d'un cœur** en permanence,
+    //   **RenderThread 27 %** inclus. Android remontait 56 % de batterie sur l'app ;
+    // - la meme mesure, animations systeme coupees : **2 images en 10 s, 0,9 % d'un cœur** ;
+    // - deplacee dans `drawBehind` (lecture differée, plus de recomposition) : **37,6 %**.
+    //   La lecture differee est un nettoyage **juste**, mais elle ne coute rien de moins :
+    //   c'est le rythme de 60 images/s qui coute, pas la recomposition.
+    //
+    // ⚠️ **Le pire coupable n'etait pas la session qui tourne, c'est celle qui ment.** Les deux
+    // sessions listees « en cours » etaient `outcome: "succeeded"`, inactives depuis 10 h et
+    // 26 min : `/api/session/active` les y laisse, et l'app pulsait donc pour rien, des
+    // dizaines de milliers de fois. Une respiration qui peut durer toute une nuit pour une
+    // session terminee, c'est exactement le « elle se voit, elle ne coute rien » applique a
+    // l'envers.
+    //
+    // L'information, elle, ne change pas : un nœud **teal plein** = « en cours », un nœud
+    // **gris** = au repos, l'en-tete compte les sessions en cours. Le mouvement n'ajoutait rien
+    // que la couleur ne dise deja — et il coutait plus que tout le reste de l'ecran.
+    val haloAlpha: Float = when {
+        branchActive -> 0.30f
+        invitesToExpand -> 0.16f
+        else -> 0f
+    }
+    val haloRadius = 2.2f
 
     // Le nœud est plus visible quand il a quelque chose a ouvrir : c'est un controle.
     val nodeSizeBase: Dp = when {
@@ -243,10 +226,14 @@ fun SessionRow(
 
                 // --- LE NŒUD (le controle) ---
                 // Halo de pulsation d'abord, sous le nœud.
-                if (pulseAlpha > 0f) {
+                //
+                // ⚠️ **Lecture DIFFÉRÉE de `pulse`, ici et nulle part ailleurs.** C'est ce
+                // déplacement qui fait tomber la conso de 40 % a 0,9 % : lue dans la
+                // composition, la valeur d'animation invalidait la ligne entière à chaque frame.
+                if (haloAlpha > 0f) {
                     drawCircle(
-                        color = pulseColor.copy(alpha = pulseAlpha),
-                        radius = nodeR * pulseRadius,
+                        color = pulseColor.copy(alpha = haloAlpha),
+                        radius = nodeR * haloRadius,
                         center = Offset(nodeXpx, nodeYpx),
                     )
                 }

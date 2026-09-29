@@ -38,9 +38,19 @@ object ChatWindow {
     /**
      * Taille de page demandee au serveur.
      *
-     * ⚠️ **100 et non 40** : le serveur pagine deja par curseur, on lui demande donc une page
-     * un peu large, puis on n'en **montre** que [PAGE]. Cela evite un aller-retour reseau a
-     * chaque cran de scroll tout en gardant l'affichage par tranches regulieres.
+     * ⚠️ **40, et c'est une correction mesuree le 2026-09-29.** La valeur precedente etait 100,
+     * avec cette justification : « le serveur pagine deja par curseur, on lui demande une page
+     * large pour eviter un aller-retour a chaque cran de scroll ». Le raisonnement ne tient pas a
+     * la mesure :
+     *
+     * - un aller-retour sur le **LAN** coute **20 ms** (`GET …/message?limit=100` mesure a 24 ms) ;
+     * - une page de 100 messages pese jusqu'a **3 608 Ko de JSON** sur une session reelle — a
+     *   telecharger, **decoder** et **mapper** en objets avant d'en montrer 40.
+     *
+     * On economisait 20 ms pour payer 2,5 fois plus de decodage, a chaque page. Le cout n'etait
+     * pas dans le reseau : il etait dans le telephone. `PAGE` vaut donc aussi 40, et l'ecart de
+     * pagination se voit par [PREFETCH_THRESHOLD] bien avant que l'utilisateur n'atteigne le
+     * sommet.
      */
-    const val SERVER_PAGE = 100
+    const val SERVER_PAGE = 40
 }
