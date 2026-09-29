@@ -45,6 +45,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -140,7 +141,13 @@ fun SessionListScreen(
     // repond) : ne teinter qu'avec les permissions ferait dire « calme » a l'icone alors qu'un
     // agent attend une reponse. Le contenu de description distingue les deux pour ne pas annoncer
     // un fait faux a un lecteur d'ecran.
-    val pendingTint = if (pendingApprovals + pendingForms > 0) TetherAlert else TetherTextPrimary
+    // ⚠️ Au repos, le bouclier doit avoir **exactement** la couleur de ses voisines
+    // (`Lucide.Activity`, `RefreshCw`, `Settings` n'ont aucune teinte et prennent celle
+    // de la barre). Avec `TetherTextPrimary` — blanc vif — il etait plus lumineux que les
+    // trois autres **alors que rien n'attendait** : il avait l'air actif, ou selectionne,
+    // et attirait l'oeil pour ne rien dire. Le signal n'a de sens que quand il signale.
+    val pendingTint =
+        if (pendingApprovals + pendingForms > 0) TetherAlert else LocalContentColor.current
     val approvalsLabel = approvalsSummary(pendingApprovals, pendingForms)
     var renaming by remember { mutableStateOf<SessionItem?>(null) }
     var deleting by remember { mutableStateOf<SessionItem?>(null) }
