@@ -12,8 +12,6 @@ import androidx.compose.material3.Icon
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Pin
 
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,7 +46,6 @@ import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherTextPrimary
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextSecondary
-import sh.sk7.tether.ui.theme.animationsAllowed
 import androidx.compose.ui.res.stringResource
 import sh.sk7.tether.R
 
