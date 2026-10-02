@@ -5,467 +5,232 @@
 <h1 align="center">Tether</h1>
 
 <p align="center">
-  <strong>A native Android client for OpenCode V2 — with Web Push over UnifiedPush, and no Google account in sight</strong>
+  <strong>A native Android client for OpenCode V2 — Web Push over UnifiedPush, no Google account</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/sk7n4k3d/tether/actions/workflows/ci.yml"><img src="https://github.com/sk7n4k3d/tether/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/sk7n4k3d/tether/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-3ddc84?style=for-the-badge&labelColor=0a0e1a" alt="Android">
-  <img src="https://img.shields.io/badge/Kotlin-2.x-7F52FF?style=for-the-badge&labelColor=0a0e1a" alt="Kotlin">
-  <img src="https://img.shields.io/badge/Compose-Material3-0175C2?style=for-the-badge&labelColor=0a0e1a" alt="Compose">
   <img src="https://img.shields.io/badge/push-UnifiedPush-00ff88?style=for-the-badge&labelColor=0a0e1a" alt="UnifiedPush">
 </p>
 
----
+**Tether** is a native Android client for [OpenCode](https://github.com/sst/opencode) V2 — no
+WebView, it talks directly to the server's API. Approvals, chat, diffs and files from your
+phone. Notifications are standard **Web Push (RFC 8291/8292)** through
+[UnifiedPush](https://unifiedpush.org/): no FCM, no Google account, no relay to run. The
+server encrypts every push itself — the distributor never sees plaintext.
 
-## About
-
-**Tether** is a native Android client for [OpenCode](https://github.com/sst/opencode) V2, built
-in Kotlin and Jetpack Compose with no WebView — it talks directly to the server's V2 API.
-Answer a blocked question, read a diff, grant an approval: all of it from your phone, over
-your own network or not. Notifications use **standard Web Push (RFC 8291/8292)** through
-[UnifiedPush](https://unifiedpush.org/), so there is no FCM, no Google account, and no
-relay server to run.
+The app answers one question first: *the agent is blocked and asking for something.* A
+session can wait for hours because nobody saw the question. Tether makes the phone ring.
 
 ---
 
-## Why another client
+## Install in four steps
 
-| | **Tether** (this) | **[opencode web](https://github.com/sst/opencode)** | **[starburst](https://github.com/hiylo/starburst)** | **[opencode2-mobile](https://github.com/omnicus/opencode2-mobile)** |
-|---|---|---|---|---|
-| **Stack** | Kotlin, Compose, M3 | Web (bundled in the server) | Kotlin, Compose, M3 | Expo / React Native |
-| **Platforms** | Android | Any browser | Android | Android + iOS |
-| **Rendering** | Native, no WebView | Browser DOM | Native | Native |
-| **Push** | **Any UnifiedPush distributor** | None | Not specified | Self-hosted encrypted push |
-| **Google account** | **Not required** | Not required | Not required | Not required |
-| **Pairing** | QR, server shown before consent | Type the URL | Type the URL | — |
-| **Approvals** | In-app, with a queue | Browser tab | — | — |
-| **Worktrees** | Yes | — | Workspace files | — |
-| **Server plugin** | Yes (`/tether`) | — | — | — |
+**Requirements**: Android 8.0+, OpenCode V2 running as a server, JDK 17 to build.
 
-Two rows matter most. **Push without a Google account**: any UnifiedPush distributor works
-— ntfy, Gotify, Conversations, Sunup — and you pick which one. **Pairing with consent**:
-a QR is the only input in this app that *you* do not type, so it is the only one that can
-be forged. Tether shows you the server address and sends nothing until you accept. The
-comparison is [GHSA-2xqv-hwrf-983f](https://github.com/home-assistant/core/security/advisories/GHSA-2xqv-hwrf-983f),
-where the Home Assistant Companion app executed automations on a bare NFC scan with no
-human confirmation.
-
----
-
-## Features
-
-### Sessions and chat
-- **Live streaming** over SSE, with reasoning, tool calls and diffs rendered natively
-- **Interrupt** a running agent from the phone
-- **Fork** and **compact** a session
-- **Rename** and **delete** sessions
-- **Send prompts** with model and agent selection, resolved by the server at first turn
-- **Prompt attachments** — files by URI, referenced exactly as the server expects
-
-### Approvals — the reason this app exists
-- **Every pending request in one queue**: tool permissions and interactive forms side by
-  side
-- **Answer from the phone**: a session can sit blocked for hours because nobody saw the
-  question. This is the first thing the app is for
-- **Notifications while a decision waits** — a persistent alert, since an in-app icon that
-  stays quiet is a lie by omission
-
-### Diffs and files
-- **Per-file diffs** with additions, deletions and renames
-- **Worktrees** — try a change on an isolated branch without touching the repository
-- **File explorer** with read-before-send: check a path before it leaves the machine
-- **Commit and checkout** from the phone
-
-### Server inventory
-- **Models, agents and providers**, with usage per model
-- **MCP servers** and their connection state
-- **Plugins** and **skills** actually loaded
-- **Granted permissions**, revocable one by one
-
-### Notifications
-- **Any UnifiedPush distributor** — ntfy, Gotify, Conversations, Sunup, the reference app
-- **End-to-end encrypted** by the server with RFC 8291; the distributor never sees plaintext
-- **Choose your distributor in-app** — it is a visible setting, not a hidden menu, because
-  the endpoint is a write capability
-- **Endpoint rotation handled**: distributors reissue their endpoint on restart, and Tether
-  re-declares it automatically
-- **Alerts for turn end, attention needed, and progress** — independently configurable
-- **Progress steps are silent and replace each other**, so a turn that runs twenty tools
-  shows one changing line, not twenty alerts
-- **Turn-end summaries**: the notification carries the assistant's summary — a title plus a
-  sentence — instead of a bare "turn finished". Without a summariser configured, the raw
-  list of actions is sent rather than nothing
-
-### Interface
-- **Material 3**, dark theme only — no half-done light mode
-- **Seven accent colours**, and the brightness is computed for you
-- **English and French**, following the phone's language by default
-- **Streaming and history are separate items** in the list, not two renderings of one
-- **Offline screen** that says the server is unreachable instead of showing an empty list
-- **Single-server model**, the way OpenCode itself scopes a directory
-
-#### The accent colour is a hue, not a value
-
-You pick a hue; the app computes the brightness. Seven are offered, and the one you
-choose is adjusted until it clears the **3:1** contrast ratio against the app's own
-backgrounds — the threshold WCAG sets for interface elements rather than text.
-
-This is deliberate. A free colour picker hands out values nobody can evaluate: a pale
-accent on a dark background, or a hue close to the background, and nothing looks wrong
-until someone who cannot read it complains. Letting the hue be free and deriving the
-brightness is the only way to offer the choice without offering an unreadable screen.
-
-A test fails the build if any accent drops below the threshold, so an unreadable one
-cannot be merged.
-
-#### Language
-
-The app follows the phone's language. You can override that in Settings, and on
-Android 13 and later the app also appears in **Settings → Apps → Languages**, so the
-system can switch it too.
-
-Every string is a resource, in both languages — including the error messages a
-`ViewModel` prepares and a `Service` logs, which are resolved outside the component
-tree. A test reads the two XML files directly and fails if a key exists in one language
-only, if a phrase is identical in both (a forgotten translation), or if a `${...}`
-interpolation survived the extraction: Android cannot evaluate it, so it would show up
-on screen as-is.
-
-The choice is applied before the first screen is composed, which is why the app
-restarts its activity on a change — a language is not something that can be swapped
-into a tree that already exists.
-
----
-
-## Requirements
-
-| | |
-|---|---|
-| **Android** | 8.0 (API 26) or newer |
-| **OpenCode** | V2, with the Tether plugin installed |
-| **JDK** | 17, to build the app |
-| **UnifiedPush distributor** | Optional — only for notifications |
-
-Push is optional. Without a distributor the app works fully; it just receives no
-notifications.
-
----
-
-## Installation
-
-### 1. The plugin
+### 1. Install the plugin (on the server)
 
 ```bash
 opencode plugin add git+https://github.com/sk7n4k3d/tether.git
 ```
 
-That installs the plugin, registers it in your global `opencode.jsonc`, and pulls in the two
-dependencies the TUI half needs. It is also the path this repository is tested against:
-`scripts/verifie-install.sh` runs exactly this command in a throwaway sandbox and then loads
-the TUI module to prove it works. A plain `cp -r plugin/tether ~/.config/opencode/plugins/`
-copies the source but not those dependencies — the server half would load and the TUI half
-would not.
+Restart OpenCode. Do **not** copy the plugin files by hand — `plugin add` also installs
+the two dependencies the in-terminal dialog needs, a plain `cp -r` loads half a plugin.
 
-Restart OpenCode, then:
-
-```
-/tether
-```
-
-A QR should appear. If it does not, see [Troubleshooting](#troubleshooting).
-
-### 2. The app
+### 2. Install the app (on your machine, phone connected by ADB)
 
 ```bash
 ./gradlew :app:installDebug
 ```
 
-On first launch, fill in the server address and password. The default is
-`http://127.0.0.1:4096`, which only works if the server runs on the phone — it does not.
-
-OpenCode can print them for you:
+### 3. Connect and pair
 
 ```bash
 opencode pair
 ```
 
-It shows the URL, the username, the password, and a QR encoding all three. Type them in, or
-scan the QR with any app. **That QR contains your server password** — treat the terminal as
-a secret from that moment, and rotate the password if the output ever ends up in a
-screenshot, a log, or a shell history.
+This prints the server address and password — scan the QR or type them into the app.
+**That QR contains your server password**: treat the terminal as a secret from that
+moment.
 
-### 3. Pairing
+Then, in the OpenCode TUI, run `/tether` and scan the QR **with Tether** (its scanner
+lives in **Settings → Pair a device**). Check the address shown on screen before
+accepting — nothing is sent until you press *Authorize*.
 
-In the TUI:
+> `/tether` and `opencode pair` are two different QRs, and mixing them up does nothing:
+> the first authorizes **push** on one device, once, with a 128-bit token — the password
+> never leaves the terminal. The second carries the credentials themselves.
 
-```
-/tether
-```
+### 4. A distributor, for notifications (optional)
 
-Scan the QR. **Check the address it shows you** before accepting — that is the only check
-that is worth anything. Nothing is transmitted until you press "Authorize".
+Install any UnifiedPush distributor — [ntfy](https://ntfy.sh) is the common one — then
+pick it in **Settings → Notifications → Change distributor**. Without one, the app works
+fully; it just receives no notifications.
 
-You do not need a second app for this: **Settings → Pair a device** opens a scanner inside
-Tether (camera optional — any other camera app can still scan the same code).
+**Done.** Everything below is optional configuration.
 
-#### This is not `opencode pair`
+---
 
-OpenCode has its own pairing command, and the two are easy to confuse. They do different
-jobs:
+## Features
 
-| | `opencode pair` | `/tether` |
-|---|---|---|
-| **Purpose** | Give an app the server credentials | Authorize a device for **push** |
-| **Payload** | JSON: `urls`, `username`, **`password`** | A one-time token, 128 bits |
-| **Valid for** | Until the password changes | 30 minutes, then consumed |
-| **Password leaves the terminal** | **Yes** | **Never** |
-| **Run it** | Once, to configure the app | Once, to authorize notifications |
+- **Live chat over SSE** — reasoning, tool calls and diffs rendered natively; interrupt the
+  agent from the phone; send prompts with model and agent selection
+- **Approvals in one queue** — tool permissions and interactive forms side by side,
+  answered from the phone, with a persistent notification while a decision waits
+- **Diffs, worktrees and files** — per-file diffs, isolated worktrees, read a file before
+  it leaves the machine
+- **Server inventory** — models, agents, MCP servers, plugins, granted permissions
+- **Notifications that say what happened** — turn-end pushes carry a title and a
+  summary; progress steps are silent and replace each other
+- **Dark Material 3, English and French** — seven accent colours, brightness computed to
+  clear 3:1 contrast (a test fails the build otherwise)
 
-`opencode pair` puts the server password in a QR code. That is the master credential:
-whoever photographs that screen can drive your agent, read your sessions and run tools.
-`/tether` never transmits it — it mints a token that authorizes exactly one thing, on one
-device, once.
-
-You need **both**, in this order:
-
-```bash
-opencode pair          # scan with any app, to fill in address and password
-```
-
-then, in the TUI:
-
-```
-/tether                # scan with Tether, to authorize notifications
-```
-
-⚠️ Scanning the wrong one does nothing, because the formats are unrelated: `opencode pair`
-encodes raw JSON, `/tether` encodes `opencode://pair?s=…&t=…`. There is deliberately no
-automatic import of credentials from a QR — that is the pattern behind GHSA-2xqv-hwrf-983f.
-Enter the address and password in Settings instead.
-
-The palette entry *Tether: paired devices* lists what is registered and lets you remove
-one.
-
-### 4. A distributor, for notifications
-
-Install any UnifiedPush distributor, then pick it in **Settings → Notifications → Change
-distributor**.
+Push details worth knowing: any UnifiedPush distributor works, endpoints rotate
+automatically, and each alert type (turn end, attention needed, progress) is configured
+independently.
 
 ---
 
 ## Configuration
 
-The plugin runs with no configuration. Whatever is not configured is disabled, and the log
-says so. No default points at anyone's infrastructure: no relay, no counter, no telemetry,
-no password.
+The plugin runs with no configuration: anything unconfigured is disabled and the log
+says so. No default points at anyone's infrastructure.
 
-### Environment variables
+### The one required setting
 
-| Variable | Effect |
-|---|---|
-| `TETHER_SERVER_URL` | The address written into the QR |
-| `TETHER_MIN_SECONDS` | Minimum turn duration before it is worth notifying |
-| `TETHER_MAX_BYTES` | Truncation of the notification text |
-| `TETHER_VAPID_KEY_FILE` | P-256 VAPID key in PEM — required **only** by FCM-based distributors |
-| `TETHER_DEBUG` | `1` enables the diagnostic log |
-| `TETHER_DEBUG_LOG_FILE` | Where that log goes |
-| `TETHER_SUMMARY_URL` | OpenAI-compatible endpoint for summarising notifications |
-| `TETHER_SUMMARY_KEY_FILE` | File holding the key — the path, never the key |
-| `TETHER_SUMMARY_MODEL` | Model to ask for; empty lets the endpoint route |
+The address inside the `/tether` QR must be reachable **from the phone** — not
+`127.0.0.1`. Set it:
 
-`TETHER_SERVER_URL` matters more than the others: it is the address inside the QR, so it is
-the address **your phone** must be able to reach. A `127.0.0.1` in a QR meant for another
-device cannot work. It is also the only way to set that address without a config file, since
-a plugin dropped in `plugins/` receives `options = {}`.
-
-### Summaries
-
-A turn-end notification is only worth waking up for if it says what happened. With
-`summaryUrl` and `summaryKeyFile` set, the plugin sends the turn — the assistant's text plus
-the tool calls, which is where most of the work is — to your endpoint, and puts the returned
-title and sentence in the notification:
-
-```jsonc
-{
-  "tether": {
-    "summaryUrl": "http://localhost:8080/v1/chat/completions",
-    "summaryKeyFile": "/home/you/.config/opencode/summary-key",
-    "summaryModel": "small-local-model"
-  }
-}
+```bash
+export TETHER_SERVER_URL=https://opencode.example.com:4096
 ```
 
-Two properties are deliberate:
+### Turn-end summaries (recommended)
 
-- **No default endpoint, no default model.** Nothing points at anyone's infrastructure; an
-  unconfigured summariser is simply absent, and the notification says what happened in the
-  tool's own words.
-- **A failed summariser is not a failed notification.** Any error — down, timeout, prose
-  instead of JSON — falls back to the raw turn. The notification is less pretty, never lost.
-
-The key is read from the file on every summary, so rotating it needs no restart. `/tether
-config` offers the same three settings; they are stored by the plugin, not in your
-`opencode.jsonc` — and the server reads that store at startup, so a change there needs a
-plugin reload rather than a restart.
-
-#### Long turns are split, not truncated
-
-An agent's turn is not a sentence. Measured on a real session: the heaviest turn was **6 515
-bytes** — 173 tool calls, 59 text parts — and a summariser that reads 6 000 bytes at a time
-sees the whole thing. Three steps, and they are visible in the logs:
-
-1. **Split on line boundaries.** A fragment never ends mid-command: a line cut in half would
-   make the summary say "ran `npm instal`". A single line longer than a fragment is truncated
-   *with a visible marker*, because an unannounced cut is a lie.
-2. **One sentence per fragment, cached by content hash.** The same fragment never reaches the
-   model twice — a turn that splits into 20 fragments costs 21 calls, not 40. The cache is
-   bounded (200 entries, oldest out) because an agent that works for hours would otherwise
-   leak memory for the lifetime of the server.
-3. **Then the thesis**, from those sentences, in the same `{title, summary}` shape as a short
-   turn. A fragment that fails is *named* in the input rather than dropped, and a failed
-   thesis falls back to the joined sentences — never to raw kilobytes in a notification.
-
-The material itself is capped at 120 KB, keeping the **end** of the turn (that is where the
-result is) and stating how much of the beginning was left out.
-
-### `opencode.jsonc`
-
-Options are only read when the plugin entry is an object:
+A notification that says what the turn *did* is worth waking up for. With a summary
+endpoint configured, the plugin sends the turn — assistant text plus tool calls — to any
+OpenAI-compatible endpoint and puts the returned title and sentence in the notification:
 
 ```jsonc
+// opencode.jsonc — the entry MUST be an object, not a bare string, not a ["pkg", {}] pair
 {
   "plugins": [
     {
       "package": "git+https://github.com/sk7n4k3d/tether.git",
-      "options": { "serverUrl": "https://opencode.example.com:4096" }
+      "options": {
+        "serverUrl": "https://opencode.example.com:4096",
+        "summaryUrl": "http://localhost:8080/v1/chat/completions",
+        "summaryKeyFile": "/home/you/.config/opencode/summary-key",
+        "summaryModel": ""
+      }
     }
   ]
 }
 ```
 
-⚠️ **Not** a bare string, and **not** a `["package", { … }]` pair — OpenCode 2.0.12 rejects the
-pair as `kind=invalid` and skips the plugin **silently**: the RPC stops answering and nothing
-says so on either side. A bare string works but always gives `options = {}`. Measured, not
-assumed.
+⚠️ **Only this shape works.** A bare string gives `options = {}`; the `["spec", {…}]` pair
+is rejected as `kind=invalid` and the plugin is skipped **silently** — measured on
+OpenCode 2.0.12, not assumed.
 
-`serverUrl` beats `TETHER_SERVER_URL`, which beats what the TUI detects.
+How summaries behave:
+
+- **The push leaves before the summary.** You get the turn's actions immediately; the
+  title and sentence replace it when the model answers. A slow summariser never delays
+  the notification.
+- **No default endpoint, no default model** — nothing points at anyone's infrastructure.
+- **A failed summary is not a lost notification**: any error falls back to the raw turn.
+- **Long turns are split, not truncated** — fragments are cut on line boundaries,
+  summarised one sentence each (cached by content hash), then joined; the thesis falls
+  back to the sentences, never to raw kilobytes in a notification.
+
+The same settings can be set from the TUI with `/tether config`, or via environment
+variables.
+
+### All environment variables
+
+| Variable | Effect |
+|---|---|
+| `TETHER_SERVER_URL` | The address written into the QR — must be reachable from the phone |
+| `TETHER_MIN_SECONDS` | Minimum turn duration before notifying |
+| `TETHER_MAX_BYTES` | Truncation of the notification text |
+| `TETHER_SUMMARY_URL` | OpenAI-compatible endpoint for summaries |
+| `TETHER_SUMMARY_KEY_FILE` | File holding the key — the path, never the key |
+| `TETHER_SUMMARY_MODEL` | Model to ask for; empty lets the endpoint route |
+| `TETHER_VAPID_KEY_FILE` | P-256 VAPID key in PEM — required **only** by FCM-based distributors |
+| `TETHER_DEBUG` | `1` enables the diagnostic log |
+| `TETHER_DEBUG_LOG_FILE` | Where that log goes |
 
 ---
 
 ## Troubleshooting
 
-**`/tether` does nothing.** The plugin did not load. Check that it sits in
-`~/.config/opencode/plugins/tether/`, and that it exports `{ id, setup }` — that is the V2
-contract. A V1 plugin (`{ tui }`) will not load.
+**`/tether` does nothing.** The plugin did not load — reinstall it with
+`opencode plugin add` (not a manual copy), then restart OpenCode.
 
-**The QR contains `127.0.0.1`.** The TUI found no reachable address. Export
-`TETHER_SERVER_URL` with something your phone can reach.
+**The QR contains `127.0.0.1`.** Export `TETHER_SERVER_URL` with an address your phone
+can reach, and run `/tether` again.
 
 **"This QR expired or was already used."** Tokens are single-use and short-lived. Run
-`/tether` again and rescan. The app will not retry by itself: a failure has to be visible.
+`/tether` again and rescan.
 
 **"No push distributor has provided an access point yet."** Install a UnifiedPush
-distributor and come back. Without one the app has nothing to send through.
+distributor (step 4 above), then come back.
 
-**"Android is blocking them."** Grant the `POST_NOTIFICATIONS` permission. Android 13+ does
-not ask on its own, and without it nothing appears — silently.
+**"Android is blocking them."** Grant `POST_NOTIFICATIONS` — Android 13+ never asks on
+its own, and without it nothing appears, silently.
 
-**Registration fails with 401.** Tether uses the password from your settings and never
-another. If the server in the QR wants a different one, the call fails and the error is
-shown as-is.
+**Registration fails with 401.** The password in your app settings does not match the
+server. Re-run `opencode pair` and retype it.
 
-**The confirmation screen does not open.** Check that the `opencode://pair` intent filter
-is in the manifest — it is what delivers the intent to the foreground.
+**After editing `opencode.jsonc`, the plugin ignores the change.** The config watcher
+reloads plugins, but if the plugin was reinstalled by hand, clear the install cache
+first: `rm -rf ~/.cache/opencode/npm/git-tether-*`, then remove and re-add the plugin.
+And any plugin update needs the same cache clear — otherwise the lock file reinstalls
+the old commit.
 
 ---
 
 ## Development
 
 ```bash
-# Plugin — 180 tests under node, plus 5 under Bun for the dialog.
-# List the files explicitly: the glob pulls in tui-setup.test.mjs, which imports tui.tsx
-# and dies with ERR_UNKNOWN_FILE_EXTENSION outside an OpenCode install.
-# 29 of the 180 run against a live `opencode serve` (port 4299) and skip if it is absent.
-node --experimental-strip-types --test \
-  plugin/tether/classify.test.mjs plugin/tether/index.test.mjs plugin/tether/qr.test.mjs \
-  plugin/tether/registry.test.mjs plugin/tether/summary.test.mjs \
-  plugin/tether/tui-config.test.mjs plugin/tether/tui-logic.test.mjs \
-  plugin/tether/ui-model.test.mjs plugin/tether/vapid.test.mjs \
-  plugin/tether/webpush.mutation.test.mjs plugin/tether/webpush.test.mjs
-
-# The one test that needs the .tsx dialog, and therefore Bun and an OpenCode tree
+# Plugin — 180 tests under node (29 need a live `opencode serve` and skip otherwise),
+# plus 5 under Bun for the JSX dialog. Use `npm test`, the file list is explicit:
+npm test
 bun test plugin/tether/tui-setup.test.mjs
 
-# App — 551 JVM tests, plus 6 on a connected device
+# App — 551 JVM tests
 ./gradlew :app:testDebugUnitTest
-./gradlew :app:connectedDebugAndroidTest
 
 # APK
 ./gradlew :app:assembleDebug
 ```
 
-Three of these are worth reading:
-
-- **`plugin/tether/qr-verify.sh`** checks the QR encoder against `com.google.zxing:core`,
-  module by module, over 130 deterministic cases. zxing decodes but does not render, and no
-  native dependency belongs in a server plugin — so the encoder is written from scratch.
-- **`plugin/tether/vapid.test.mjs`** verifies VAPID signatures, including the DER-versus-R‖S
+- `plugin/tether/qr-verify.sh` checks the QR encoder against `com.google.zxing:core`
+  over 130 deterministic cases — zxing decodes but does not render, and a server plugin
+  carries no native dependency.
+- `plugin/tether/vapid.test.mjs` verifies VAPID signatures, including the DER-versus-R‖S
   trap that yields "notifications silently lost" with no error anywhere.
-- **`scripts/check-publie.sh`** checks that no personal data is about to be published. The
-  forbidden patterns come from `TETHER_GREP_FORBIDDEN`, not from the repository: a sensitive
-  pattern stored in the repository is a leaked pattern.
-
----
-
-## Project structure
+- `scripts/check-publie.sh` blocks publication of personal data; the forbidden patterns
+  live in `TETHER_GREP_FORBIDDEN`, outside the repository.
 
 ```
 app/                    Android client (Kotlin, Compose, Hilt, Ktor)
-plugin/tether/
-  index.ts              plugin registration, RPC, pairing ceremony
-  pairing.ts            token minting and consumption, single-use
-  webpush.ts            RFC 8291 encryption and VAPID signing
-  registry.ts           device registry
-  rpc.ts                RPC schema, as JSON Schema
-  qr.ts                 QR encoder, dependency-free
-  tui.tsx               dialog and palette
-  tui-logic.ts          TUI logic without JSX — node:test cannot read JSX
-  config.ts             options and environment variables
+plugin/tether/          server plugin: RPC, pairing, Web Push, QR encoder, TUI dialog
 scripts/                pre-publication verification
 ```
 
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a branch
-3. Make your change, with the tests
-4. Open a pull request
-
-```bash
-node --experimental-strip-types --test plugin/tether/index.test.mjs   # …see Development
-./gradlew :app:testDebugUnitTest
-```
-
-If your change touches push, pairing or cryptography, say what it fixes. The push round trip
-has not been observed on a real phone, and the TUI dialog has never been rendered in a real
-TUI: a test claiming otherwise deserves a careful read.
+Contributions: fork, branch, change with tests, PR. If your change touches push, pairing
+or cryptography, say what it fixes.
 
 ---
 
 ## Credits
 
-| Resource | Description |
-|---|---|
-| [OpenCode](https://github.com/sst/opencode) | The server this client talks to |
-| [UnifiedPush](https://unifiedpush.org/) | The push protocol, and the reason no Google account is needed |
-| [zxing](https://github.com/zxing/zxing) | Reference implementation the QR encoder is checked against |
-| [conversations.im](https://conversations.im/) | Federated X client, inspiration for the conversation model |
-
----
+- [OpenCode](https://github.com/sst/opencode) — the server this client talks to
+- [UnifiedPush](https://unifiedpush.org/) — the push protocol, and the reason no Google account is needed
+- [zxing](https://github.com/zxing/zxing) — reference implementation the QR encoder is checked against
 
 ## License
 
