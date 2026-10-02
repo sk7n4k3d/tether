@@ -108,8 +108,12 @@ class ConnectionViewModel @Inject constructor(
                 directory = current.directory,
             )
             try {
+                // ⚠️ On teste AVANT de sauvegarder : avant, `store.save` ecrasait la
+                // configuration qui marche AVANT le test — un mot de passe mal tape lors
+                // d'un test rate detruisait l'ancien, sans retour possible. On teste sur
+                // l'objet en memoire, et la sauvegarde n'a lieu qu'une fois le test reussi.
+                val info = gateway.info(settings)
                 store.save(settings)
-                val info = gateway.info(store.current())
                 _state.update {
                     it.copy(result = ConnectionTestResult.Success(info.version), saved = true)
                 }

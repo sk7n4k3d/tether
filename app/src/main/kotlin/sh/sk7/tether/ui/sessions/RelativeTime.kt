@@ -1,9 +1,37 @@
 package sh.sk7.tether.ui.sessions
 
 import java.util.Locale
-import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import sh.sk7.tether.R
 import sh.sk7.tether.ui.i18n.Res
+
+/**
+ * L'horloge d'affichage des ages relatifs.
+ *
+ * ⚠️ Pourquoi un flux et pas `System.currentTimeMillis()` direct dans la composition :
+ * (1) lire l'horloge pendant la composition est impur — le meme rendu peut donner des
+ * ages differents selon le thread ; (2) surtout, RIEN ne rafraichissait : « il y a 2 min »
+ * restait affiche tant qu'aucune autre recomposition ne se produisait. Une emission par
+ * minute suffit : la granularite du format est la minute.
+ *
+ * Plafonne a 60 emissions : un ecran laisse ouvert une nuit ne cree pas de timer immortel.
+ */
+@Composable
+fun rememberMinuteTick(): Long {
+    return produceState(initialValue = System.currentTimeMillis()) {
+        var ticks = 0
+        while (currentCoroutineContext().isActive && ticks < 60) {
+            delay(60_000)
+            value = System.currentTimeMillis()
+            ticks++
+        }
+    }.value
+}
 
 /**
  * Age relatif d'un horodatage epoch (millisecondes), pour la liste des sessions.

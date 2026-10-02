@@ -85,18 +85,19 @@ test("remove retire le bon appareil et ignore un id inconnu", () => {
 // La règle de désabonnement — la plus dangereuse du fichier
 // ---------------------------------------------------------------------------
 
-test("4xx desabonne", () => {
-  for (const status of [400, 401, 402, 403, 404, 405, 410, 413, 422]) {
-    assert.equal(shouldUnsubscribe(status), true, `${status} doit desabonner`)
-  }
+test("seuls 404 et 410 desabonnent — la seule preuve de mort vient du distributeur", () => {
+  // 404 = « plus là », 410 = « expiré » : la bouche même du distributeur. Tout autre 4xx
+  // est une erreur de NOTRE configuration (400 = corps refusé, 401/403 = VAPID refusé,
+  // 413 = charge trop grosse) : s'y désabonner effacerait des appareils vivants, en
+  // silence, pour un problème qui se répare côté serveur.
+  assert.equal(shouldUnsubscribe(404), true, "404 = l'abonnement n'existe plus cote distributeur")
+  assert.equal(shouldUnsubscribe(410), true, "410 = le distributeur a declare l'abonnement expire")
 })
 
-test("408 et 429 NE desabonnent PAS", () => {
-  // Un 429 dit que le distributeur est deborde, pas que l'abonnement est mort.
-  // Se desabonner dessus serait definitif et silencieux : l'utilisateur perdrait
-  // ses notifications pour un problemme temporaire, sans aucun message.
-  assert.equal(shouldUnsubscribe(408), false, "408 = timeout du distributeur")
-  assert.equal(shouldUnsubscribe(429), false, "429 = distributeur sature")
+test("400/401/403/413 ne desabonnent PAS — ce sont nos erreurs, pas la leur", () => {
+  for (const status of [400, 401, 402, 403, 405, 408, 413, 422, 429]) {
+    assert.equal(shouldUnsubscribe(status), false, `${status} doit garder l'appareil`)
+  }
 })
 
 test("2xx et 3xx ne desabonnent pas", () => {
@@ -111,15 +112,16 @@ test("5xx ne desabonne pas — c'est une panne du distributeur, pas un mort", ()
   }
 })
 
-test("MUTATION — oublier les exceptions 408/429 ferait perdre des appareils", () => {
-  const sansExceptions = (status) => status >= 400 && status < 500
+test("MUTATION — la regle naive « tout 4xx desabonne » effacerait le registre sur un mauvais VAPID", () => {
+  const naive = (status) => status >= 400 && status < 500
 
-  // Ce que donnerait la regle naive, et pourquoi c'est faux.
-  assert.equal(sansExceptions(429), true, "la regle naive desabonnerait sur 429")
-  assert.equal(shouldUnsubscribe(429), false, "notre regle le preserve")
-  assert.notEqual(sansExceptions(429), shouldUnsubscribe(429), "la difference est ce qui nous protege")
+  // Un VAPID mal configure donne 401 sur TOUS les appareils : la regle naive les efface
+  // tous, definitivement. La notre les garde.
+  assert.equal(naive(401), true, "la regle naive desabonnerait sur 401")
+  assert.equal(shouldUnsubscribe(401), false, "notre regle preserve l'appareil")
 
-  assert.equal(sansExceptions(408), true, "la regle naive desabonnerait sur 408")
+  // Et le cas historique : 408/429 restaient des pannes temporaires.
+  assert.equal(naive(408), true, "la regle naive desabonnerait sur 408")
   assert.equal(shouldUnsubscribe(408), false, "notre regle le preserve")
 })
 

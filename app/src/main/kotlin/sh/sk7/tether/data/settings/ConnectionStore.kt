@@ -50,8 +50,14 @@ data class ConnectionSettings(
         const val DEFAULT_DIRECTORY: String = ""
 
         /** Ramene une valeur vide ou blanche a son defaut : un champ vide n'ecrase pas le defaut. */
+        // ⚠️ Le schema est complet si absent : une adresse tapee sans `http://` (ex.
+        // `192.168.1.10:4096`) partait telle quelle vers Ktor, qui echoue sur une URL
+        // sans schema — une erreur obscure pour une faute de frappe courante. `https`
+        // reste explicite : l'utilisateur qui le tape l'obtient.
         fun normalize(baseUrl: String, directory: String): ConnectionSettings = ConnectionSettings(
-            baseUrl = baseUrl.trim().ifBlank { DEFAULT_BASE_URL },
+            baseUrl = baseUrl.trim()
+                .ifBlank { DEFAULT_BASE_URL }
+                .let { if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it" },
             directory = directory.trim().ifBlank { DEFAULT_DIRECTORY },
         )
     }

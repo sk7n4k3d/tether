@@ -5,7 +5,9 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +17,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import sh.sk7.tether.data.api.OpenCodeGateway
+import sh.sk7.tether.data.api.PtyInfoDto
 import sh.sk7.tether.data.api.Session
+import sh.sk7.tether.data.api.ShellInfoDto
+import sh.sk7.tether.domain.model.PermissionRequest
 import sh.sk7.tether.data.settings.ConnectionMonitor
 import sh.sk7.tether.data.settings.ConnectionStore
 import sh.sk7.tether.di.ApplicationScope
@@ -235,27 +240,40 @@ class ActivityMonitor @Inject constructor(
                 return
             }
             try {
-                // ⚠️ Les trois lectures sont en **parallèle** : indépendantes, et
-                // séquentielles elles tripleraient la latence d'un cycle pour rien.
+                // ⚠️ Les quatre lectures sont en **parallèle** : indépendantes, et
+                // séquentielles elles empileraient la latence d'un cycle pour rien.
+                // (Le commentaire disait « parallèle » alors que le code attendait chaque
+                // appel l'un après l'autre : 4 allers-retours empilés par cycle de 12 s.)
                 // ⚠️ Reapprovisionnement **periodique et lent** (voir SESSION_RESCAN_MS) : sans
                 // lui, une session creee pendant que l'ecran est ouvert resterait invisible. Le
                 // cout est borne et justifie — c'est ce qui rend l'etat vivant au lieu de figé.
-                if (System.currentTimeMillis() - lastSessionScan > SESSION_RESCAN_MS) {
-                    runCatching { gateway.allSessions(settings) }.onSuccess {
-                        knownSessions = it
-                        lastSessionScan = System.currentTimeMillis()
+                var activeIDs: Set<String> = emptySet()
+                var shells: List<ShellInfoDto> = emptyList()
+                var terminals: List<PtyInfoDto> = emptyList()
+                var pendingPermissions: List<PermissionRequest> = emptyList()
+                coroutineScope {
+                    if (System.currentTimeMillis() - lastSessionScan > SESSION_RESCAN_MS) {
+                        runCatching { gateway.allSessions(settings) }.onSuccess {
+                            knownSessions = it
+                            lastSessionScan = System.currentTimeMillis()
+                        }
                     }
-                }
 
-                val activeIDs = gateway.activeSessions(settings)
-                val shells = gateway.shells(settings)
-                // ⚠️ Les terminaux sont lus **en plus** des shells : sur ce serveur, la route
-                // `POST /session/{id}/shell` rend 500 (bug de plugin), donc les shells seuls
-                // donneraient une image incomplete du travail de fond.
-                val terminals = runCatching { gateway.terminals(settings) }.getOrDefault(emptyList())
-                // Les permissions et les formulaires sont ce qui « attend ». Ils viennent d'une
-                // seule route globale : pas besoin de la demander par session.
-                val pendingPermissions = gateway.pendingPermissions(settings)
+                    val active = async { gateway.activeSessions(settings) }
+                    val shellsD = async { gateway.shells(settings) }
+                    // ⚠️ Les terminaux sont lus **en plus** des shells : sur ce serveur, la route
+                    // `POST /session/{id}/shell` rend 500 (bug de plugin), donc les shells seuls
+                    // donneraient une image incomplete du travail de fond.
+                    val terminalsD = async { runCatching { gateway.terminals(settings) }.getOrDefault(emptyList()) }
+                    // Les permissions et les formulaires sont ce qui « attend ». Ils viennent d'une
+                    // seule route globale : pas besoin de la demander par session.
+                    val pendingPermissionsD = async { gateway.pendingPermissions(settings) }
+
+                    activeIDs = active.await()
+                    shells = shellsD.await()
+                    terminals = terminalsD.await()
+                    pendingPermissions = pendingPermissionsD.await()
+                }
 
                 // ⚠️ On croise les sessions **connues** avec ce qu'on vient d'interroger. Aucune
                 // requete lourde n'est refaite : c'est le principe du detenteur unique.

@@ -22,7 +22,8 @@ data class WorktreeUiState(
     val loading: Boolean = true,
     val error: String? = null,
     /** Le repertoire est-il versionne ? Sans VCS, un arbre de travail n'a pas de sens. */
-    val versioned: Boolean = true,
+    /** `null` = inconnu (echec reseau) : ni « versionne » ni « pas versionne » — on ne sait pas. */
+    val versioned: Boolean? = null,
     val items: List<WorktreeDirDto> = emptyList(),
     /** Nom saisi pour le prochain arbre. */
     val draftName: String = "",
@@ -75,8 +76,11 @@ class WorktreeViewModel @Inject constructor(
             // ⚠️ On verifie d'abord que le repertoire est versionne. Un arbre de travail repose sur
             // git : dans un repertoire sans gestion de version, la creation echouerait avec un
             // message obscur. Mieux vaut le dire avant d'essayer.
+            // ⚠️ `null` = on ne SAIT PAS (echec reseau, data:null) : avant, le repli `?: true`
+            // supposait « versionne » et l'ecran proposait une creation condamnee a echouer —
+            // un bouton qui ne peut pas marcher, pire que pas de bouton.
             val versioned = runCatching { gateway.vcsInfo(settings, settings.directory)?.isVersioned }
-                .getOrNull() ?: true
+                .getOrNull()
 
             runCatching { gateway.worktrees(settings) }
                 .onSuccess { list ->

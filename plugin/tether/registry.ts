@@ -104,9 +104,17 @@ export function remove(registry: Device[], deviceId: string): Device[] {
  *
  * Un 5xx est une panne du distributeur : on garde l'abonnement, on réessaiera.
  */
+/**
+ * Un 5xx est une panne du distributeur : on garde l'abonnement, on réessaiera.
+ *
+ * ⚠️ Seuls **404 et 410** prouvent la mort de l'abonnement : « plus là » et « expiré »,
+ * la bouche même du distributeur. Un 400 (corps refusé — bug de chiffrement chez nous),
+ * 401/403 (VAPID refusé — mauvaise clé) ou 413 (charge trop grosse) sont des erreurs
+ * **de notre configuration**, pas de l'abonnement : s'y désabonner effacerait tous les
+ * appareils sans message, pour un problème qui se répare côté serveur.
+ */
 export function shouldUnsubscribe(status: number): boolean {
-  if (status === 408 || status === 429) return false
-  return status >= 400 && status < 500
+  return status === 404 || status === 410
 }
 
 /**

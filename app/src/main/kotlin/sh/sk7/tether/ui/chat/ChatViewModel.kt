@@ -34,6 +34,7 @@ import sh.sk7.tether.data.api.SkillDto
 import sh.sk7.tether.data.activity.ActivityMonitor
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.data.event.ConnectionState
+import sh.sk7.tether.data.event.DeltaCoalescer
 import sh.sk7.tether.data.event.EventSource
 import sh.sk7.tether.data.event.EventSourceFactory
 import sh.sk7.tether.data.event.OcEvent
@@ -276,6 +277,13 @@ class ChatViewModel @Inject constructor(
     private var settings: ConnectionSettings? = null
     private var graceJob: Job? = null
 
+    /** Fusionne les deltas de texte/raisonnement d'une meme fenetre (cf. [connect]). */
+    private val coalescer = DeltaCoalescer()
+
+    /** Horodatage du dernier evenement recu pendant un tour — sert au réarmement de [armGrace]. */
+    @Volatile
+    private var graceArmedAt: Long = 0
+
     /**
      * **Le lien entre un message optimiste et son identifiant serveur.**
      *
@@ -415,14 +423,25 @@ class ChatViewModel @Inject constructor(
         source.connect()
             .onEach { event ->
                 if (event.sessionID != sessionID) return@onEach
-                applyEvent(event)
+                // ⚠️ Coalescence des deltas : le modele emet en rafale, et chaque delta
+                // recopiait la String accumulee (O(n²) par tour) + un cycle UI complet.
+                // On fusionne les deltas d'une meme fenetre de 50 ms en un seul evenement.
+                for (e in coalescer.feed(event)) applyEvent(e)
             }
             .catch { /* le flux ne doit jamais tuer l'ecran ; la reconnexion est interne */ }
             .launchIn(scope)
 
         source.state
             .filter { it == ConnectionState.Connected }
-            .onEach { resync() }
+            .onEach {
+                // ⚠️ Dedup avec le `resync()` direct de [start] : l'EventStream passe a
+                // Connected des l'ouverture, donc la resync partait DEUX fois de suite a
+                // chaque entree dans un chat (~6 requetes doubees pour rien).
+                val now = System.currentTimeMillis()
+                if (now - lastResyncMillis < RESYNC_DEDUPE_MS) return@onEach
+                lastResyncMillis = now
+                resync()
+            }
             .launchIn(scope)
     }
 
@@ -481,6 +500,11 @@ class ChatViewModel @Inject constructor(
      * l'acceptation HTTP ne soit traitee.
      */
     private fun dedupeOptimistic(chat: SessionUiState): SessionUiState {
+        // ⚠️ Sortie immediate si les maps de liens sont vides ET qu'aucun envoi est en vol :
+        // ce scan etait O(n) par delta de texte. Le cas nominal (lecture d'un tour, pas
+        // d'envoi en vol) ne doit rien payer. `preexistingUserIds` couvre la course ou
+        // l'inbox arrive avant l'acceptation HTTP (lien par texte, sans id).
+        if (acceptedOptimistic.isEmpty() && preexistingUserIds.isEmpty() && inFlightSends.isEmpty()) return chat
         val hasOptimistic = chat.messages.any { it.id.startsWith(OPTIMISTIC_PREFIX) }
         if (!hasOptimistic) return chat
 
@@ -545,6 +569,11 @@ class ChatViewModel @Inject constructor(
      * laisser croitre sans borne sur une longue session serait neglige.
      */
     private fun pruneOptimisticLinks() {
+        // ⚠️ Sortie immediate sans optimiste ni envoi en vol : cette purge etait appelee
+        // apres CHAQUE delta de texte, et scannait toute la liste de messages (3 collections
+        // allouees) pour un resultat quasi toujours vide — du churn GC constant pendant
+        // tout le streaming.
+        if (acceptedOptimistic.isEmpty() && preexistingUserIds.isEmpty() && inFlightSends.isEmpty()) return
         val present = _state.value.chat.messages
             .filter { it.isOptimistic }
             .map { it.id }
@@ -755,6 +784,8 @@ class ChatViewModel @Inject constructor(
      */
     fun resync() {
         val current = settings ?: return
+        // ⚠️ Horodate : le collecteur `Connected` deduplique avec ce chiffre (cf. [connect]).
+        lastResyncMillis = System.currentTimeMillis()
         scope.launch {
             try {
                 val page = gateway.messagesPageBack(current, sessionID, ChatWindow.SERVER_PAGE, cursor = null)
@@ -1014,6 +1045,14 @@ class ChatViewModel @Inject constructor(
 
     /** Efface l'information neutre (apres l'avoir montree). */
     fun clearNotice() = _state.update { it.copy(notice = null) }
+
+    /** Ferme le bandeau d'erreur au geste — une erreur lue ne doit pas rester affichee. */
+    fun clearError() = _state.update { it.copy(error = null) }
+
+    /** Confirmation visible de la copie presse-papiers — le geste ne doit jamais sembler mort. */
+    fun afficherCopie() = _state.update {
+        it.copy(notice = Res.of(R.string.texte_copie_presse_papiers_9d43e1))
+    }
 
     /**
      * **Deplace les outils bloquants en observation d'arriere-plan**
@@ -1351,14 +1390,28 @@ class ChatViewModel @Inject constructor(
      * [UiPhase.Awaiting]. La phase n'est jamais bloquee indefiniment.
      */
     private fun armGrace() {
-        cancelGrace()
+        // ⚠️ Un seul job, rearme par horodatage et non recree par evenement : avant, CHAQUE
+        // delta annulait + relancait une coroutine (des centaines par seconde en rafale).
+        // Le job existant fait le boulot lui-meme : il attend la grace, et si de nouveaux
+        // evenements sont arrives entre-temps, il se rearme au lieu de tirer.
+        val existing = graceJob
+        if (existing != null && existing.isActive) {
+            graceArmedAt = System.currentTimeMillis()
+            return
+        }
+        graceArmedAt = System.currentTimeMillis()
         graceJob = scope.launch {
-            delay(awaitingGraceMillis)
-            _state.update { state ->
-                when (state.phase) {
-                    UiPhase.Sending, UiPhase.Streaming -> state.copy(phase = UiPhase.Awaiting)
-                    else -> state
+            while (true) {
+                delay(awaitingGraceMillis)
+                val idleSince = System.currentTimeMillis() - graceArmedAt
+                if (idleSince < awaitingGraceMillis) continue // un evenement est arrive : reattendre le reste
+                _state.update { state ->
+                    when (state.phase) {
+                        UiPhase.Sending, UiPhase.Streaming -> state.copy(phase = UiPhase.Awaiting)
+                        else -> state
+                    }
                 }
+                return@launch
             }
         }
     }
@@ -1376,7 +1429,14 @@ class ChatViewModel @Inject constructor(
 
         /** Prefixe des messages locaux en attente de confirmation REST. */
         const val OPTIMISTIC_PREFIX: String = "local-"
+
+        /** Fenetre de deduplication des resync (ms) : deux triggers a moins de ca n'en font qu'une. */
+        const val RESYNC_DEDUPE_MS: Long = 2_000
     }
+
+    /** Horodatage de la derniere resync lancee — sert au dedup du collecteur `Connected`. */
+    @Volatile
+    private var lastResyncMillis: Long = 0
 
     /**
      * **Marque la session comme vue, jusqu'à son dernier `idle`.**

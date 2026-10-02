@@ -349,6 +349,12 @@ export interface Resume {
   readonly titre: string | null
   /** 1 a 2 phrases. Jamais vide. */
   readonly corps: string
+  /**
+   * Combien d'appels au modele ont ete necessaires (1 = un seul, > 1 = reduction
+   * par etapes, autant de fragments). Expose pour le journal de production : c'est
+   * la seule preuve observable qu'un tour long a bien ete fragmente, pas tronque.
+   */
+  readonly fragments: number
 }
 
 /** Ce qu'on demande au modele. Figé : un prompt qui derive donne des resumes qui derivent. */
@@ -433,6 +439,7 @@ export async function summarize(
   return {
     titre: titre.length > 0 ? oneLine(titre, 80) : null,
     corps: oneLine(corps, 400),
+    fragments: 1,
   }
 }
 
@@ -547,8 +554,8 @@ export async function summarizeFragmente(
   }
 
   const these = await summarize(morceaux.join("\n"), resumeur, fetchFn)
-  if (these) return these
+  if (these) return { ...these, fragments: fragments.length }
   // ⚠️ La these finale a echoue : on rend la synthese des fragments plutot que `null`, parce que
   // `null` ferait republier le materiau brut — des dizaines de kilo-octets dans une notification.
-  return { titre: null, corps: oneLine(morceaux.join(" "), 400) }
+  return { titre: null, corps: oneLine(morceaux.join(" "), 400), fragments: fragments.length }
 }

@@ -3,8 +3,10 @@ package sh.sk7.tether.data.settings
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import sh.sk7.tether.data.api.ModelRef
@@ -42,7 +44,11 @@ class SessionDefaultsStore @Inject constructor(
     private val dataStore: DataStore<Preferences>,
 ) {
     /** Dernier modele choisi, `null` si l'utilisateur n'en a jamais choisi. */
-    val lastModel: Flow<ModelRef?> = dataStore.data.map { prefs ->
+    // ⚠️ `catch` comme ConnectionStore/AppearanceStore : un fichier DataStore corrompu
+    // faisait remonter l'exception jusqu'au collecteur et tuait l'ecran.
+    val lastModel: Flow<ModelRef?> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         val id = prefs[KEY_MODEL_ID]
         if (id.isNullOrBlank()) {
             null
@@ -56,9 +62,11 @@ class SessionDefaultsStore @Inject constructor(
     }
 
     /** Dernier agent choisi ; `null` = laisser le serveur resoudre. */
-    val lastAgent: Flow<String?> = dataStore.data.map { prefs ->
-        prefs[KEY_AGENT]?.takeIf { it.isNotBlank() }
-    }
+    val lastAgent: Flow<String?> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            prefs[KEY_AGENT]?.takeIf { it.isNotBlank() }
+        }
 
     /** Lecture ponctuelle des deux, pour un envoi non suspendu par une collecte. */
     suspend fun current(): Defaults = Defaults(

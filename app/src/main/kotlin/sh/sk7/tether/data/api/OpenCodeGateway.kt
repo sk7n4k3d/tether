@@ -710,11 +710,12 @@ class KtorOpenCodeGateway @Inject constructor(
         // soit une vraie preuve de fin d'historique — sinon l'UI garderait « charger plus »
         // affiche pour toujours (c'etait le bug B13).
         //
-        // Le cout est **une requete, une seule fois** par session : des que la fin est
-        // atteinte, `cursorBack` reste `null` et plus rien n'est sonde.
+        // La sonde telecharge **1 message**, pas une page : elle tourne a chaque appel tant
+        // que la fin n'est pas atteinte (resync comprise), et une page de 40 pesait jusqu'a
+        // 3 Mo de JSON dont rien n'etait garde.
         val next = page.next
         val exhausted = next == null ||
-            client(settings).messagesPage(sessionID, limit, cursor = next, order = null).data.isEmpty()
+            client(settings).messagesPage(sessionID, 1, cursor = next, order = null).data.isEmpty()
 
         return HistoryPage(
             // ⚠️ On remet a l'endroit : le serveur rend du plus recent au plus ancien, l'ecran

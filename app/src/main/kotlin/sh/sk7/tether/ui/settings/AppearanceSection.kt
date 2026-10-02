@@ -22,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +37,7 @@ import sh.sk7.tether.ui.theme.Accent
 import sh.sk7.tether.ui.theme.ajusterPourContraste
 import sh.sk7.tether.ui.theme.SEUIL_ELEMENT
 import sh.sk7.tether.ui.theme.Spacing
+import sh.sk7.tether.ui.theme.TetherDimensions
 import sh.sk7.tether.ui.theme.TetherDataStyle
 import sh.sk7.tether.ui.theme.TetherTextMuted
 import sh.sk7.tether.ui.theme.TetherTextPrimary
@@ -74,9 +77,14 @@ fun AccentPicker(
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
+                    // 48 dp de cible + etat annonce : meme regle que le selecteur de langue.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable { onChoisir(accent) }
                     .padding(Spacing.xs)
-                    .semantics { role = Role.RadioButton },
+                    .semantics {
+                        role = Role.RadioButton
+                        selected = selectionne
+                    },
             ) {
                 Box(
                     modifier = Modifier
@@ -151,9 +159,17 @@ fun LanguePicker(
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
+                    // ⚠️ 48 dp AVANT `clickable` : un `labelSmall` + padding xs faisait ~22 dp
+                    // de cible — sous le seuil tactile ET sous le plancher AA de 24 dp.
+                    .heightIn(min = TetherDimensions.touchTarget)
                     .clickable { onChoisir(code) }
                     .padding(Spacing.xs)
-                    .semantics { role = Role.RadioButton },
+                    // ⚠️ `selected` : sans lui, TalkBack annonce « bouton radio » mais jamais
+                    // lequel est choisi — l'etat existe a l'ecran, pas pour le lecteur.
+                    .semantics {
+                        role = Role.RadioButton
+                        selected = selectionne
+                    },
             ) {
                 Text(
                     text = libelles[code] ?: code.orEmpty(),

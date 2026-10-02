@@ -108,13 +108,21 @@ class TetherPushService : PushService() {
         // l'humain. Les afficher serait du bruit, et surtout : c'est `tether:progress=` qui
         // distingue une etape d'avancement d'une fin de tour. La lire ici est ce qui evite de
         // faire sonner le telephone a chaque appel d'outil.
+        //
+        // ⚠️ La notification part en coroutine sur IO : `onMessage` est livre sur le thread
+        // PRINCIPAL (BroadcastReceiver de la lib), et la lecture de l'etat serveur dans
+        // `notify` faisait un `runBlocking` jusqu'a 3 s — un ANR potentiel A CHAQUE push,
+        // y compris les pushes d'avancement qui arrivent a chaque appel d'outil.
         val payload = parsePush(raw)
-        notify(
-            applicationContext,
-            payload.copy(
-                text = payload.text.ifBlank { Res.of(R.string.nouvelle_activite_opencode_3a7f4a) },
-            ),
-        )
+        val appContext = applicationContext
+        EntryPointAccessors.fromApplication(appContext, PushEntryPoint::class.java).pushScope().coroutines.launch {
+            notify(
+                appContext,
+                payload.copy(
+                    text = payload.text.ifBlank { Res.of(R.string.nouvelle_activite_opencode_3a7f4a) },
+                ),
+            )
+        }
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) {
@@ -147,7 +155,7 @@ class TetherPushService : PushService() {
          * la charge utile). Sans cet indice, taper une notification ouvrait la **derniere session
          * utilisee** au lieu de celle qui avait declenche l'alerte.
          */
-        fun notify(context: Context, payload: PushPayload) {
+        suspend fun notify(context: Context, payload: PushPayload) {
             TetherNotifier.show(context, payload)
         }
 

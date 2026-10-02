@@ -97,9 +97,10 @@ fun SessionContextScreen(
                     Block(title = stringResource(R.string.fenetre_3d6916)) {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             Text(
-                                text = pluralStringResource(R.plurals.message, current.entryCount, current.entryCount) +
-                                    (if (current.entryCount > 1) "s" else "") +
-                                    " partiront au prochain tour",
+                                // ⚠️ Le pluriel porte TOUTE la phrase : le suffixe "s" manuel
+                                // affichait « 2 messagess partiront », et le singulier
+                                // disait « 1 message partiront ».
+                                text = pluralStringResource(R.plurals.message_prochain_tour, current.entryCount, current.entryCount),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TetherTextPrimary,
                                 fontWeight = FontWeight.SemiBold,

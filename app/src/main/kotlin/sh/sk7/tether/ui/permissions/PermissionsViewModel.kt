@@ -79,7 +79,17 @@ class PermissionsViewModel @Inject constructor(
             try {
                 val settings = store.current()
                 val pending = gateway.pendingPermissions(settings)
-                _state.update { it.copy(loading = false, error = null, pending = pending) }
+                // ⚠️ Une demande qu'on vient de repondre ne doit pas reaparaitre : le serveur
+                // met un moment a traiter la reponse, et le poll relirait la demande encore
+                // « en attente » cote serveur — le bouton redeviendrait cliquable et une
+                // deuxieme decision contradictoire partirait. On fille les ids en vol.
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = null,
+                        pending = pending.filterNot { p -> p.id in it.replying },
+                    )
+                }
             } catch (e: Exception) {
                 _state.update {
                     it.copy(loading = false, error = ConnectionErrors.describe(e))

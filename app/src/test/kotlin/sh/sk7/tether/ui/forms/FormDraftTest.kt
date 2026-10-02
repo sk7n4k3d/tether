@@ -126,16 +126,26 @@ class FormDraftTest {
     /**
      * ⚠️ Mesure : omettre un `external` rend `400 External form field must be acknowledged`, et
      * c'est vrai meme quand sa condition `when` n'est pas remplie (le serveur verifie
-     * l'acquittement **avant** la porte `when`). Envoyer `true` rend `204`. Un `external` est donc
-     * une **confirmation**, pas une reponse de l'utilisateur : on l'ajoute toujours.
+     * l'acquittement **avant** la porte `when`). Envoyer `true` rend `204`.
+     *
+     * ⚠️ MAIS l'acquittement est un **consentement**, pas une valeur a fabriquer : l'app
+     * ne l'envoie que si l'utilisateur a coche « Reçu » (la case existe dans l'ecran).
+     * La fabriquait toujours, c'etait fabriquer une confirmation jamais donnee.
      */
     @Test
-    fun `external est toujours acquitte true, meme cache et condition non remplie`() {
+    fun `external non coche bloque l envoi, coche il part a true`() {
         val f = fields(
             """{"key":"mode","type":"string","options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]}""",
-            """{"key":"site","type":"external","url":"https://example.com","hidden":true,"when":[{"key":"mode","op":"eq","value":"b"}]}""",
+            """{"key":"site","type":"external","required":true,"url":"https://example.com","hidden":true,"when":[{"key":"mode","op":"eq","value":"b"}]}""",
         )
-        val answer = ready(FormAnswerBuilder.build(f, FormDraft().text("mode", "a")))
+        // Sans la case : Invalid, avec l'erreur sur le champ external.
+        val bloque = FormAnswerBuilder.build(f, FormDraft().text("mode", "a"))
+        assertIs<FormSubmission.Invalid>(bloque)
+        assertTrue(bloque.errors.any { it.key == "site" })
+
+        // Avec la case : Flag(true), meme cache et condition non remplie (le serveur
+        // verifie l'acquittement avant la porte `when` — mesure).
+        val answer = ready(FormAnswerBuilder.build(f, FormDraft().text("mode", "a").toggle("site", true)))
         assertEquals(FormAnswerValue.Flag(true), answer["site"])
     }
 
@@ -376,6 +386,8 @@ class FormDraftTest {
             .text("i", "2")
             .toggle("b", true)
             .select("m", "x", true)
+            // L'external est un consentement : il est coché dans l'ecran, pas fabrique.
+            .toggle("site", true)
 
         val submission = FormAnswerBuilder.build(f, draft)
         assertIs<FormSubmission.Ready>(submission)

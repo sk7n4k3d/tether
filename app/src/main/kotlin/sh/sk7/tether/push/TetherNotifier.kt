@@ -12,7 +12,6 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.runBlocking
 import sh.sk7.tether.data.api.OpenCodeGateway
 import sh.sk7.tether.domain.model.PermissionDecision
 import sh.sk7.tether.domain.model.PermissionRequest
@@ -145,7 +144,7 @@ object TetherNotifier {
      * (mesuree sur le serveur). C'est un filtre sur une **forme**, pas une dependance a un etat
      * charge — il ne peut pas se tromper selon le moment.
      */
-    fun show(context: Context, payload: PushPayload) {
+    suspend fun show(context: Context, payload: PushPayload) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) {
             // ⚠️ Sur Android 13+, sans `POST_NOTIFICATIONS`, `notify()` **ne lève pas** : il ne se
@@ -174,8 +173,16 @@ object TetherNotifier {
         )
         if (decision == PushDecision.Skip) {
             Log.i(TAG, "notification ignoree : app au premier plan")
+            // ⚠️ Meme en Skip, une file qui s'est videe ailleurs (reponse depuis le TUI ou un
+            // autre client) doit retirer l'alerte persistante — sinon elle reste a vie, ID
+            // distinct de celui-ci, donc jamais ecrasee par une fin de tour ulterieure.
+            if (pending.total == 0) clearOngoing(context)
             return
         }
+
+        // Idem hors premier plan : une fin de tour arrive, plus rien n'attend — l'alerte
+        // « Autorisation requise » ne doit pas survivre a la reponse donnee ailleurs.
+        if (pending.total == 0 && decision != PushDecision.Ongoing) clearOngoing(context)
 
         ensureChannel(context)
         // ⚠️ Le `Title` ntfy **ne survit pas** au transport UnifiedPush : le distributeur ne
@@ -405,29 +412,24 @@ object TetherNotifier {
      * l'ecriture anonyme, et un bouton qui agirait sur un id venu d'un tiers autoriserait
      * n'importe quoi depuis le pouce de l'utilisateur. Voir [PendingApproval].
      */
-    private fun pendingState(entry: PushEntryPoint): PendingState = runCatching {
-        runBlocking {
-            // ⚠️ Borné : on bloque le thread du distributeur, pas l'utilisateur, mais une borne
-            // évite qu'un serveur lent retienne le callback système pendant la durée du timeout
-            // Ktor (20 s). Au-delà, on considère qu'on ne sait pas — donc notification ordinaire.
-            kotlinx.coroutines.withTimeoutOrNull(PENDING_DECISION_TIMEOUT_MS) {
-                val settings = entry.connectionStore().current()
-                if (!settings.isConfigured) return@withTimeoutOrNull PendingState()
-                val gateway = entry.gateway()
-                // ⚠️ Chaque lecture est isolee : un serveur qui repond aux permissions mais pas aux
-                // formulaires (ou l'inverse) doit tout de meme annoncer ce qu'il a annonce.
-                val permissions = runCatching { gateway.pendingPermissions(settings) }.getOrDefault(emptyList())
-                val forms = runCatching { gateway.pendingForms(settings) }.getOrDefault(emptyList())
-                PendingState(
-                    total = permissions.size + forms.size,
-                    approval = approvalFor(permissions.map { it.toPendingApproval() }),
-                )
-            } ?: PendingState()
-        }
+    private suspend fun pendingState(entry: PushEntryPoint): PendingState = runCatching {
+        // ⚠️ Borné : une borne evite qu'un serveur lent retienne la notification pendant
+        // la duree du timeout Ktor (20 s). Au-dela, on ne sait pas — donc notification ordinaire.
+        kotlinx.coroutines.withTimeoutOrNull(PENDING_DECISION_TIMEOUT_MS) {
+            val settings = entry.connectionStore().current()
+            if (!settings.isConfigured) return@withTimeoutOrNull PendingState()
+            val gateway = entry.gateway()
+            // ⚠️ Chaque lecture est isolee : un serveur qui repond aux permissions mais pas aux
+            // formulaires (ou l'inverse) doit tout de meme annoncer ce qu'il a annonce.
+            val permissions = runCatching { gateway.pendingPermissions(settings) }.getOrDefault(emptyList())
+            val forms = runCatching { gateway.pendingForms(settings) }.getOrDefault(emptyList())
+            PendingState(
+                total = permissions.size + forms.size,
+                approval = approvalFor(permissions.map { it.toPendingApproval() }),
+            )
+        } ?: PendingState()
     }.getOrDefault(PendingState())
 
-    /** Combien de decisions attendent — la seule information utilisee jusqu'ici. */
-    private fun pendingDecisions(entry: PushEntryPoint): Int = pendingState(entry).total
 
     private fun PermissionRequest.toPendingApproval() = PendingApproval(
         requestID = id,

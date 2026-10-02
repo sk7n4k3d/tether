@@ -37,15 +37,19 @@ object Res {
     private var ressources: Resources? = null
 
     /**
-     * A appeler une fois, au demarrage de l'application.
+     * A appeler au demarrage de l'application, **et apres chaque changement de langue**.
      *
-     * Un second appel est ignore : les `Resources` d'une `Application` sont un cache
-     * partage, et les remplacer en cours de route laisserait deux vues divergentes de
-     * la meme langue.
+     * Un second appel avec la meme langue est ignore : les `Resources` de l'application
+     * sont un cache partage. Mais un changement de langue suivi d'un `recreate()` recree
+     * l'Activity dans la nouvelle locale — sans reinstallation ici, tous les textes hors
+     * arbre de composition (erreurs des ViewModels, notifications, `PermissionActionReceiver`)
+     * restaient figes dans l'ancienne langue, pendant que les `stringResource` de Compose
+     * basculaient : une app bilingue, ecran en francais, erreurs en anglais.
      */
     fun installer(context: Context) {
-        if (ressources != null) return
-        ressources = LangueCache.appliquer(context, context.applicationContext).resources
+        val reconfigurees = LangueCache.appliquer(context, context.applicationContext).resources
+        if (ressources === reconfigurees) return
+        ressources = reconfigurees
     }
 
     /**

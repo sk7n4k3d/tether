@@ -104,41 +104,42 @@ fun QrScannerScreen(
     Box(modifier.fillMaxSize().background(Color.Black)) {
         if (accordee) {
             CameraApercu(onLien = onLien)
+
+            // Le cadre : il ne decode rien, il dit ou viser. Le QR doit tenir dedans pour
+            // etre lu de facon fiable. ⚠️ Il n'est dessine QUE camera active : avant, il
+            // restait visible sous l'ecran de refus, superpose aux messages.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(260.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(2.dp, TetherTextPrimary.copy(alpha = 0.6f), RoundedCornerShape(20.dp)),
+            )
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.scanner_qr_1f4e1d),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TetherTextPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.scanner_consigne_7c21a8),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TetherTextMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
         } else {
             CameraRefusee(
                 onRetry = { launcher.launch(Manifest.permission.CAMERA) },
                 onOpenSettings = { ouvrirReglages(context) },
-            )
-        }
-
-        // Le cadre : il ne decode rien, il dit ou viser. Le QR doit tenir dedans pour
-        // etre lu de facon fiable.
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(260.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .border(2.dp, TetherTextPrimary.copy(alpha = 0.6f), RoundedCornerShape(20.dp)),
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.scanner_qr_1f4e1d),
-                style = MaterialTheme.typography.titleMedium,
-                color = TetherTextPrimary,
-            )
-            Text(
-                text = stringResource(R.string.scanner_consigne_7c21a8),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TetherTextMuted,
-                textAlign = TextAlign.Center,
             )
         }
 

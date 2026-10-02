@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -89,6 +90,7 @@ import sh.sk7.tether.domain.model.AgentCatalog
 import sh.sk7.tether.domain.model.AgentCatalog.carriedModelLabel
 import sh.sk7.tether.domain.model.ChatMessage
 import sh.sk7.tether.domain.model.Role
+import sh.sk7.tether.domain.model.SessionStatus
 import sh.sk7.tether.ui.components.CollapsibleBlock
 import sh.sk7.tether.ui.theme.Spacing
 import sh.sk7.tether.ui.theme.animationsAllowed
@@ -139,10 +141,12 @@ fun ChatScreen(
     // aucun objet.
     val canBackground = state.isBusy ||
         sessionActivity == sh.sk7.tether.domain.model.Activity.Running
-    var draft by remember { mutableStateOf("") }
+    var draft by rememberSaveable { mutableStateOf("") }
+    // ⚠️ rememberSaveable : le brouillon survivait aux pieces jointes (ViewModel) mais pas a
+    // la rotation — on retrouvait un fichier joint sans son texte.
 
     /** Le selecteur modele/agent est-il ouvert ? */
-    var pickerTab by remember { mutableStateOf<PickerTab?>(null) }
+    var pickerTab by rememberSaveable { mutableStateOf<PickerTab?>(null) }
 
     /**
      * La dictee est-elle en cours ?
@@ -156,12 +160,9 @@ fun ChatScreen(
     /** Retour en arriere prepare, en attente de confirmation. */
     var revertTarget by remember { mutableStateOf<String?>(null) }
 
-    /** Confirmation de copie : un retour visible, sinon le geste semble ignore. */
-    var copiedNotice by remember { mutableStateOf(false) }
-
     /** La recherche dans la conversation. Vide = pas de recherche. */
-    var searchOpen by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
 
     // ⚠️ On calcule le resultat a la composition, pas dans un `LaunchedEffect` : la recherche est
     // locale et instantanee, donc un aller-retour asynchrone introduirait un delai visible pour
@@ -405,7 +406,9 @@ fun ChatScreen(
                 // en attente est une **intention en cours**, pas un tour de conversation. Le
                 // noyer dans le fil le ferait lire comme deja envoye. Voir [QueuedBar].
                 QueuedBar(
-                    queued = state.chat.messages.filter { it.isQueued },
+                    // ⚠️ `remember` : sans lui, le filtre allouait une liste neuve a CHAQUE
+                    // recomposition — donc a chaque token pendant le streaming.
+                    queued = remember(state.chat.messages) { state.chat.messages.filter { it.isQueued } },
                     cancelling = state.cancelling,
                     onCancel = viewModel::cancelQueued,
                     onToggleMode = viewModel::toggleQueuedDelivery,
@@ -436,7 +439,14 @@ fun ChatScreen(
                         text = error,
                         style = MaterialTheme.typography.bodySmall,
                         color = TetherAlert,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // ⚠️ Touchable, comme la notice : avant, une erreur restait affichee
+                            // jusqu'a ce qu'une action ulterieure l'ecrase — aucun geste ne
+                            // pouvait l'effacer, et elle couvrait le composer d'autant plus
+                            // longtemps.
+                            .clickable(onClick = viewModel::clearError)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
             }
@@ -463,6 +473,13 @@ fun ChatScreen(
             // disparaitrait justement quand on en a besoin (une fois remonte). Le `weight` passe
             // donc sur le `Box`, la liste prend toute la place disponible dedans.
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                // ⚠️ Liste et id de fin **memorises AVANT le LazyColumn** (son scope n'est pas
+                // composable) : avant, le `filterNot` allouait une liste neuve par frame et le
+                // `count` reparcourait TOUT par item visible — O(n²) pendant le streaming.
+                val visibleMessages = remember(state.chat.messages) {
+                    state.chat.messages.filterNot { it.isQueued }
+                }
+                val lastVisibleId = visibleMessages.lastOrNull()?.id
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -486,10 +503,10 @@ fun ChatScreen(
                 // au-dessus de la saisie. Les afficher aux deux endroits serait un doublon, et les
                 // noyer dans le fil les ferait lire comme deja envoyes — alors qu'ils attendent.
                 // C'est une presentation differente parce que c'est un **etat different**.
-                itemsIndexed(
-                    state.chat.messages.filterNot { it.isQueued },
-                    key = { _, m -> m.id },
-                ) { index, message ->
+                items(
+                    visibleMessages,
+                    key = { m -> m.id },
+                ) { message ->
                     MessageBlock(
                         message = message,
                         // ⚠️ **« Revenir ici » n'a pas de sens sur le dernier message** (constat de
@@ -500,14 +517,16 @@ fun ChatScreen(
                         //
                         // ⚠️ « Copier » reste, lui, toujours utile : c'est la reponse la plus
                         // recente qu'on veut coller ailleurs, pas moins que les autres.
-                        // ⚠️ On compte sur la liste **filtrée**, pas sur `state.chat.messages` :
-                        // les messages en file vivent dans `QueuedBar`, pas ici.
-                        isLast = index == state.chat.messages.count { !it.isQueued } - 1,
+                        isLast = message.id == lastVisibleId,
                         onCopy = { copied ->
                             // ⚠️ On copie le TEXTE, pas le markdown source : ce qu'on veut coller
                             // ailleurs est ce qu'on lit a l'ecran.
                             clipboard.setText(androidx.compose.ui.text.AnnotatedString(copied.text))
-                            copiedNotice = true
+                            // Retour visible : un geste sans effet apparent passe pour un bug.
+                            // (Le clipboard n'offre pas de confirmation asynchrone fiable —
+                            // son callback de succ`es arrive avant le commit sur certaines
+                            // versions — donc on confirme l'intent, pas la lecture.)
+                            viewModel.afficherCopie()
                         },
                         // ⚠️ On retient le message vise, et le dialogue `RevertDialog` fait le
                         // `stage` lui-meme : il porte son propre ViewModel, donc c'est lui qui a
@@ -884,7 +903,10 @@ private fun MessageBlock(
                 horizontalArrangement = Arrangement.End,
             ) {
                 Text(
-                    text = message.text,
+                    // ⚠️ Repli sur message sans texte : un message avec piece jointe seule
+                    // avait une bulle VIDE — et « Copier » copiait une chaine vide en
+                    // annoncant « Texte copie ».
+                    text = message.text.ifBlank { stringResource(R.string.message_sans_texte_362f1e) },
                     style = MaterialTheme.typography.bodyLarge,
                     color = TetherTextPrimary,
                     modifier = Modifier
@@ -1251,7 +1273,23 @@ private fun StreamingBlock(chat: sh.sk7.tether.domain.model.SessionUiState) {
             chat.streamingTools.forEach { call ->
                 ToolCard(call = call, durationLabel = chat.toolDurations[call.id])
             }
-            chat.streamingText?.takeIf { it.isNotBlank() }?.let { MarkdownBody(it) }
+            chat.streamingText?.takeIf { it.isNotBlank() }?.let {
+                // ⚠️ Pendant le stream, le texte est affiche BRUT. La lib markdown n'a aucun
+                // cache : chaque token re-parserait la reponse entiere + recolorerait chaque
+                // bloc de code (verifie dans son bytecode). Le rendu markdown arrive quand
+                // le bloc est clos — [MessageBlock] — ou ici si le tour est fini.
+                if (chat.status == SessionStatus.Running) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TetherTextPrimary,
+                        )
+                    }
+                } else {
+                    MarkdownBody(it)
+                }
+            }
         }
     }
 }
@@ -1264,6 +1302,11 @@ private fun MarkdownBody(text: String) {
     val highlightsBuilder = remember {
         Highlights.Builder().theme(SyntaxThemes.atom(darkMode = true))
     }
+    // ⚠️ La lib markdown n'a AUCUN cache (verifie dans son bytecode) : chaque composition
+    // re-parse la reponse entiere et recolore chaque bloc de code. `markdownColor` et
+    // `markdownTypography` sont @Composable dans la lib : impossible a memoriser dans un
+    // remember. Leur cout (des wrappers d'objets) est negligeable devant le parse —
+    // la vraie economie est de ne PAS rendre le markdown pendant le stream (ci-dessus).
     Markdown(
         content = text,
         colors = markdownColor(
@@ -1572,8 +1615,11 @@ private fun ChatSearchBar(
                     val msgs = result.messageCount
                     val total = result.total
                     buildString {
-                        append(stringResource(R.string.msgs_message_msgs_d27038, if (msgs > 1) "s" else ""))
-                        append(stringResource(R.string.total_occurrence_total_fdd500, if (total > 1) "s" else ""))
+                        // ⚠️ Le COMPTE passe a la ressource : avant, l'argument etait le
+                        // marqueur de pluriel ("s"/""), et l'ecran affichait « s messages »
+                        // sans jamais dire combien.
+                        append(stringResource(R.string.msgs_message_msgs_d27038, msgs, if (msgs > 1) "s" else ""))
+                        append(stringResource(R.string.total_occurrence_total_fdd500, total, if (total > 1) "s" else ""))
                         // ⚠️ **On dit ou ca se cache** (bug B14). « 3 messages » sans rien de
                         // visible a l'ecran laisse croire a un bug : le texte est dans le
                         // raisonnement ou une sortie d'outil, tous deux **replies**. Nommer le

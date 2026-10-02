@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -180,18 +181,6 @@ fun Composer(
             else -> TetherTextSecondary.copy(alpha = 0.55f)
         },
         label = Res.of(R.string.composer_button_color_c4b0b5),
-    )
-    val buttonSize by animateDpAsState(
-        // Il grandit quand il devient actif : l'etat se lit a la silhouette, pas seulement
-        // a la couleur (regle d'accessibilite : jamais la couleur seule).
-        //
-        // ⚠️ 40 dp et non 30. Mesure : Grok utilise un cercle 36x36 (`h-9 w-9 rounded-full`) et
-        // c'est le plus petit des composers etudies. En dessous, le bouton devient une cible
-        // qu'on rate — or c'est le controle qu'on presse le plus dans l'app. 40 dp reste sous
-        // les 48 dp Material, mais c'est un choix de densite **conscient**, compense par
-        // `minimumInteractiveComponentSize()` qui etend la zone sensible a 48 dp.
-        targetValue = if (showStop || hasContent) 40.dp else 36.dp,
-        label = Res.of(R.string.composer_button_size_5674e1),
     )
     // Icone : rotation douce entre la fleche et le carre (morph visuel).
     val arrowAlpha by animateFloatAsState(
@@ -540,12 +529,19 @@ private fun ComposerLabelIcon(
         // composer — le champ en proportionnel 16 sp juste au-dessus. Le modele, lui, est bien
         // une donnee, mais il est ici en **etat** et pas en colonne : la couleur porte la
         // hierarchie, pas la police.
+        //
+        // ⚠️ Largeur plafonnee : un nom de modele long (ex. `ollama-cloud/glm-5.3`) prennait
+        // toute sa largeur intrinseque et POUSSAIT le micro et le bouton d'envoi hors ecran —
+        // l'ellipsis ne s'active que si une contrainte de largeur existe, et il n'y en avait
+        // aucune dans cette Row non scrollable. 120 dp = environ 16 caracteres, le detail
+        // complet reste dans la feuille du selecteur.
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = if (emphasised) TetherTextPrimary else TetherTextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 120.dp),
         )
     }
 }

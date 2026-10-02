@@ -1,6 +1,8 @@
 package sh.sk7.tether.data.event
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.accept
 import io.ktor.client.request.basicAuth
 import io.ktor.client.request.prepareGet
@@ -115,6 +117,13 @@ class EventStream(
         http.prepareGet("$baseUrl/api/event") {
             basicAuth(credentials.username, credentials.password)
             accept(ContentType.Text.EventStream)
+            // Le SSE vit tant que le serveur vit : pas de request timeout ici. Le heartbeat
+            // du serveur (15 s) garde la socket active ; le socket timeout ci-dessous (45 s)
+            // ne declenche que si trois heartbeats manquent — une vraie panne, pas un flux sain.
+            timeout {
+                requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
+                socketTimeoutMillis = 45_000
+            }
         }.execute { response ->
             SseParser.requireEventStream(response.contentType()?.toString())
             _state.value = ConnectionState.Connected

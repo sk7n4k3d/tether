@@ -17,6 +17,10 @@
         <item quantity="one">%1$d message</item>
         <item quantity="other">%1$d messages</item>
     </plurals>
+    <plurals name="message_prochain_tour">
+        <item quantity="one">%1$d message will be sent with the next turn</item>
+        <item quantity="other">%1$d messages will be sent with the next turn</item>
+    </plurals>
 
     <plurals name="formulaire">
         <item quantity="one">%1$d formulaire attend une réponse</item>

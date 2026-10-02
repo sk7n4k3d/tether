@@ -223,7 +223,11 @@ class FilesViewModel @Inject constructor(
                             openFile = OpenFile(
                                 path = path,
                                 text = decoded ?: "",
-                                truncated = bytes.size >= MAX_OPEN_BYTES,
+                                // ⚠️ Toujours `false` ici : les fichiers plus grands que
+                                // MAX_OPEN_BYTES sont deja rejete en amont, donc le texte
+                                // affiche est TOUJOURS complet. Un bandeau « affichage
+                                // tronque » sur un fichier entier etait un mensonge d'etat.
+                                truncated = false,
                                 binary = decoded == null,
                             ),
                         )

@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,7 +116,11 @@ fun FilesScreen(
             RecursiveSearchSection(
                 query = term,
                 localCount = filtered.size,
-                onOpen = { path -> viewModel.load(path.substringBeforeLast('/', "")) },
+                // ⚠️ On passe l'ENTREE et pas juste le chemin : un dossier depuis la recherche
+                // doit s'ouvrir lui-meme (et un fichier doit s'afficher). Avant, le chemin etait
+                // tronque de son dernier segment → ouvrir `src/main` depuis la recherche ouvrait
+                // `src`, et un fichier n'ouvrait rien du tout.
+                onOpen = { entry -> viewModel.open(entry) },
                 viewModel = viewModel,
             )
         }
@@ -398,12 +403,20 @@ private fun ErrorLine(message: String) {
 private fun RecursiveSearchSection(
     query: String,
     localCount: Int,
-    onOpen: (String) -> Unit,
+    onOpen: (FsEntryDto) -> Unit,
     viewModel: FilesViewModel,
 ) {
     var results by remember { mutableStateOf<List<FsEntryDto>?>(null) }
     var searching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // ⚠️ Les resultats sont RACLES a chaque changement de requete : garder ceux d'une
+    // recherche precedente sous la nouvelle frappe affichait des resultats qui ne
+    // correspondent plus a ce que l'utilisateur lit. Une recherche est un aller-retour
+    // explicite (bouton), donc les resultats appartiennent a la requete qui les a produits.
+    LaunchedEffect(query) {
+        results = null
+        error = null
+    }
 
     Column(
         modifier = Modifier
@@ -472,7 +485,7 @@ private fun RecursiveSearchSection(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 48.dp)
-                                    .clickable { onOpen(entry.path) }
+                                    .clickable { onOpen(entry) }
                                     .padding(vertical = Spacing.xs),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {

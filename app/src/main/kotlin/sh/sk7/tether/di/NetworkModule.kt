@@ -1,6 +1,7 @@
 package sh.sk7.tether.di
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -49,7 +50,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideHttpClient(): HttpClient = HttpClient(OkHttp) {
+    fun provideHttpClient(@ApplicationContext context: Context): HttpClient = HttpClient(OkHttp) {
         configureTether()
         // ⚠️ **INDISPENSABLE, ET SON ABSENCE ETAIT UN BUG MAJEUR.** Ktor 2.x a
         // `expectSuccess = false` par defaut : un 4xx/5xx ne leve **rien**, la reponse est
@@ -65,11 +66,20 @@ object NetworkModule {
         expectSuccess = true
         install(HttpTimeout) {
             connectTimeoutMillis = 5_000
-            requestTimeoutMillis = 20_000
+            // ⚠️ Pas de `requestTimeoutMillis` global : en Ktor 2.3.11 il s'applique AUSSI aux
+            // reponses longue duree non-websocket — donc au SSE `/api/event`, coupe toutes
+            // les 20 s et provoque une resync complete (~6 requetes) a chaque reconnexion.
+            // Le SSE posera son propre timeout par requete (infini + socket 45 s, cf.
+            // EventStream) ; le reste garde le timeout ci-dessous via socketTimeout.
+            requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
             socketTimeoutMillis = 20_000
         }
         install(Logging) {
-            level = LogLevel.INFO
+            // Le corps des requetes n'est pas logge, mais en release chaque ligne + statut
+            // partait en logcat pour chaque appel reseau : du bruit et des ecritures disque
+            // pour rien. (buildConfig est desactive dans ce projet — cf. AboutScreen — donc
+            // on se fie au drapeau debuggable du manifest.)
+            level = if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) LogLevel.INFO else LogLevel.NONE
         }
     }
 

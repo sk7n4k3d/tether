@@ -16,7 +16,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalContext
@@ -248,7 +251,10 @@ fun TetherNavHost(
             }
             return
         }
-        routeFromIntent(intent)?.let { route -> navController.navigate(route) }
+        // `launchSingleTop` : sans lui, taper la notification d'une session deja ouverte
+        // empilerait une seconde copie de `chat/{id}` — et le bouton retour deviendrait
+        // incoherent (retour vers la meme session, puis encore).
+        routeFromIntent(intent)?.let { route -> navController.navigate(route) { launchSingleTop = true } }
     }
 
     /**
@@ -271,10 +277,19 @@ fun TetherNavHost(
         }
     }
 
+    // ⚠️ ROUTE L'INTENT INITIAL UNE SEULE FOIS : le `DisposableEffect` rejoue a chaque
+    // recreation d'activite (rotation, changement de langue) — sans garde persistee, une
+    // rotation sur un ecran atteint par deep link renavigait vers la session de l'intent,
+    // et l'utilisateur etait ramene en arriere sans avoir rien demande. Les intents
+    // NOUVEAUX (notification pendant que l'app vit) passent toujours par le listener.
+    var intentInitialConsomme by rememberSaveable { mutableStateOf(false) }
+
     DisposableEffect(activity, navController) {
         if (activity == null) return@DisposableEffect onDispose { }
-        // Intent deja present (lancement depuis la notification ou le QR).
-        router(activity.intent)
+        if (!intentInitialConsomme) {
+            router(activity.intent)
+            intentInitialConsomme = true
+        }
         val listener = androidx.core.util.Consumer<Intent> { intent -> router(intent) }
         activity.addOnNewIntentListener(listener)
         onDispose { activity.removeOnNewIntentListener(listener) }
@@ -440,9 +455,11 @@ fun TetherNavHost(
         composable(Routes.OFFLINE) {
             OfflineScreen(
                 onOpenSettings = {
-                    navController.navigate(Routes.ONBOARDING) {
-                        // ⚠️ Depuis l'ecran hors-connexion, les reglages remplacent la pile : y
-                        // revenir apres avoir corrige l'adresse n'a pas de sens.
+                    // ⚠️ Le bouton dit « Réglages » et ouvre les RÉGLAGES : avant, il naviguait
+                    // vers l'onboarding (premiere configuration, sans flèche retour) — le
+                    // libellé et la destination ne disaient pas la meme chose. L'ecran de
+                    // réglages mene lui-même à la connexion pour corriger adresse/mot de passe.
+                    navController.navigate(Routes.SETTINGS) {
                         popUpTo(Routes.OFFLINE) { inclusive = true }
                     }
                 },

@@ -1,10 +1,12 @@
 package sh.sk7.tether.ui.background
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,6 +66,8 @@ fun BackgroundSection(
     fleet: FleetState,
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis(),
+    /** Ouvre le chat de la session qui possede un shell. `null`/inconnu = ligne non cliquable. */
+    onOpenSession: ((String) -> Unit)? = null,
 ) {
     val liveShells = fleet.liveShells
     val liveTerminals = fleet.liveTerminals
@@ -128,6 +132,11 @@ fun BackgroundSection(
                 },
                 now = now,
                 startedAt = shell.startedAt,
+                // ⚠️ La ligne est CLIQUABLE quand elle est liee a une session : « je vois
+                // qu'un travail tourne, je veux y revenir » est precisement la question a
+                // laquelle cette section repond. Un terminal ou un shell orphelin reste
+                // informatif — il n'y a nulle part ou aller.
+                onClick = shell.sessionID?.let { sid -> onOpenSession?.let { cb -> { cb(sid) } } },
             )
         }
     }
@@ -147,6 +156,7 @@ private fun BackgroundRow(
     foreground: Boolean?,
     now: Long,
     startedAt: Long?,
+    onClick: (() -> Unit)? = null,
 ) {
     // ⚠️ La formulation dit la SOURCE du jugement : « la session tourne encore » est un fait,
     // « en arrière-plan » est notre deduction. Sur une ligne courte, on nomme le fait.
@@ -161,6 +171,15 @@ private fun BackgroundRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(TetherDimensions.cornerMd))
             .background(TetherComposerSurface)
+            // ⚠️ `heightIn` AVANT `clickable` : la cible tactile vaut la ligne entiere.
+            .then(if (onClick != null) Modifier.heightIn(min = TetherDimensions.touchTarget) else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
             .padding(Spacing.md),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalAlignment = Alignment.Top,

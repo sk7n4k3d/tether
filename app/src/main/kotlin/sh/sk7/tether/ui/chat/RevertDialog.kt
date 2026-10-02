@@ -74,11 +74,17 @@ fun RevertDialog(
     }
 
     when (val current = state) {
-        // ⚠️ `Idle` ferme la boite : apres un abandon ou un `commit` reussi, il n'y a plus rien a
-        // confirmer. Sans ce rappel de l'appelant, la boite resterait montee sur un etat vide.
-        RevertUiState.Idle -> onDismiss()
+        // ⚠️ `Idle` ferme la boite — dans un `LaunchedEffect`, PAS dans la composition :
+        // appeler `onDismiss()` pendant le rendu posait `revertTarget = null` au frame 0,
+        // demontait le dialogue et annulait son propre `LaunchedEffect` de `stage()`.
+        // « Revenir ici » ne faisait rien. Asynchrone, l'effet de stage a le temps de
+        // poser `Preparing` d'abord, et la fermeture n'a lieu que pour un vrai Idle
+        // (apres discard ou commit).
+        RevertUiState.Idle -> androidx.compose.runtime.LaunchedEffect(Unit) { onDismiss() }
 
-        RevertUiState.Staging -> AlertDialog(
+        // ⚠️ `Preparing` et `Staging` rendent la meme boite d'attente : le premier est l'ouverture
+        // (avant le `LaunchedEffect` de stage), le second est un restaging vers un autre message.
+        RevertUiState.Preparing, RevertUiState.Staging -> AlertDialog(
             onDismissRequest = {
                 // ⚠️ Renoncer pendant la verification doit aussi abandonner cote serveur : un
                 // snapshot prepare puis ignore resterait en place.
@@ -118,12 +124,13 @@ fun RevertDialog(
                     text = if (current.preview.isEmpty) {
                         stringResource(R.string.revenir_ici_1a6293)
                     } else {
+                        // ⚠️ Le pluriel porte DEJA le « s » : le suffixe manuel affichait
+                        // « 2 fichierss ».
                         "Revenir ici modifiera " + pluralStringResource(
                             R.plurals.fichier,
                             current.preview.fileCount,
                             current.preview.fileCount,
-                        ) +
-                            (if (current.preview.fileCount > 1) "s" else "")
+                        )
                     },
                     color = TetherTextPrimary,
                 )

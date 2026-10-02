@@ -36,6 +36,15 @@ sealed interface RevertUiState {
     /** Rien en cours. */
     data object Idle : RevertUiState
 
+    /**
+     * Ouverture : le dialogue est monte mais `stage()` n'a pas encore rendu son verdict.
+     * ⚠️ Distinct de [Staging] et surtout de [Idle] : avant, l'etat initial etait `Idle`,
+     * et le `when` de composition appelait `onDismiss()` dessus — le dialogue se fermait
+     * AVANT que son propre `LaunchedEffect` ne lance `stage()`. « Revenir ici » ne
+     * faisait rien.
+     */
+    data object Preparing : RevertUiState
+
     /** Verification en cours. */
     data object Staging : RevertUiState
 
@@ -68,7 +77,7 @@ class RevertViewModel @Inject constructor(
     private val gateway: OpenCodeGateway,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow<RevertUiState>(RevertUiState.Idle)
+    private val _state = MutableStateFlow<RevertUiState>(RevertUiState.Preparing)
     val state: StateFlow<RevertUiState> = _state.asStateFlow()
 
     /**

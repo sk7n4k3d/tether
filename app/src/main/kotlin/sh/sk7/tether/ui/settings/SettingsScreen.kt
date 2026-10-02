@@ -141,7 +141,10 @@ fun SettingsScreen(
                 title = { Text(stringResource(R.string.reglages_00d632)) },
                 navigationIcon = {
                     androidx.compose.material3.IconButton(onClick = onBack) {
-                        Icon(Lucide.Server, contentDescription = stringResource(R.string.retour_e5befb))
+                        // ⚠️ Une fleche retour, pas une icone serveur : le glyphe disait
+                        // « serveur » pour une action « retour » — un serveur se lit comme
+                        // un raccourci vers les reglages de connexion.
+                        Icon(Lucide.ArrowLeft, contentDescription = stringResource(R.string.retour_e5befb))
                     }
                 },
                 colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
@@ -268,6 +271,12 @@ fun SettingsScreen(
                             // et un changement fait depuis les reglages d'Android ne
                             // recharge rien.
                             Langues.declarerAuSysteme(contexte, code)
+                            // ⚠️ Avant le recreate, on reconfigure les textes hors arbre
+                            // de composition : erreurs des ViewModels, notifications,
+                            // PermissionActionReceiver. Sans ca, Res gardait ses Resources
+                            // de l'ancienne langue et l'app devenait bilingue — ecran dans
+                            // la nouvelle, erreurs dans l'ancienne.
+                            Res.installer(contexte)
                             // La langue ne se remplace pas dans l'arbre : elle s'applique
                             // a la creation du contexte, donc il faut recreer l'activite.
                             activite?.recreate()

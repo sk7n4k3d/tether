@@ -104,13 +104,19 @@ fun WorktreeScreen(
                     }
                 }
 
-                if (!state.versioned) {
-                    item(key = "not-versioned") {
+                when (state.versioned) {
+                    // `null` = echec de la verification : on ne sait pas. Proposer « Creer »
+                    // serait un bouton condamne ; dire « pas versionne » serait un mensonge.
+                    null -> item(key = "vcs-unknown") {
+                        Notice(text = stringResource(R.string.impossible_verifier_depot_b37f1c))
+                    }
+                    false -> item(key = "not-versioned") {
                         Notice(
                             text = "Ce répertoire n'est pas versionné. Un arbre de travail " +
                                 stringResource(R.string.repose_git_rien_e58e50),
                         )
                     }
+                    true -> {}
                 }
 
                 state.error?.let { message ->
@@ -119,7 +125,7 @@ fun WorktreeScreen(
                     }
                 }
 
-                if (state.versioned) {
+                if (state.versioned == true) {
                     item(key = "create") {
                         Block(title = stringResource(R.string.nouvel_arbre_01ef8f)) {
                             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -206,8 +212,9 @@ fun WorktreeScreen(
                 if (state.items.isNotEmpty()) {
                     item(key = "list-title") {
                         Text(
-                            text = pluralStringResource(R.plurals.arbre, state.items.size, state.items.size) +
-                                (if (state.items.size > 1) "s" else "") + " de travail",
+                            // ⚠️ Le pluriel porte DEJA le « s » (« 2 arbres ») : le + "s"
+                            // historique affichait « 2 arbress de travail ».
+                            text = pluralStringResource(R.plurals.arbre, state.items.size, state.items.size) + " de travail",
                             style = MaterialTheme.typography.titleSmall,
                             color = TetherTextPrimary,
                             fontWeight = FontWeight.SemiBold,

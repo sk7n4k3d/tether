@@ -235,9 +235,19 @@ object FormAnswerBuilder {
 
         fields.forEach { field ->
             val kind = field.kind
-            // 1. Un `external` est une confirmation, pas une reponse : toujours acquitte.
+            // 1. Un `external` est un CONSENTEMENT recueilli, pas une valeur fabriquee.
+            // ⚠️ Avant, l'app envoyait `Flag(true)` sans jamais demander : elle fabriquait
+            // une confirmation que l'utilisateur n'avait pas donnee — precisement ce que
+            // la regle du projet interdit (« on ne fabrique jamais de valeur »). La case
+            // est cocher dans l'ecran ([ExternalField]) ; sans elle, le champ porte son
+            // erreur et l'envoi est bloque.
             if (kind == FormFieldKind.External) {
-                answer[field.key] = FormAnswerValue.Flag(true)
+                val acquis = (draft.values[field.key] as? FormDraftValue.Toggle)?.on == true
+                if (acquis) {
+                    answer[field.key] = FormAnswerValue.Flag(true)
+                } else if (field.required) {
+                    errors.add(FieldError(field.key, field.label(), Res.of(R.string.ressource_externe_a_confirmer_c7d1f9)))
+                }
                 return@forEach
             }
             // 2. Condition non remplie : le champ ne fait pas partie de la reponse.

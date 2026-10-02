@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,6 +28,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -207,6 +209,7 @@ private fun FormDetail(
     val errors = state.fieldErrors.associateBy { it.key }
     val shown = form.fields.filterNot { it.hidden }
     val hidden = form.fields.filter { it.hidden }
+    val fieldByKey = remember(form.fields) { form.fields.associateBy { it.key } }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -238,7 +241,9 @@ private fun FormDetail(
         itemsIndexed(shown, key = { _, field -> field.key }) { _, field ->
             FormFieldInput(
                 field = field,
-                byKey = form.fields.associateBy { it.key },
+                // ⚠️ Hoiste hors de l'item : recalcule par champ, c'etait O(n²) sur un
+                // formulaire long — une map neuve allouee et remplie par ligne.
+                byKey = fieldByKey,
                 draft = state.draft,
                 error = errors[field.key],
                 viewModel = viewModel,
@@ -277,10 +282,14 @@ private fun FormFieldInput(
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         when (field.kind) {
-            // ⚠️ Un `external` n'est pas une saisie : on l'affiche (l'URL a reconnaitre), mais il
-            // porte son propre acquittement implicite — aucun `error` ne peut le viser, le serveur
-            // l'accepte toujours.
-            FormFieldKind.External -> ExternalField(field)
+            // ⚠️ Un `external` porte une vraie case « Reçu » : le consentement est recueilli
+            // ici, jamais fabrique (voir [ExternalField] et [FormAnswerBuilder]). L'erreur
+            // locale « a confirmer » peut le viser.
+            FormFieldKind.External -> ExternalField(
+                field = field,
+                on = (draft.values[field.key] as? FormDraftValue.Toggle)?.on == true,
+                onAck = { viewModel.setToggle(field.key, it) },
+            )
             FormFieldKind.Boolean -> BooleanField(field, draft, error, viewModel)
             FormFieldKind.Multiselect -> MultiselectField(field, draft, error, viewModel)
             FormFieldKind.String -> TextField(field, draft, error, viewModel, KeyboardType.Text)
@@ -424,7 +433,7 @@ private fun OptionRow(
  * fait que l'utilisateur a pris connaissance de l'URL, pas une valeur qu'il invente.
  */
 @Composable
-private fun ExternalField(field: FormFieldDto) {
+private fun ExternalField(field: FormFieldDto, on: Boolean, onAck: (Boolean) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -441,10 +450,30 @@ private fun ExternalField(field: FormFieldDto) {
         field.url?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = TetherDataStyle, color = LocalAccent.current)
         }
-        Text(stringResource(R.string.sera_confirme_comme_27018c),
-            style = MaterialTheme.typography.bodySmall,
-            color = TetherTextMuted,
-        )
+        // ⚠️ La case que l'ecran PROMET depuis toujours (« Cochez "Reçu" ») et que rien
+        // ne recueillait : le consentement vient d'ici, et l'envoi reste bloque tant
+        // qu'elle n'est pas cocher (voir [FormAnswerBuilder]).
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(TetherDimensions.touchTarget / 2))
+                // 48 dp AVANT clickable : la cible tactile vaut la ligne entiere.
+                .heightIn(min = TetherDimensions.touchTarget)
+                .toggleable(
+                    value = on,
+                    role = Role.Checkbox,
+                    onValueChange = onAck,
+                )
+                .padding(horizontal = Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Checkbox(checked = on, onCheckedChange = null)
+            Text(stringResource(R.string.recu_pris_connaissance_6fa7f1),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TetherTextPrimary,
+            )
+        }
     }
 }
 

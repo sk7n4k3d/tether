@@ -127,7 +127,10 @@ private fun PermissionRefused(onRetry: () -> Unit, onOpenSettings: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Button(onClick = onRetry) {
-            Text(stringResource(R.string.autoriser_ff8398), color = LocalAccent.current)
+            // ⚠️ Pas de couleur explicite : le Button M3 pose deja un `containerColor`
+            // d'accent ; forcer le libelle en couleur d'accent mettait la meme teinte
+            // sur la meme teinte — un texte fantomme illisible (contraste ~1:1).
+            Text(stringResource(R.string.autoriser_ff8398))
         }
         TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.ouvrir_reglages_systeme_dc1d26)) }
         Text(stringResource(R.string.systeme_propose_demande_3449aa) +

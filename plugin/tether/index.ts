@@ -84,6 +84,35 @@ export default {
   features: { rpc: true, tui: true },
 
   async setup(ctx: any) {
+    // ------------------------------------------------------------------
+    // La garde d'instance — AVANT tout `await`.
+    //
+    // ⚠️ Poser la clé **immédiatement** : deux `setup` concurrents (rechargements
+    // rapprochés) lisaient la même `precedente`, ne s'arrêtaient pas mutuellement, et le
+    // perdant devenait un flux orphelin — donc des notifications en double. Ici, le
+    // premier arrivé pose sa clé de façon synchrone ; le second le voit et l'arrête.
+    //
+    // `stop` lie tardivement : à ce stade, ni le contrôleur ni le handle n'existent. On
+    // enregistre l'intention, le corps arrive quand ils existent.
+    // ------------------------------------------------------------------
+    const CLE_INSTANCE = Symbol.for("tether.instance.active")
+    const registre = globalThis as unknown as Record<symbol, (() => void) | undefined>
+    const precedente = registre[CLE_INSTANCE]
+    if (precedente) {
+      log("info", { event: "instance_replaced" })
+      try {
+        precedente()
+      } catch (error) {
+        // Une instance morte qui refuse de mourir ne doit pas empecher la nouvelle de vivre.
+        log("warn", { event: "instance_stop_failed", reason: String(error) })
+      }
+    }
+    let stopInterne: (() => void) | null = null
+    const stop = (): void => {
+      stopInterne?.()
+    }
+    registre[CLE_INSTANCE] = stop
+
     // ⚠️ Trois couches, dans l'ordre : ce que l'utilisateur a regle depuis `/tether config`
     // (le stockage), puis les options d'`opencode.jsonc`, puis l'environnement. Lire le
     // stockage est le correctif : sans lui, le reglage fait dans le TUI n'atteignait jamais
@@ -132,19 +161,6 @@ export default {
     // l'enregistrement que la nouvelle instance vient de poser.
     // ------------------------------------------------------------------
 
-    const CLE_INSTANCE = Symbol.for("tether.instance.active")
-    const registre = globalThis as unknown as Record<symbol, (() => void) | undefined>
-    const precedente = registre[CLE_INSTANCE]
-    if (precedente) {
-      log("info", { event: "instance_replaced" })
-      try {
-        precedente()
-      } catch (error) {
-        // Une instance morte qui refuse de mourir ne doit pas empecher la nouvelle de vivre.
-        log("warn", { event: "instance_stop_failed", reason: String(error) })
-      }
-    }
-
     // ------------------------------------------------------------------
     // La poussee
     // ------------------------------------------------------------------
@@ -157,51 +173,62 @@ export default {
      * [shouldUnsubscribe], qui isole la regle et la teste.
      */
     const pushOne = async (device: Device, decoded: Decoded): Promise<void> => {
-      const subscription: PushSubscription = { endpoint: device.endpoint, keys: device.keys }
-
-      const { body } = encrypt(subscription, encode(decoded))
-      const headers: Record<string, string> = {
-        ...pushHeaders(),
-        TTL: "3600",
-        Urgency: decoded.progress ? "low" : "normal",
-        // L'identifiant de topic sert au distributeur a regrouper, et nous evite
-        // d'ecrire l'endpoint dans un log partage.
-        Topic: `tether-${device.deviceId.slice(0, 8)}`,
-      }
-
-      if (config.vapidPrivateKeyFile) {
-        const pem = readFileSync(config.vapidPrivateKeyFile, "utf8")
-        const audience = new URL(device.endpoint).origin
-        headers.Authorization = vapidHeader(pem, pem, audience, "mailto:admin@example.org")
-      }
-
-      let status: number
+      // ⚠️ Tout le corps est dans le try : une clé `p256dh` corrompue ou un PEM illisible
+      // doit coûter **ce push-là**, pas la boucle d'événements entière. Avant, `encrypt`,
+      // `readFileSync` et `new URL` levaient hors de tout catch, et `pushAll` rejetait sur
+      // `notifierFinDeTour` → le `for await` sortait et le plugin devenait muet sans le dire.
       try {
-        const response = await fetch(device.endpoint, { method: "POST", headers, body })
-        status = response.status
+        const subscription: PushSubscription = { endpoint: device.endpoint, keys: device.keys }
+
+        const { body } = encrypt(subscription, encode(decoded))
+        const headers: Record<string, string> = {
+          ...pushHeaders(),
+          TTL: "3600",
+          Urgency: decoded.progress ? "low" : "normal",
+          // L'identifiant de topic sert au distributeur a regrouper, et nous evite
+          // d'ecrire l'endpoint dans un log partage.
+          Topic: `tether-${device.deviceId.slice(0, 8)}`,
+        }
+
+        if (config.vapidPrivateKeyFile) {
+          const pem = readFileSync(config.vapidPrivateKeyFile, "utf8")
+          const audience = new URL(device.endpoint).origin
+          // ⚠️ 3 paramètres : (clé, audience, sujet). L'appel historique passait la clé PEM en
+          // position `audience` — l'audience du jeton VAPID valait donc le PEM, et tout
+          // distributeur qui exige le VAPID rejetait le push (401/403) puis déclenchait
+          // le désabonnement silencieux de l'appareil.
+          headers.Authorization = vapidHeader(pem, audience, "mailto:admin@example.org")
+        }
+
+        // ⚠️ Timeout court : le push est sur le chemin de la boucle d'événements. Un
+        // distributeur qui accepte la connexion sans répondre gelait TOUTES les
+        // notifications du processus, indéfiniment.
+        const response = await fetch(device.endpoint, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(10_000),
+        })
+        const status = response.status
         response.body?.cancel()
+
+        if (shouldUnsubscribe(status)) {
+          const devices = await load()
+          const next = remove(devices, device.deviceId)
+          await save(next)
+          log("warn", { event: "unsubscribed", deviceId: device.deviceId, status, reason: unsubscribeReason(status) })
+        } else if (status >= 200 && status < 300) {
+          log("debug", { event: "push_ok", deviceId: device.deviceId, status })
+        } else {
+          // 408, 429, 5xx, et les 4xx « de config » (400/401/403/413) : on garde
+          // l'appareil et on retente plus tard.
+          log("warn", { event: "push_retry_later", deviceId: device.deviceId, status })
+        }
       } catch (error) {
-        // Panne reseau : on garde l'appareil. Unlike a 4xx, ce n'est pas une preuve
-        // que l'abonnement est mort.
-        log("warn", { event: "push_failed", deviceId: device.deviceId, reason: "network" })
-        return
+        // Panne reseau ou charge malformee : on garde l'appareil. Unlike a 4xx, ce n'est
+        // pas une preuve que l'abonnement est mort.
+        log("warn", { event: "push_failed", deviceId: device.deviceId, reason: String(error) })
       }
-
-      if (status >= 200 && status < 300) {
-        log("debug", { event: "push_ok", deviceId: device.deviceId, status })
-        return
-      }
-
-      if (shouldUnsubscribe(status)) {
-        const devices = await load()
-        const next = remove(devices, device.deviceId)
-        await save(next)
-        log("warn", { event: "unsubscribed", deviceId: device.deviceId, status, reason: unsubscribeReason(status) })
-        return
-      }
-
-      // 408, 429, 5xx : on garde l'appareil et on retente plus tard.
-      log("warn", { event: "push_retry_later", deviceId: device.deviceId, status })
     }
 
     /** Pousse a tous les abonnes d'un type d'alerte. */
@@ -530,33 +557,39 @@ export default {
         return
       }
 
-      const resume = await resumer(material)
+      // ⚠️ **Le push part AVANT le résumé LLM.** Avant, `await resumer(material)` bloquait :
+      // jusqu'à N fragments = N appels LLM séquentiels (30 s de timeout chacun, ~19 s à
+      // froid) séparaient la fin de tour du push — plus de 3 minutes au pire cas mesuré.
+      // Un push immédiat avec le matériau brut, puis un second push enrichi quand le
+      // résumé arrive : le téléphone sait tout de suite, en détail quand le modèle a fini.
       const echec = String(event?.type ?? "").includes("failed")
-
-      // ⚠️ Le compte de fragments est **dans le journal**, et pas deduit apres coup : c'est la
-      // seule preuve qu'a l'oeil qu'un tour long a bien ete fragmente plutot que tronque. Une
-      // fonction qu'on ne peut pas observer en production est une fonction dont personne ne
-      // verifies qu'elle tourne.
-      const fragments = fragmenter(material, TAILLE_FRAGMENT).length
-
-      // ⚠️ Repli sur le materiau brut, tronque : sans resumeur configure, c'est la liste des
-      // actions du tour. C'est moins lisible qu'une phrase, et c'est exact — la regle du projet
-      // est de ne jamais inventer un texte a la place de ce qui s'est passe.
-      const corps = resume?.corps ?? truncateBytes(material, config.maxBytes)
-      const texte = echec ? "⚠ Tour en echec\n\n" + corps : corps
+      const repli = truncateBytes(material, config.maxBytes)
+      const texteRepli = echec ? "⚠ Tour en echec\n\n" + repli : repli
 
       await pushAll("turnEnd", {
+        text: texteRepli,
+        sessionID,
+      })
+
+      const resume = await resumer(material)
+      if (!resume) {
+        log("debug", { event: "turn_end_notified", sessionID, duree, resume: false, fragments: 0, octetsMateriau: material.length, octets: texteRepli.length })
+        return
+      }
+      // Le résumé remplace la notification brute : même topic côté distributeur, la
+      // notification précédente est remplacée, pas empilée.
+      const texte = echec ? "⚠ Tour en echec\n\n" + resume.corps : resume.corps
+      await pushAll("turnEnd", {
         text: texte,
-        ...(resume?.titre ? { title: resume.titre } : {}),
+        ...(resume.titre ? { title: resume.titre } : {}),
         sessionID,
       })
       log("info", {
         event: "turn_end_notified",
         sessionID,
         duree,
-        resume: resume !== null,
-        // 1 = un seul appel au modele ; > 1 = reduction par etapes, autant de fragments.
-        fragments,
+        resume: true,
+        fragments: resume.fragments,
         octetsMateriau: material.length,
         octets: texte.length,
       })
@@ -564,15 +597,26 @@ export default {
 
     const controller = new AbortController()
     void (async () => {
-      try {
-        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-          const type: string | undefined = event?.type
+      // ⚠️ Reconnexion avec back-off : avant, une fin de flux ou une erreur transitoire
+      // sortait de la boucle et le plugin devenait muet **jusqu'au prochain rechargement**,
+      // sans que rien ne le dise. Le `for await` normal (flux ferme) ne passe meme pas par
+      // le catch — il sortait en silence.
+      let tentatives = 0
+      while (!controller.signal.aborted) {
+        try {
+          for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+            tentatives = 0
+            const type: string | undefined = event?.type
 
           // Le nom de l'outil arrive **dans un autre evenement** que son entree : on le
           // memorise ici, on publie plus bas. Sans ce `continue`, l'evenement tomberait dans
           // `classify`, qui ne le reconnait pas.
           if (type === TOOL_NAMED) {
-            const id = event?.data?.id
+            // Le champ d'identifiant varie selon la version du serveur : l'app Android se
+            // méfie de quatre orthographes, le plugin ne lisait que `id` — un serveur qui
+            // porte `toolCallID` laissait l'étape sans nom, en silence.
+            const d = event?.data
+            const id = typeof d?.id === "string" ? d.id : typeof d?.toolCallID === "string" ? d.toolCallID : typeof d?.callID === "string" ? d.callID : typeof d?.toolID === "string" ? d.toolID : undefined
             const name = event?.data?.name
             if (typeof id === "string" && typeof name === "string") {
               toolNames.set(id, name)
@@ -598,7 +642,8 @@ export default {
           }
 
           if (decision.kind === "progress") {
-            const toolID = event?.data?.id
+            const d = event?.data
+            const toolID = typeof d?.id === "string" ? d.id : typeof d?.toolCallID === "string" ? d.toolCallID : typeof d?.callID === "string" ? d.callID : typeof d?.toolID === "string" ? d.toolID : undefined
             const nom = typeof toolID === "string" ? toolNames.get(toolID) : undefined
             await pushAll("progress", {
               // `bash : npm install` plutot que `bash en cours` — le detail vient de l'entree
@@ -611,18 +656,29 @@ export default {
           }
 
           await notifierFinDeTour(event, sessionID)
+          }
+        } catch (error) {
+          if (controller.signal.aborted) break
+          tentatives++
+          log("warn", { event: "event_stream_failed", tentative: tentatives, reason: String(error) })
+          // Back-off plafonne a 30 s : assez doux pour une panne transitoire, assez court
+          // pour ne pas laisser le plugin muet une heure.
+          const attente = Math.min(1000 * 2 ** Math.min(tentatives, 5), 30_000)
+          await new Promise((resolve) => setTimeout(resolve, attente))
+          continue
         }
-      } catch (error) {
-        if (!controller.signal.aborted) log("warn", { event: "event_stream_failed", reason: String(error) })
+        // Fin normale du flux sans abort : on relance aussi, mais on le dit.
+        if (controller.signal.aborted) break
+        tentatives++
+        log("warn", { event: "event_stream_ended", tentative: tentatives })
       }
     })()
 
     /** L'arret de **cette** instance : le flux d'evenements, puis le handle RPC. */
-    const stop = (): void => {
+    stopInterne = (): void => {
       controller.abort()
       handle.dispose().catch(() => {})
     }
-    registre[CLE_INSTANCE] = stop
 
     return () => {
       // ⚠️ Ne retirer la cle que si elle est encore la notre : une instance plus recente a pu

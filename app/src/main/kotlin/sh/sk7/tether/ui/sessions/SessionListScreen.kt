@@ -244,7 +244,12 @@ fun SessionListScreen(
             // ⚠️ Le travail de fond est **au-dessus** de la liste : c'est ce qu'on vient chercher
             // quand on se demande pourquoi la machine est lente, et ça ne doit pas demander de
             // défiler 450 sessions pour le trouver.
-            BackgroundSection(fleet = fleet)
+            BackgroundSection(
+                fleet = fleet,
+                // La ligne d'un shell lié à une session ouvre son chat : « revenir à la
+                // tâche en cours » est le geste naturel devant un travail qui tourne.
+                onOpenSession = onOpenSession,
+            )
         Box(Modifier.fillMaxSize()) {
             when (val current = state) {
                 SessionListUiState.Loading -> Centered {
@@ -305,18 +310,38 @@ fun SessionListScreen(
                     // L'inverse perdrait les enfants d'un parent qui ne matche pas mais dont un
                     // enfant matche — exactement le cas « je cherche le nom d'un sous-agent ».
                     val searched = remember(items, query) { SessionSearch.filter(items, query) }
-                    // Liste rendue : un parent replie masque ses enfants.
-                    val folded = remember(searched, effectiveExpanded) {
-                        searched.filter { item ->
-                            item.parentID == null || item.parentID in effectiveExpanded
+                    // Liste rendue : un parent replie masque ses enfants — **sauf pendant une
+                    // recherche**. Le bug etait exactement celui que le commentaire ci-dessus
+                    // promet d'eviter : chercher le nom d'un sous-agent retirait son parent
+                    // (qui ne matche pas), puis le fold retirait l'enfant (parentID absent de
+                    // effectiveExpanded) → « aucun resultat » pour une session qui existe.
+                    // En recherche, on affiche les matchs a plat : la hierarchie n'a plus de
+                    // sens quand on cherche par nom.
+                    val folded = remember(searched, effectiveExpanded, query) {
+                        if (query.isNotBlank()) {
+                            searched
+                        } else {
+                            searched.filter { item ->
+                                item.parentID == null || item.parentID in effectiveExpanded
+                            }
                         }
                     }
                     // ⚠️ Les epinglees remontent EN TETE. Sans ce tri, epingler ne servirait qu'a
                     // afficher une punaise : l'interet est de retrouver vite une session qu'on
-                    // suit. Le tri est **stable** (les non-epinglees gardent leur ordre par date)
-                    // et ne separe jamais un parent de ses enfants ouverts.
+                    // suit. Le tri est **stable** (les non-epinglees gardent leur ordre par date).
+                    // ⚠️ Il ne separe jamais un enfant de son parent : applique sur la liste
+                    // APLATIE, un sous-agent epingle remontait au-dessus de son propre parent.
+                    // On ne deplace que les RACINES ; les enfants suivent leur branche.
                     val visible = remember(folded, pinnedIds) {
-                        folded.sortedByDescending { it.id in pinnedIds }
+                        val roots = folded.filter { it.parentID == null }
+                            .sortedByDescending { it.id in pinnedIds }
+                        if (query.isNotBlank()) {
+                            folded.sortedByDescending { it.id in pinnedIds }
+                        } else {
+                            roots.flatMap { root ->
+                                listOf(root) + folded.filter { it.parentID == root.id }
+                            }
+                        }
                     }
 
                     // Rafraichissement au **geste** : tirer vers le bas. C'est le geste naturel
@@ -551,7 +576,7 @@ private fun SessionCard(item: SessionItem, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            MetaChip(text = RelativeTime.format(System.currentTimeMillis(), item.timestamp))
+            MetaChip(text = RelativeTime.format(rememberMinuteTick(), item.timestamp))
             item.agent?.let { MetaChip(text = it) }
             item.costLabel?.let { MetaChip(text = it, color = LocalAccent.current) }
         }
@@ -629,6 +654,10 @@ private fun SearchField(
             .clip(RoundedCornerShape(TetherDimensions.cornerMd))
             .background(TetherComposerSurface)
             .border(1.dp, TetherComposerBorder, RoundedCornerShape(TetherDimensions.cornerMd))
+            // ⚠️ 48 dp sur la LIGNE (c'est la vraie cible tactile du champ) : le champ interne
+            // vit dans ce padding, pas au-dessus. Avant, les deux s'additionnaient et le champ
+            // mesurait ~64 dp de haut.
+            .heightIn(min = TetherDimensions.touchTarget)
             .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -668,14 +697,14 @@ private fun SearchField(
                 // le champ ne recevait **jamais** le focus : impossible de taper quoi que ce soit.
                 // `fillMaxWidth` lui donne la surface entiere a capturer.
                 //
-                // ⚠️ `heightIn(min = 48 dp)` est **sur le champ lui-meme**, et pas sur la `Row`
-                // qui l'entoure : une hauteur minimale posee sur la ligne ne changerait pas les
-                // bornes du `BasicTextField`, qui resterait a ~21 dp (la hauteur du texte) — soit
-                // sous le seuil de 48 dp, et même sous le plancher AA de 24 dp. La zone sensible
-                // est celle de l'enfant qui capte le tap, pas celle du conteneur.
+                // ⚠️ **La cible tactile est la Row entiere, pas le champ interne** : le champ
+                // vit dans un conteneur qui a deja son padding vertical, et forcer 48 dp sur le
+                // `BasicTextField` lui-meme empilait les deux — un champ de recherche de plus
+                // de 60 dp de haut, visuellement enorme. Le tap est capture par le champ sur
+                // toute sa largeur et la Row fournit la hauteur de cible ; le texte centre
+                // (contentAlignment ci-dessus) reste au milieu des deux.
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = TetherDimensions.touchTarget),
+                    .fillMaxWidth(),
             )
         }
         if (value.isNotEmpty()) {

@@ -371,7 +371,8 @@ fun SessionRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = RelativeTime.format(System.currentTimeMillis(), item.timestamp),
+                    // Horloge partagée, rafraîchie par minute : cf. [rememberMinuteTick].
+                    text = RelativeTime.format(rememberMinuteTick(), item.timestamp),
                     style = TetherDataStyle,
                     color = TetherTextSecondary,
                 )

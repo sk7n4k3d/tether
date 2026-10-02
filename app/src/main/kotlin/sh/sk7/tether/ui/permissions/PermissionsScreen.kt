@@ -35,10 +35,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.CloudOff
 import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.Hourglass
 import com.composables.icons.lucide.Lucide
@@ -372,7 +374,13 @@ private fun PermissionQueue(
             state.loading && !state.hasAny -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 CircularProgressIndicator(color = LocalAccent.current)
             }
-            !state.hasAny -> EmptyApprovals(formsWaiting = formsWaiting)
+            !state.hasAny -> EmptyApprovals(
+                formsWaiting = formsWaiting,
+                // ⚠️ L'erreur de chargement passe AUSSI dans la branche vide : avant, une file
+                // vide + un serveur injoignable affichait « Rien à approuver » — l'utilisateur
+                // croyait que tout allait bien alors qu'on ne savait rien.
+                error = state.error,
+            )
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -419,7 +427,7 @@ private fun PermissionQueue(
  * mensonge si une demande existe ailleurs et qu'on la tait.
  */
 @Composable
-private fun EmptyApprovals(formsWaiting: Int) {
+private fun EmptyApprovals(formsWaiting: Int, error: String? = null) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -428,16 +436,28 @@ private fun EmptyApprovals(formsWaiting: Int) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            imageVector = Lucide.ShieldCheck,
+            imageVector = if (error != null) Lucide.CloudOff else Lucide.ShieldCheck,
             contentDescription = null,
-            tint = TetherTextSecondary,
+            tint = if (error != null) TetherAlert else TetherTextSecondary,
             modifier = Modifier.size(32.dp),
         )
-        Text(stringResource(R.string.rien_approuver_17e7f7),
+        // Une erreur de chargement change TOUT le message : « rien à approuver » serait un
+        // mensonge sur un état qu'on n'a pas pu lire.
+        Text(
+            text = if (error != null) stringResource(R.string.etat_approbations_inconnu_bf9e2a) else stringResource(R.string.rien_approuver_17e7f7),
             style = MaterialTheme.typography.titleSmall,
             color = TetherTextPrimary,
             modifier = Modifier.padding(top = Spacing.md),
         )
+        if (error != null) {
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = TetherAlert,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = Spacing.sm),
+            )
+        } else {
         Text(
             text = if (formsWaiting > 0) {
                 if (formsWaiting == 1) {
@@ -453,6 +473,7 @@ private fun EmptyApprovals(formsWaiting: Int) {
             color = if (formsWaiting > 0) TetherAlert else TetherTextSecondary,
             modifier = Modifier.padding(top = Spacing.sm),
         )
+        }
     }
 }
 

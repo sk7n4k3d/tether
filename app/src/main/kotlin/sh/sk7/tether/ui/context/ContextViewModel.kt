@@ -118,15 +118,18 @@ class ContextViewModel @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
-    private val sessionID: String = checkNotNull(savedStateHandle.get<String>("sessionID")) {
-        Res.of(R.string.ecran_contexte_exige_76e68f)
-    }
+    private val sessionID: String? = savedStateHandle.get<String>("sessionID")
 
-    private val _state = MutableStateFlow<ContextUiState>(ContextUiState.Loading)
+    private val _state = MutableStateFlow<ContextUiState>(
+        // ⚠️ Pas de `checkNotNull` : un deep link ou une restauration partielle peut perdre
+        // l'argument, et lever dans le constructeur d'un ViewModel plante l'app sans
+        // rattrapage. L'etat porte l'erreur, l'ecran l'affiche.
+        if (sessionID == null) ContextUiState.Error(Res.of(R.string.ecran_contexte_exige_76e68f)) else ContextUiState.Loading,
+    )
     val state: StateFlow<ContextUiState> = _state.asStateFlow()
 
     init {
-        load()
+        if (sessionID != null) load()
     }
 
     override fun onCleared() {
@@ -134,11 +137,12 @@ class ContextViewModel @Inject constructor(
     }
 
     fun load() {
+        val sid = sessionID ?: return
         _state.value = ContextUiState.Loading
         scope.launch {
             try {
                 val settings = store.current()
-                val raw = gateway.sessionContext(settings, sessionID)
+                val raw = gateway.sessionContext(settings, sid)
 
                 if (raw.isEmpty()) {
                     _state.value = ContextUiState.Empty

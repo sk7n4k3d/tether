@@ -262,6 +262,7 @@
     <string name="message_attente_37261a">1 message pending</string>
     <string name="message_corrigera_tour_1bbd26">This message will correct the current turn.</string>
     <string name="message_retire_file_0f14a5">Message removed from the queue.</string>
+    <string name="texte_copie_presse_papiers_9d43e1">Copied to clipboard.</string>
     <string name="message_sans_texte_362f1e">Message without text</string>
     <string name="message_synthetique_a75874">Synthetic message</string>
     <string name="message_systeme_11d7e5">System message</string>
@@ -280,7 +281,7 @@
     <string name="mot_passe_conserve_c8008d">The password is kept in the app\'s private space.</string>
     <string name="mot_passe_opencode_cf487c">the opencode password.</string>
     <string name="mot_passe_refuse_3ee22f">Password refused by the server.</string>
-    <string name="msgs_message_msgs_d27038">  %1$s messages</string>
+    <string name="msgs_message_msgs_d27038">%1$d message%2$s</string>
     <string name="name_depasse_promptattachments_7f0156">“%1$s” exceeds %2$s.</string>
     <string name="node_pulse_d6c71b">node-pulse</string>
     <string name="node_pulse_value_d0e022">node-pulse-value</string>
@@ -357,6 +358,10 @@
     <string name="reponse_serveur_exige_c2a2d1">the reply (the server requires an explicit acknowledgement).</string>
     <string name="reponses_agent_629480">Agent replies</string>
     <string name="repose_git_rien_e58e50">relies on git: there is nothing to isolate here.</string>
+    <string name="impossible_verifier_depot_b37f1c">Could not check whether this directory is versioned — check the connection, then reopen this screen.</string>
+    <string name="recu_pris_connaissance_6fa7f1">Acknowledged — I have read this external resource</string>
+    <string name="ressource_externe_a_confirmer_c7d1f9">Check "Acknowledged" on this external resource: the server refuses the answer without it.</string>
+    <string name="etat_approbations_inconnu_bf9e2a">Could not load pending approvals.</string>
     <string name="requete_refusee_error_5a1f5d">Request refused (%1$s). Check the URL.</string>
     <string name="required_obligatoire_368684"> · %1$s required</string>
     <string name="reste_depot_touche_fe4dc8">The rest of the repository is untouched.</string>
@@ -442,7 +447,7 @@
     <string name="ton_serveur_opencode_poche_e3024a">Your opencode server, in your pocket</string>
     <string name="toobig_path_fait_7149b1">%1$s is %2$s KB.</string>
     <string name="tool_chevron_4d78ad">tool-chevron</string>
-    <string name="total_occurrence_total_fdd500">  %1$s occurrences</string>
+    <string name="total_occurrence_total_fdd500"> · %1$d occurrence%2$s</string>
     <string name="toujours_autorisee_f8f8d9">Always allowed</string>
     <string name="toujours_ec25a7">Always</string>
     <string name="tours_ont_echoue_321618">Some turns failed</string>
